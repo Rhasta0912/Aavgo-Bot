@@ -6,7 +6,7 @@ const db = require('./database');
 const auth = require('./auth');
 const tools = require('./tools');
 const { upsertBotStatusCard } = require('./botStatus');
-const REAL_NAME_TUTORIAL_DIR = 'C:\\Users\\chugc\\Desktop\\Aavgo Bot\\Tutorial\\Real-Name Tutorial';
+const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 
 const client = new Client({
   intents: [
@@ -80,7 +80,18 @@ async function sendRealNameTutorial(member) {
     });
     console.log(`[ONBOARDING] Sent real-name tutorial DM to ${member.user.tag}`);
   } catch (error) {
-    console.warn(`[ONBOARDING] Could not DM real-name tutorial to ${member.user.tag}:`, error.message);
+    console.warn(`[ONBOARDING] Could not send tutorial images to ${member.user.tag}:`, error.message);
+
+    try {
+      await member.send({
+        content:
+          `Welcome to Aavgo.\n\n` +
+          `Please change your server nickname to your real name or surname, then go to <#1482258940879306753> to continue onboarding.`
+      });
+      console.log(`[ONBOARDING] Sent text-only onboarding fallback to ${member.user.tag}`);
+    } catch (fallbackError) {
+      console.warn(`[ONBOARDING] Could not send fallback onboarding DM to ${member.user.tag}:`, fallbackError.message);
+    }
   }
 }
 
