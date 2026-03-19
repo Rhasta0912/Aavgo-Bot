@@ -1,0 +1,7 @@
+node_modules/
+.env
+*.db
+*.db-journal
+bot.log
+tmp/
+auth_info_baileys_master/
