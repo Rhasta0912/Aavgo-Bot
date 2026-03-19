@@ -81,7 +81,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS rac_codes (
     code TEXT PRIMARY KEY,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_by TEXT
+    created_by TEXT,
+    expires_at DATETIME
   );
 
   CREATE TABLE IF NOT EXISTS activities (
@@ -213,6 +214,11 @@ db.pragma('foreign_keys = ON');
     if (!pendingTableInfo.find(col => col.name === 'email')) {
       db.prepare("ALTER TABLE pending_registrations ADD COLUMN email TEXT").run();
     }
+    const racTableInfo = db.prepare("PRAGMA table_info(rac_codes)").all();
+    if (!racTableInfo.find(col => col.name === 'expires_at')) {
+      db.prepare("ALTER TABLE rac_codes ADD COLUMN expires_at DATETIME").run();
+    }
+    db.prepare("UPDATE rac_codes SET expires_at = datetime(created_at, '+1 day') WHERE expires_at IS NULL").run();
   } catch (e) {
     console.warn('[DB] Migration skip or error:', e.message);
   }

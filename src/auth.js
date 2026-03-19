@@ -1023,13 +1023,14 @@ async function handleRegisterSubmit(interaction) {
       .run(pin, phone, email, user.id);
 
     // Security Gate: Check Secret Code (One-time RAC)
-    const racRecord = db.prepare("SELECT * FROM rac_codes WHERE code = ?").get(secret);
+    db.prepare("DELETE FROM rac_codes WHERE expires_at IS NOT NULL AND datetime(expires_at) <= datetime('now')").run();
+    const racRecord = db.prepare("SELECT * FROM rac_codes WHERE code = ? AND datetime(expires_at) > datetime('now')").get(secret);
     
     if (!racRecord) {
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(user.id);
       const alertEmbed = new EmbedBuilder()
         .setTitle('❌ Security Alert')
-        .setDescription('The **Recruitment Access Code** you entered is invalid or has already been used.\n\nPlease contact HR or a Developer for a fresh one-time code.')
+        .setDescription('The **Recruitment Access Code** you entered is invalid, expired, or has already been used.\n\nPlease contact HR or a Developer for a fresh one-time code.')
         .setColor(0xED4245);
       return interaction.reply({ embeds: [alertEmbed], ephemeral: true });
     }
@@ -3475,6 +3476,7 @@ async function handleHelpDev(interaction) {
         '### 🔐 Security & Recruitment\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/generate-rac`: Create a one-time Recruitment Access Code.\n' +
+        '> `/rac-send`: Generate a 24-hour one-time Recruitment Access Code and DM it directly.\n' +
         '> `/help-dev`: Open this technical reference.\n' +
         '> `/help-team-leader`: Show the TL / SME operational guide.\n\n' +
         '### 📊 Operations, Search & Scheduling\n' +
@@ -3680,14 +3682,14 @@ async function handleGenerateRAC(interaction) {
     // Generate a random 8-character alphanumeric code
     const code = Math.random().toString(36).substring(2, 10).toUpperCase();
     
-    db.prepare("INSERT INTO rac_codes (code, created_by) VALUES (?, ?)").run(code, interaction.user.id);
+    db.prepare("INSERT INTO rac_codes (code, created_by, expires_at) VALUES (?, ?, datetime('now', '+1 day'))").run(code, interaction.user.id);
     
     const embed = new EmbedBuilder()
       .setTitle('🔑 New Recruitment Access Code')
       .setDescription(
         `A one-time registration code has been generated.\n\n` +
         `**CODE:** \`${code}\`\n\n` +
-        `*Give this code to the applicant. It will expire immediately after one successful registration submit.*`
+        `*Give this code to the applicant. It will expire after 24 hours or immediately after one successful registration submit.*`
       )
       .setColor(0x57F287)
       .setTimestamp();
@@ -3714,14 +3716,14 @@ async function handleRacSend(interaction) {
     const targetUser = interaction.options.getUser('user');
     const code = Math.random().toString(36).substring(2, 10).toUpperCase();
 
-    db.prepare("INSERT INTO rac_codes (code, created_by) VALUES (?, ?)").run(code, interaction.user.id);
+    db.prepare("INSERT INTO rac_codes (code, created_by, expires_at) VALUES (?, ?, datetime('now', '+1 day'))").run(code, interaction.user.id);
 
     const dmEmbed = new EmbedBuilder()
       .setTitle('🎉 Aavgo Recruitment Access Granted')
       .setDescription(
         `Congrats! By receiving this **Recruitment Code**, you are in.\n\n` +
         `**Recruitment Code:** \`${code}\`\n\n` +
-        `This code is **one-time use only**. Enter it during registration, complete your details carefully, and do not share it with anyone else.`
+        `This code is **one-time use only** and lasts for **24 hours**. Enter it during registration, complete your details carefully, and do not share it with anyone else.`
       )
       .setColor(0xF1C40F)
       .setFooter({ text: 'Aavgo Operations · One-Time Access' })
