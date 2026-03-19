@@ -24,11 +24,12 @@ const commandData = [
     .setDescription('(Admin) Add a user as an agent instantly')
     .addUserOption(option => option.setName('user').setDescription('The user to add').setRequired(true))
     .addStringOption(option => option.setName('pin').setDescription('Set their PIN (4-6 digits)').setRequired(true))
-    .addStringOption(option => option.setName('role').setDescription('Role (agent, team_leader, SME)').setRequired(false)
+    .addStringOption(option => option.setName('role').setDescription('Role (agent, sme, team_leader, operations_manager)').setRequired(false)
       .addChoices(
         { name: 'Agent', value: 'agent' },
+        { name: 'SME', value: 'sme' },
         { name: 'Team Leader', value: 'team_leader' },
-        { name: 'SME', value: 'SME' }
+        { name: 'Operations Manager', value: 'operations_manager' }
       )),
   new SlashCommandBuilder()
     .setName('remove-agent')

@@ -219,6 +219,9 @@ db.pragma('foreign_keys = ON');
       db.prepare("ALTER TABLE rac_codes ADD COLUMN expires_at DATETIME").run();
     }
     db.prepare("UPDATE rac_codes SET expires_at = datetime(created_at, '+1 day') WHERE expires_at IS NULL").run();
+    db.prepare("UPDATE agents SET role = 'sme' WHERE lower(role) IN ('sme', 'subject matter expert', 'subject_matter_expert')").run();
+    db.prepare("UPDATE agents SET role = 'team_leader' WHERE lower(replace(role, ' ', '_')) IN ('team_leader', 'teamleader')").run();
+    db.prepare("UPDATE agents SET role = 'operations_manager' WHERE lower(replace(role, ' ', '_')) IN ('operations_manager', 'operation_manager', 'operationsmanager')").run();
   } catch (e) {
     console.warn('[DB] Migration skip or error:', e.message);
   }

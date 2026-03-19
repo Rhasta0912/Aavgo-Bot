@@ -1,6 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('./database');
-const { sendAuditLog, HOTEL_NAMES, HOTEL_LOGIN_CHANNELS, updateHotelStatusEmbed, isDeveloper } = require('./auth');
+const { sendAuditLog, HOTEL_NAMES, HOTEL_LOGIN_CHANNELS, updateHotelStatusEmbed, isDeveloper, interactionHasRoleAtLeast } = require('./auth');
 const whatsapp = require('./whatsapp');
 
 const TL_ALERT_CHANNEL_ID = '1482222657935118487';
@@ -101,8 +101,7 @@ async function handleToolsCommand(interaction) {
     const isTLChannel = interaction.channelId === TL_TOOLS_CHANNEL_ID;
     
     // Check database role if possible
-    const agentData = db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(interaction.user.id);
-    const hasTLRole = (agentData && (agentData.role === 'team_leader' || agentData.role === 'SME')) || 
+    const hasTLRole = interactionHasRoleAtLeast(interaction, 'sme') || 
                       interaction.member.roles.cache.some(r => r.name.toLowerCase() === TEAM_LEADER_ROLE_NAME.toLowerCase()) ||
                       isDeveloper(interaction);
 
@@ -201,8 +200,8 @@ async function handleTLAccept(interaction) {
     const guild = interaction.guild;
     const member = await guild.members.fetch(interaction.user.id);
     const tlRole = guild.roles.cache.find(r => r.name.toLowerCase() === TEAM_LEADER_ROLE_NAME.toLowerCase());
-    if (tlRole && !member.roles.cache.has(tlRole.id)) {
-      return interaction.reply({ content: '❌ Only Team Leaders can accept assistance requests.', ephemeral: true });
+    if (tlRole && !member.roles.cache.has(tlRole.id) && !interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Only management staff can accept assistance requests.', ephemeral: true });
     }
 
     await interaction.deferUpdate();
@@ -353,8 +352,8 @@ async function handleBioApprove(interaction) {
     const guild = interaction.guild;
     const member = await guild.members.fetch(interaction.user.id);
     const tlRole = guild.roles.cache.find(r => r.name.toLowerCase() === TEAM_LEADER_ROLE_NAME.toLowerCase());
-    if (tlRole && !member.roles.cache.has(tlRole.id)) {
-      return interaction.reply({ content: '❌ Only Team Leaders can approve breaks.', ephemeral: true });
+    if (tlRole && !member.roles.cache.has(tlRole.id) && !interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Only management staff can approve breaks.', ephemeral: true });
     }
 
     await interaction.deferUpdate();
@@ -444,8 +443,8 @@ async function handleBioDeny(interaction) {
     const guild = interaction.guild;
     const member = await guild.members.fetch(interaction.user.id);
     const tlRole = guild.roles.cache.find(r => r.name.toLowerCase() === TEAM_LEADER_ROLE_NAME.toLowerCase());
-    if (tlRole && !member.roles.cache.has(tlRole.id)) {
-      return interaction.reply({ content: '❌ Only Team Leaders can deny breaks.', ephemeral: true });
+    if (tlRole && !member.roles.cache.has(tlRole.id) && !interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Only management staff can deny breaks.', ephemeral: true });
     }
 
     const agentId = interaction.customId.replace('bio_deny_', '');

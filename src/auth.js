@@ -79,6 +79,18 @@ const AGENT_STATUS_LABELS = {
   standby: 'Standby Training',
   ready: 'Ready for Live Shifts'
 };
+const ROLE_LABELS = {
+  agent: 'Agent',
+  sme: 'Subject Matter Expert (SME)',
+  team_leader: 'Team Leader',
+  operations_manager: 'Operations Manager'
+};
+const ROLE_HIERARCHY = {
+  agent: 1,
+  sme: 2,
+  team_leader: 3,
+  operations_manager: 5
+};
 
 // ─── Audit Logger ────────────────────────────────────
 async function sendAuditLog(client, { title, description, color, hotelId, userId, forceManagerLog, guild }) {
@@ -222,6 +234,36 @@ function normalizeHotelInput(input) {
 
 function getAgentShiftAccessState(agent) {
   return agent?.agent_status === 'standby' ? 'standby' : 'ready';
+}
+
+function normalizeAgentRole(role) {
+  const cleaned = String(role || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
+
+  if (!cleaned) return 'agent';
+  if (cleaned === 'subject_matter_expert' || cleaned === 'subjectmatterexpert') return 'sme';
+  if (cleaned === 'teamleader') return 'team_leader';
+  if (cleaned === 'operation_manager' || cleaned === 'operationsmanager') return 'operations_manager';
+  return cleaned;
+}
+
+function getRoleLabel(role) {
+  return ROLE_LABELS[normalizeAgentRole(role)] || 'Agent';
+}
+
+function getRoleRank(role) {
+  return ROLE_HIERARCHY[normalizeAgentRole(role)] || 0;
+}
+
+function hasAgentRoleAtLeast(role, minimumRole) {
+  return getRoleRank(role) >= getRoleRank(minimumRole);
+}
+
+function getAgentRoleByDiscordId(discordId) {
+  const agent = db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(discordId);
+  return normalizeAgentRole(agent?.role);
 }
 
 function buildShiftStandbyMessage(agent) {
@@ -823,7 +865,7 @@ async function updateTeamStatusEmbed(client, teamName) {
               cleanTime = cleanTime.replace(' ', 'T') + 'Z';
            }
            const loginUnix = Math.floor(new Date(cleanTime || Date.now()).getTime() / 1000);
-           return `👤 **${a.username}** (<@${a.discord_id}>)\n> 🛡️ *Role:* ${a.role === 'SME' ? 'Subject Matter Expert' : 'Team Leader'}\n> ⏳ *On shift for:* <t:${loginUnix}:R>`;
+           return `👤 **${a.username}** (<@${a.discord_id}>)\n> 🛡️ *Role:* ${getRoleLabel(a.role)}\n> ⏳ *On shift for:* <t:${loginUnix}:R>`;
         })
         .join('\n\n');
       
@@ -1245,8 +1287,8 @@ async function handleStartShiftClick(interaction) {
       });
     }
 
-    const { role } = agent;
-    const isTLOrSME = role === 'team_leader' || role === 'SME' || isDeveloper(interaction);
+    const role = normalizeAgentRole(agent.role);
+    const isTLOrSME = interactionHasRoleAtLeast(interaction, 'sme');
 
     if (isTLButton && !isTLOrSME) {
       return interaction.reply({ 
@@ -2394,7 +2436,7 @@ async function handleAddAgent(interaction) {
   try {
     const targetUser = interaction.options.getUser('user');
     const pin = interaction.options.getString('pin');
-    const role = interaction.options.getString('role') || 'agent';
+    const role = normalizeAgentRole(interaction.options.getString('role') || 'agent');
 
     const isDev = isDeveloper(interaction);
 
@@ -2694,6 +2736,11 @@ function isDeveloper(interaction) {
   return !!dev;
 }
 
+function interactionHasRoleAtLeast(interaction, minimumRole, { allowDeveloper = true } = {}) {
+  if (allowDeveloper && isDeveloper(interaction)) return true;
+  return hasAgentRoleAtLeast(getAgentRoleByDiscordId(interaction.user.id), minimumRole);
+}
+
 async function handleDbAddDeveloper(interaction) {
   try {
     if (!isDeveloper(interaction)) {
@@ -2964,7 +3011,7 @@ async function handlePromoteSME(interaction) {
     const agent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
     if (!agent) return interaction.reply({ content: `❌ **${targetUser.username}** is not a registered agent.`, ephemeral: true });
 
-    db.prepare("UPDATE agents SET role = 'SME' WHERE discord_id = ?").run(targetUser.id);
+    db.prepare("UPDATE agents SET role = 'sme' WHERE discord_id = ?").run(targetUser.id);
 
     // Role Sync
     try {
@@ -3272,11 +3319,7 @@ async function handleFindGuest(interaction) {
     const query = interaction.options.getString('query');
     
     // Authorization: Developers, SMEs, or Team Leaders
-    const agent = db.prepare('SELECT role FROM agents WHERE discord_id = ?').get(interaction.user.id);
-    const isDev = isDeveloper(interaction);
-    const isMgmt = agent && (agent.role === 'team_leader' || agent.role === 'sme');
-
-    if (!isDev && !isMgmt) {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
       return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
     }
 
@@ -3377,8 +3420,7 @@ async function handleAddGuide(interaction) {
     const topic = interaction.options.getString('topic');
     const content = interaction.options.getString('content');
 
-    const agent = db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(interaction.user.id);
-    if (!isDeveloper(interaction) && agent?.role !== 'SME' && agent?.role !== 'team_leader') {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
       return interaction.reply({ content: '❌ Access Denied: Management only.', ephemeral: true });
     }
 
@@ -3402,8 +3444,7 @@ async function handleAddGuide(interaction) {
 
 async function handleMaintenanceList(interaction) {
   try {
-    const agent = db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(interaction.user.id);
-    if (!isDeveloper(interaction) && agent?.role !== 'SME' && agent?.role !== 'team_leader') {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
       return interaction.reply({ content: '❌ Access Denied: Management only.', ephemeral: true });
     }
 
@@ -3511,9 +3552,8 @@ async function handleHelpDev(interaction) {
 
 async function handleHelpTeamLeader(interaction) {
   try {
-    const agent = db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(interaction.user.id);
-    if (!isDeveloper(interaction) && agent?.role !== 'team_leader' && agent?.role !== 'SME') {
-      return interaction.reply({ content: '❌ Access Denied: Team Leader or SME only.', ephemeral: true });
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Access Denied: Management only.', ephemeral: true });
     }
 
     const embed = new EmbedBuilder()
@@ -3543,8 +3583,8 @@ async function handleHelpTeamLeader(interaction) {
 
 async function handleHotelStatusRefresh(interaction) {
   try {
-    if (!isDeveloper(interaction) && !(db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(interaction.user.id)?.role?.includes('leader') || true)) {
-        // Manager check
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
     }
     const action = interaction.options.getString('action');
     const specificHotel = interaction.options.getString('hotel');
@@ -3572,11 +3612,8 @@ async function handleHotelStatusRefresh(interaction) {
 
 async function handleDbAssignHotel(interaction) {
   try {
-    const agentRole = db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(interaction.user.id);
-    const isMgmt = agentRole && (agentRole.role === 'team_leader' || agentRole.role === 'SME');
-    
-    if (!isDeveloper(interaction) && !isMgmt) {
-      return interaction.reply({ content: '❌ Developer or Team Leader access required.', ephemeral: true });
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Developer or management access required.', ephemeral: true });
     }
     const target = interaction.options.getUser('user');
     const hotelId = interaction.options.getString('hotel');
@@ -3751,8 +3788,8 @@ async function handleRacSend(interaction) {
 
 async function handleSetSchedule(interaction) {
   try {
-    if (!isDeveloper(interaction) && !(db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(interaction.user.id)?.role?.includes('manager') || true)) {
-       // Simplified manager check
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
     }
     const target = interaction.options.getUser('user');
     const hotel = interaction.options.getString('hotel');
@@ -3780,6 +3817,10 @@ async function handleSetSchedule(interaction) {
 
 async function handleScheduleView(interaction) {
   try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
     const hotelId = interaction.options.getString('hotel');
     let sql = `
       SELECT schedules.*, agents.username, hotels.name as hotel_name 
@@ -3817,6 +3858,10 @@ async function handleScheduleView(interaction) {
 
 async function handleScheduleExport(interaction) {
   try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
     const rows = db.prepare(`
       SELECT agents.username, schedules.hotel_id, schedules.start_time, schedules.end_time, schedules.status
       FROM schedules 
@@ -3839,6 +3884,10 @@ async function handleScheduleExport(interaction) {
 
 async function handleScheduleImport(interaction) {
   try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
     await interaction.deferReply({ ephemeral: true });
     const file = interaction.options.getAttachment('file');
     if (!file.name.endsWith('.csv')) return interaction.editReply({ content: '❌ Please upload a .csv file.' });
@@ -3898,6 +3947,10 @@ async function handleMySchedule(interaction) {
 
 async function handleAttendanceReport(interaction) {
   try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
     const missed = db.prepare(`
       SELECT schedules.*, agents.username, hotels.name as hotel_name 
       FROM schedules 
@@ -4029,6 +4082,11 @@ module.exports = {
   handleAttendanceReport,
   checkSchedules,
   isDeveloper,
+  normalizeAgentRole,
+  getRoleLabel,
+  getRoleRank,
+  hasAgentRoleAtLeast,
+  interactionHasRoleAtLeast,
   getAgentDisplayName,
   handleConfirmHotelLink,
   handleCancelHotelLink,
