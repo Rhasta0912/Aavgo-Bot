@@ -3583,6 +3583,55 @@ async function handleHelpDev(interaction) {
   }
 }
 
+async function handleHelpAgent(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'agent')) {
+      return interaction.reply({ content: '❌ You must be a registered agent to use this guide.', ephemeral: true });
+    }
+
+    const agent = db.prepare("SELECT role, agent_status, hotel_id, team FROM agents WHERE discord_id = ?").get(interaction.user.id);
+    const roleLabel = getRoleLabel(agent?.role);
+    const shiftAccessLabel = AGENT_STATUS_LABELS[getAgentShiftAccessState(agent)] || 'Ready for Live Shifts';
+    const assignmentLabel = agent?.hotel_id ? (HOTEL_NAMES[agent.hotel_id] || agent.hotel_id) : 'Not linked yet';
+    const teamLabel = agent?.team || 'Not set yet';
+
+    const embed = new EmbedBuilder()
+      .setTitle('💛 Aavgo Agent Guide')
+      .setDescription(
+        '### 🟡 Daily Agent Flow\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        '> `/my-schedule`: Check your next assigned shifts.\n' +
+        '> `/login`: Start your shift from the correct hotel flow.\n' +
+        '> `/status`: Review current staffing and shift coverage.\n' +
+        '> `/check-hours`: Review your logged hours.\n' +
+        '> `/end-shift` or `/logout`: End your current shift safely.\n\n' +
+        '### 🧰 During Shift\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        '> `/tools`: Open the agent tools panel for break and emergency actions.\n' +
+        '> `/guide`: Search SOPs and hotel process guides by topic.\n\n' +
+        '### 📌 Your Current Access\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        `> **DB Role:** ${roleLabel}\n` +
+        `> **Shift Access:** ${shiftAccessLabel}\n` +
+        `> **Team:** ${teamLabel}\n` +
+        `> **Hotel Link:** ${assignmentLabel}\n\n` +
+        '### 🔐 Permission Reminder\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        'Database permissions are the real authority. Discord roles mostly control visibility and channel access.'
+      )
+      .setColor(0xF1C40F)
+      .setFooter({ text: 'Aavgo Operations • Agent Help' })
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed], ephemeral: true });
+  } catch (e) {
+    console.error('Error in handleHelpAgent:', e);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Error opening the agent guide.', ephemeral: true });
+    }
+  }
+}
+
 async function handleHelpTeamLeader(interaction) {
   try {
     if (!interactionHasRoleAtLeast(interaction, 'sme')) {
@@ -4093,6 +4142,7 @@ module.exports = {
   handleDbRemoveUser,
   handleMemberLeave,
   handleHelpDev,
+  handleHelpAgent,
   handleHelpTeamLeader,
   handleHotelStatusRefresh,
   handleDbAssignHotel,

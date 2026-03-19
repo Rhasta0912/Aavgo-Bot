@@ -256,6 +256,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDbSetPin(interaction);
     } else if (commandName === 'help-dev') {
       await auth.handleHelpDev(interaction);
+    } else if (commandName === 'help-agent') {
+      await auth.handleHelpAgent(interaction);
     } else if (commandName === 'help-team-leader') {
       await auth.handleHelpTeamLeader(interaction);
     } else if (commandName === 'hotel-status') {

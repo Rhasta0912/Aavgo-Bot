@@ -117,6 +117,9 @@ const commandData = [
     .setName('help-dev')
     .setDescription('(Developer Only) Show a comprehensive guide of all developer and administrative tools'),
   new SlashCommandBuilder()
+    .setName('help-agent')
+    .setDescription('Show a quick guide for core agent commands and daily workflow'),
+  new SlashCommandBuilder()
     .setName('find-guest')
     .setDescription('(Manager/Dev) Search for guest records by name or room number')
     .addStringOption(option => option.setName('query').setDescription('Guest name or room number').setRequired(true)),

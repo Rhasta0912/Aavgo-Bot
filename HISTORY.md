@@ -42,3 +42,6 @@ Working rules:
 ## Notes
 - Desktop `History.md` still contains the long-form archive and older architectural history.
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
+
+## Latest Changes
+- Added `/help-agent` so registered agents can open a yellow Aavgo quick-reference for daily commands, shift workflow, and their current DB-backed access state.
