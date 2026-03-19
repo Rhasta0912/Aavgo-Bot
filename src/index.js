@@ -46,15 +46,29 @@ async function sendRealNameTutorial(member) {
     .map(filePath => new AttachmentBuilder(filePath));
 
   const embed = new EmbedBuilder()
-    .setTitle('Real Name Setup Required')
+    .setTitle('Aavgo Onboarding · Real Name Required')
     .setDescription(
       `Welcome to Aavgo, <@${member.id}>.\n\n` +
-      `Please change your server nickname to your **real name** or **surname** before continuing. ` +
-      `Do not keep usernames like \`xxSmithyxx\`, gamer tags, or joke nicknames.\n\n` +
-      `Please also go to <#1482258940879306753> after this so you land in the correct onboarding area.\n\n` +
-      `Follow the tutorial images below, then set your server profile to the name management will actually recognize.`
+      `Before doing anything else, please update your **server nickname** to your **real name** or **surname**.\n\n` +
+      `Do not keep usernames such as \`xxSmithyxx\`, gamer tags, aliases, or joke names. ` +
+      `Management needs to recognize you immediately inside the server.\n\n` +
+      `After that, head to <#1482258940879306753> to continue the onboarding flow.\n\n` +
+      `Use the tutorial image below if you are not sure where to change it.`
     )
-    .setColor(0x5865F2)
+    .addFields(
+      {
+        name: 'What To Do',
+        value:
+          '1. Change your server nickname to your real name or surname.\n' +
+          '2. Make sure the new name is clean and professional.\n' +
+          '3. Go to <#1482258940879306753> once it is done.'
+      },
+      {
+        name: 'Important',
+        value: 'If your nickname is not your real name, onboarding may be delayed.'
+      }
+    )
+    .setColor(0xF1C40F)
     .setFooter({ text: 'Aavgo Operations · Onboarding' })
     .setTimestamp()
     .setImage('attachment://1.png');
