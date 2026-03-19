@@ -995,16 +995,25 @@ async function handleRegisterSubmit(interaction) {
     }
 
     // If we've reached this point, the user is now successfully in the pending table.
-    const secret = interaction.fields.getTextInputValue('register_secret');
-    const pin = interaction.fields.getTextInputValue('register_pin');
-    const email = interaction.fields.getTextInputValue('register_email');
-    const phone = interaction.fields.getTextInputValue('register_phone');
+    const secret = interaction.fields.getTextInputValue('register_secret').trim();
+    const pin = interaction.fields.getTextInputValue('register_pin').trim();
+    const email = interaction.fields.getTextInputValue('register_email').trim().toLowerCase();
+    const phone = interaction.fields.getTextInputValue('register_phone').trim();
 
-    // Phone Validation: Must be 63+ (Philippines)
-    if (!phone.startsWith('63') || phone.length < 10) {
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailPattern.test(email)) {
+      db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(user.id);
+      return interaction.reply({
+        content: '❌ **Invalid Email Address.** Please enter a real email in the format `name@example.com`.',
+        ephemeral: true
+      });
+    }
+
+    const phonePattern = /^(?:63\d{10}|09\d{9})$/;
+    if (!phonePattern.test(phone)) {
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(user.id);
       return interaction.reply({ 
-        content: '❌ **Invalid Phone Number.** You must provide a valid Philippines phone number starting with `63+`.', 
+        content: '❌ **Invalid Phone Number.** Please use a valid Philippines number starting with `63` or `09`.', 
         ephemeral: true 
       });
     }
