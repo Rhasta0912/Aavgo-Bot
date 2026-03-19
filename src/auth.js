@@ -228,6 +228,42 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
   return hotelIds;
 }
 
+async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentId) {
+  const priorSessions = db.prepare(
+    "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC"
+  ).all(hotelId, currentAgentId);
+
+  for (const priorSession of priorSessions) {
+    const priorAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(priorSession.agent_id);
+    db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed' WHERE id = ?").run(priorSession.id);
+
+    if (!priorAgent) continue;
+
+    try {
+      const oldMember = await interaction.guild.members.fetch(priorAgent.discord_id);
+      if (!oldMember) continue;
+
+      const onShiftRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
+      const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+      const greenRole = interaction.guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
+      const greyRole = interaction.guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
+
+      if (onShiftRole && loggedOutRole && greenRole) {
+        const rolesToRemove = [onShiftRole, greenRole];
+        const rolesToAdd = [loggedOutRole];
+        if (greyRole) rolesToAdd.push(greyRole);
+
+        await oldMember.roles.remove(rolesToRemove);
+        await oldMember.roles.add(rolesToAdd);
+      }
+    } catch (e) {
+      console.warn('Could not revert roles for prior agent:', e.message);
+    }
+  }
+
+  return priorSessions.length;
+}
+
 // ─── PIN Verification Modal ─────────────────────────
 async function showPinModal(interaction, hotelId, isTakeover = false) {
   const hotelName = HOTEL_NAMES[hotelId] || (hotelId === 'TEAM_SHIFT' ? 'Management Shift' : hotelId);
@@ -364,6 +400,24 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   }
 
   await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+
+  if (hotelId !== 'TEAM_SHIFT') {
+    const conflictingSession = db.prepare(
+      "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
+    ).get(hotelId, agent.id);
+
+    if (conflictingSession && !isTakeover) {
+      return interaction.editReply({
+        content: `Another agent is already active in **${HOTEL_NAMES[hotelId] || hotelId}**. Please use the takeover flow instead.`,
+        embeds: [],
+        components: []
+      });
+    }
+
+    if (conflictingSession && isTakeover) {
+      await closeOtherActiveHotelSessions(interaction, hotelId, agent.id);
+    }
+  }
 
   const nowIso = new Date().toISOString();
   db.prepare("INSERT INTO sessions (agent_id, hotel_id, login_time) VALUES (?, ?, ?)").run(agent.id, hotelId, nowIso);
@@ -1381,6 +1435,32 @@ async function handleStartShiftClick(interaction) {
               ephemeral: true
             });
           }
+
+          const hotelSession = db.prepare(
+            "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
+          ).get(agent.hotel_id, agent.id);
+
+          if (hotelSession) {
+            const otherAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(hotelSession.agent_id);
+            const promptEmbed = new EmbedBuilder()
+              .setTitle('âš ï¸ Overlapping Shift Detected')
+              .setDescription(`Agent **${otherAgent?.username || 'Unknown Agent'}** is currently logged into **${HOTEL_NAMES[agent.hotel_id]}**.\n\nAre you sure you want to take over this shift?`)
+              .setColor(0xFEE75C);
+
+            const takeOverBtn = new ButtonBuilder()
+              .setCustomId(`takeover_btn_${agent.hotel_id}`)
+              .setLabel('Yes, Take Over Shift')
+              .setStyle(ButtonStyle.Success);
+
+            const cancelBtn = new ButtonBuilder()
+              .setCustomId('cancel_takeover_btn')
+              .setLabel('Cancel')
+              .setStyle(ButtonStyle.Secondary);
+
+            const promptRow = new ActionRowBuilder().addComponents(takeOverBtn, cancelBtn);
+            return interaction.reply({ embeds: [promptEmbed], components: [promptRow], ephemeral: true });
+          }
+
           console.log(`[LOCK-IN] ${interaction.user.username} bypassing selection for linked hotel ${agent.hotel_id}`);
           return await showPinModal(interaction, agent.hotel_id);
        } else {
