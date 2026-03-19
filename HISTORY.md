@@ -10,6 +10,10 @@ Working rules:
 - Log meaningful fixes, feature work, deployment changes, and mistakes/fixes.
 - Treat the live workspace as source of truth for code.
 - Treat database permissions as the real authority, with Discord roles mostly used for channel access and presentation.
+- Shared shorthand: when the user says `Brief`, compare this PC against `origin/main` and summarize:
+  - new commits from the other PC / GitHub
+  - local-only commits or meaningful working changes on the current PC
+  - if there is nothing new on either side, reply with `No updates`
 
 ## Current Infrastructure
 - Hosted live on SparkedHost / Apollo Panel.
