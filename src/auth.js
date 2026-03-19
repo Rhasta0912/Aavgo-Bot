@@ -70,6 +70,7 @@ const HOTEL_LOGIN_CHANNELS = {
 
 const APPROVAL_CHANNEL_ID = '1482240202503098398';
 const AUDIT_LOG_CHANNEL_ID = '1482239767134339182';
+const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TL_PORTAL_CHANNEL_ID = '1482516531505266770';
 
@@ -166,6 +167,26 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
     await channel.send({ embeds: [embed] });
   } catch (err) {
     console.warn('[AUDIT] Failed to send audit log:', err.message);
+  }
+}
+
+async function sendShiftActivityLog(client, { title, color, description, fields = [] }) {
+  try {
+    const channel = await client.channels.fetch(SHIFT_ACTIVITY_LOG_CHANNEL_ID);
+    if (!channel) return console.warn('[SHIFT-ACTIVITY] Log channel not found.');
+
+    const embed = new EmbedBuilder()
+      .setTitle(title)
+      .setDescription(description)
+      .setColor(color)
+      .setFooter({ text: 'Aavgo Operations • Shift Activity' })
+      .setTimestamp();
+
+    if (fields.length > 0) embed.addFields(fields.slice(0, 10));
+
+    await channel.send({ embeds: [embed] });
+  } catch (err) {
+    console.warn('[SHIFT-ACTIVITY] Failed to send activity log:', err.message);
   }
 }
 
@@ -2295,6 +2316,22 @@ async function handleActivityModalSubmit(interaction) {
 
       const hotelName = HOTEL_NAMES[hotelId] || hotelId;
       const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
+
+      await sendShiftActivityLog(interaction.client, {
+        title: 'Maintenance Reported',
+        description: `**Agent:** ${nickname}\n**Hotel:** ${hotelName}`,
+        color: 0xE67E22,
+        fields: [
+          { name: 'Room', value: room, inline: true },
+          { name: 'Category', value: cat, inline: true },
+          { name: 'Issue', value: desc.slice(0, 1024), inline: false }
+        ]
+      });
+
+      const waAlertMsg = `ðŸš¨ *MAINTENANCE ALERT*\n*Hotel:* ${hotelName}\n*Agent:* ${nickname}\n*Room:* ${room}\n*Category:* ${cat}\n*Issue:* ${desc}`;
+      await whatsapp.sendToWhatsApp(waAlertMsg, hotelId);
+
+      return await interaction.editReply({ content: `âœ… **Maintenance issue** reported for Room **${room}**.` });
       
       await sendAuditLog(interaction.client, { 
         title: '🛠️ Maintenance Reported', 
@@ -2321,6 +2358,17 @@ async function handleActivityModalSubmit(interaction) {
       const hotelName = HOTEL_NAMES[hotelId] || hotelId;
       const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
 
+      await sendShiftActivityLog(interaction.client, {
+        title: 'Handover Note Left',
+        description: `**Agent:** ${nickname}\n**Hotel:** ${hotelName}`,
+        color: 0x9B59B6,
+        fields: [
+          { name: 'Note', value: content.slice(0, 1024), inline: false }
+        ]
+      });
+
+      return await interaction.editReply({ content: `âœ… **Handover note** saved for the next agent.` });
+
       await sendAuditLog(interaction.client, { 
         title: '📝 Handover Note Left', 
         description: `**Agent:** ${nickname}\n**Hotel:** ${hotelName}\n**Note:** ${content}`, 
@@ -2338,6 +2386,38 @@ async function handleActivityModalSubmit(interaction) {
 
     const hotelName = HOTEL_NAMES[hotelId] || hotelId;
     const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
+    const activityTitleMap = {
+      checkin: 'Check-In Logged',
+      checkout: 'Check-Out Logged',
+      call: 'Call Log Recorded'
+    };
+    const detailFields = Object.entries(details)
+      .filter(([, value]) => String(value || '').trim().length > 0)
+      .map(([key, value]) => ({
+        name: key.replace(/_/g, ' ').replace(/\b\w/g, char => char.toUpperCase()),
+        value: String(value).slice(0, 1024),
+        inline: false
+      }));
+
+    await sendShiftActivityLog(interaction.client, {
+      title: activityTitleMap[type] || 'Operation Logged',
+      description: `**Agent:** ${nickname}\n**Hotel:** ${hotelName}\n**Guest:** ${guest_name}`,
+      color: type === 'checkin' ? 0x57F287 : (type === 'checkout' ? 0xED4245 : 0x3498DB),
+      fields: detailFields
+    });
+
+    // WhatsApp Notification
+    const waDetailLines = Object.entries(details).map(([k, v]) => `  - *${k}:* ${v || 'N/A'}`).join('\n');
+    const waActivityMsg = `*${hotelName} Operational Log*\n` +
+                  `*Agent:* ${nickname}\n` +
+                  `*Type:* ${type.toUpperCase()}\n` +
+                  `*Guest:* ${guest_name}\n` +
+                  `*Details:*\n${waDetailLines}`;
+
+    await whatsapp.sendToWhatsApp(waActivityMsg, hotelId);
+
+    return await interaction.editReply({ content: `âœ… **${type.toUpperCase()}** logged successfully for **${guest_name}**.` });
+
     const auditInfo = `**Agent:** ${nickname}\n**Hotel:** ${hotelName}\n**Type:** ${type.toUpperCase()}\n**Guest:** ${guest_name}`;
     
     await sendAuditLog(interaction.client, { 

@@ -49,3 +49,4 @@ Working rules:
 
 ## Latest Changes
 - Added `/help-agent` so registered agents can open a yellow Aavgo quick-reference for daily commands, shift workflow, and their current DB-backed access state.
+- Relocated live in-shift outputs for check-ins, check-outs, call logs, maintenance reports, and handover notes into Discord channel `1484192529485140099`, while keeping handover note delivery to the next overtaking agent through DM.
