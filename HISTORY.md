@@ -37,6 +37,7 @@ Working rules:
   - `operations_manager`
 - Added centralized role normalization/rank helpers and moved management-gated features to shared DB permission checks.
 - Expanded `/add-agent` so developers can assign `operations_manager`.
+- Cleaned up the log presentation baseline by structuring audit embeds into clearer fields and refreshing the `dev-bot` status card labels into a more readable operations-health layout.
 
 ## Notes
 - Desktop `History.md` still contains the long-form archive and older architectural history.

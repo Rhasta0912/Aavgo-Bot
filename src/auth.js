@@ -92,6 +92,34 @@ const ROLE_HIERARCHY = {
   operations_manager: 5
 };
 
+function buildAuditFields(resolvedDescription) {
+  const lines = String(resolvedDescription || '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  const fields = [];
+  const summaryLines = [];
+
+  for (const line of lines) {
+    const match = line.match(/^\*\*(.+?):\*\*\s*(.+)$/);
+    if (match) {
+      fields.push({
+        name: match[1],
+        value: match[2],
+        inline: true
+      });
+    } else {
+      summaryLines.push(line.replace(/^>\s*/, ''));
+    }
+  }
+
+  return {
+    summary: summaryLines.join('\n').trim() || 'Operational event recorded.',
+    fields: fields.slice(0, 6)
+  };
+}
+
 // ─── Audit Logger ────────────────────────────────────
 async function sendAuditLog(client, { title, description, color, hotelId, userId, forceManagerLog, guild }) {
   try {
@@ -123,12 +151,17 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
     const channel = await client.channels.fetch(targetChannelId);
     if (!channel) return console.warn('[AUDIT] Log channel not found.');
 
+    const resolvedDescription = description.replace('{{AGENT_NAME}}', agentName);
+    const { summary, fields } = buildAuditFields(resolvedDescription);
+
     const embed = new EmbedBuilder()
       .setTitle(title)
-      .setDescription(description.replace('{{AGENT_NAME}}', agentName))
+      .setDescription(summary)
       .setColor(color)
       .setFooter({ text: `🛡️ Aavgo Audit System • ${agentName}` })
       .setTimestamp();
+
+    if (fields.length > 0) embed.addFields(fields);
 
     await channel.send({ embeds: [embed] });
   } catch (err) {

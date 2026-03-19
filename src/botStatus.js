@@ -1,6 +1,6 @@
 const BOT_STATUS_CHANNEL_ID = '1483667047660388484';
 const DISCORD_API_BASE = 'https://discord.com/api/v10';
-const STATUS_FOOTER = 'Aavgo Bot Status Card';
+const STATUS_FOOTER = 'Aavgo Operations • Bot Health';
 const STATUS_STALE_NOTE = 'If the last update is older than 90 seconds, treat the bot as offline or stale.';
 
 function buildEmbed({ title, description, color, stateLabel }) {
@@ -12,17 +12,22 @@ function buildEmbed({ title, description, color, stateLabel }) {
     footer: { text: STATUS_FOOTER },
     fields: [
       {
-        name: 'State',
+        name: 'Bot Status',
         value: stateLabel,
         inline: true
       },
       {
-        name: 'Last Update',
+        name: 'Last Heartbeat',
         value: `<t:${Math.floor(Date.now() / 1000)}:F>`,
         inline: true
       },
       {
-        name: 'Freshness',
+        name: 'Deploy Rule',
+        value: 'Restart the host to pull the latest GitHub commit.',
+        inline: false
+      },
+      {
+        name: 'Freshness Check',
         value: STATUS_STALE_NOTE,
         inline: false
       }
