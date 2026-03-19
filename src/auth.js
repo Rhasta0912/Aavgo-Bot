@@ -3707,6 +3707,46 @@ async function handleGenerateRAC(interaction) {
   }
 }
 
+async function handleRacSend(interaction) {
+  try {
+    if (!isDeveloper(interaction)) return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
+
+    const targetUser = interaction.options.getUser('user');
+    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
+
+    db.prepare("INSERT INTO rac_codes (code, created_by) VALUES (?, ?)").run(code, interaction.user.id);
+
+    const dmEmbed = new EmbedBuilder()
+      .setTitle('🎉 Aavgo Recruitment Access Granted')
+      .setDescription(
+        `Congrats! By receiving this **Recruitment Code**, you are in.\n\n` +
+        `**Recruitment Code:** \`${code}\`\n\n` +
+        `This code is **one-time use only**. Enter it during registration, complete your details carefully, and do not share it with anyone else.`
+      )
+      .setColor(0xF1C40F)
+      .setFooter({ text: 'Aavgo Operations · One-Time Access' })
+      .setTimestamp();
+
+    await targetUser.send({ embeds: [dmEmbed] });
+
+    await interaction.reply({
+      content: `✅ Recruitment code generated and sent to **${targetUser.username}** by DM.`,
+      ephemeral: true
+    });
+
+    sendAuditLog(interaction.client, {
+      title: '📨 RAC Sent by DM',
+      description: `**Admin:** {{AGENT_NAME}}\n**Recipient:** ${targetUser.username} (<@${targetUser.id}>)\n**Action:** One-time recruitment code delivered by DM`,
+      color: 0xF1C40F,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (e) {
+    console.error('Error in handleRacSend:', e);
+    await interaction.reply({ content: '❌ Could not send the recruitment code DM. The user may have DMs disabled.', ephemeral: true });
+  }
+}
+
 async function handleSetSchedule(interaction) {
   try {
     if (!isDeveloper(interaction) && !(db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(interaction.user.id)?.role?.includes('manager') || true)) {
@@ -3971,6 +4011,7 @@ module.exports = {
   handleDbAgentReady,
   handleDbAgentStandby,
   handleGenerateRAC,
+  handleRacSend,
   handleFindGuest,
   handleActivityClick,
   handleActivityModalSubmit,

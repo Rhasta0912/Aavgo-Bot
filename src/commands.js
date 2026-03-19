@@ -194,6 +194,10 @@ const commandData = [
     .setName('generate-rac')
     .setDescription('(Developer Only) Generate a one-time Recruitment Access Code'),
   new SlashCommandBuilder()
+    .setName('rac-send')
+    .setDescription('(Developer Only) Generate a one-time Recruitment Access Code and DM it to a user')
+    .addUserOption(option => option.setName('user').setDescription('The user who should receive the recruitment code').setRequired(true)),
+  new SlashCommandBuilder()
     .setName('hotel-status')
     .setDescription('(Manager) Refresh hotel status embeds')
     .addStringOption(option => option.setName('action').setDescription('Refresh action').setRequired(true)
