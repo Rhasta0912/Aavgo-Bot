@@ -2328,10 +2328,10 @@ async function handleActivityModalSubmit(interaction) {
         ]
       });
 
-      const waAlertMsg = `ðŸš¨ *MAINTENANCE ALERT*\n*Hotel:* ${hotelName}\n*Agent:* ${nickname}\n*Room:* ${room}\n*Category:* ${cat}\n*Issue:* ${desc}`;
+      const waAlertMsg = `*MAINTENANCE ALERT*\n*Hotel:* ${hotelName}\n*Agent:* ${nickname}\n*Room:* ${room}\n*Category:* ${cat}\n*Issue:* ${desc}`;
       await whatsapp.sendToWhatsApp(waAlertMsg, hotelId);
 
-      return await interaction.editReply({ content: `âœ… **Maintenance issue** reported for Room **${room}**.` });
+      return await interaction.editReply({ content: `Success: **Maintenance issue** reported for Room **${room}**.` });
       
       await sendAuditLog(interaction.client, { 
         title: '🛠️ Maintenance Reported', 
@@ -2345,7 +2345,7 @@ async function handleActivityModalSubmit(interaction) {
       const waMsg = `🚨 *MAINTENANCE ALERT*\n*Hotel:* ${hotelName}\n*Agent:* ${nickname}\n*Room:* ${room}\n*Category:* ${cat}\n*Issue:* ${desc}`;
       await whatsapp.sendToWhatsApp(waMsg, hotelId);
 
-      return await interaction.editReply({ content: `✅ **Maintenance issue** reported for Room **${room}**.` });
+      return await interaction.editReply({ content: `Success: **Maintenance issue** reported for Room **${room}**.` });
     }
 
     if (type === 'handover') {
@@ -2367,7 +2367,7 @@ async function handleActivityModalSubmit(interaction) {
         ]
       });
 
-      return await interaction.editReply({ content: `âœ… **Handover note** saved for the next agent.` });
+      return await interaction.editReply({ content: 'Success: **Handover note** saved for the next agent.' });
 
       await sendAuditLog(interaction.client, { 
         title: '📝 Handover Note Left', 
@@ -2377,7 +2377,7 @@ async function handleActivityModalSubmit(interaction) {
         guild: interaction.guild
       });
 
-      return await interaction.editReply({ content: `✅ **Handover note** saved for the next agent.` });
+      return await interaction.editReply({ content: 'Success: **Handover note** saved for the next agent.' });
     }
 
     db.prepare("INSERT INTO activities (session_id, type, guest_name, details) VALUES (?, ?, ?, ?)").run(
@@ -2416,7 +2416,7 @@ async function handleActivityModalSubmit(interaction) {
 
     await whatsapp.sendToWhatsApp(waActivityMsg, hotelId);
 
-    return await interaction.editReply({ content: `âœ… **${type.toUpperCase()}** logged successfully for **${guest_name}**.` });
+    return await interaction.editReply({ content: `Success: **${type.toUpperCase()}** logged successfully for **${guest_name}**.` });
 
     const auditInfo = `**Agent:** ${nickname}\n**Hotel:** ${hotelName}\n**Type:** ${type.toUpperCase()}\n**Guest:** ${guest_name}`;
     
@@ -4258,3 +4258,4 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
+
