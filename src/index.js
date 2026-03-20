@@ -270,6 +270,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDbAgentReady(interaction);
     } else if (commandName === 'db-agent-standby') {
       await auth.handleDbAgentStandby(interaction);
+    } else if (commandName === 'training-mode') {
+      await auth.handleTrainingMode(interaction);
     } else if (commandName === 'generate-rac') {
       await auth.handleGenerateRAC(interaction);
     } else if (commandName === 'rac-send') {

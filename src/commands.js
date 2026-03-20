@@ -244,6 +244,15 @@ const commandData = [
     .setDescription('(Developer Only) Put an agent back into standby training mode')
     .addUserOption(option => option.setName('user').setDescription('The agent to put on standby').setRequired(true)),
   new SlashCommandBuilder()
+    .setName('training-mode')
+    .setDescription('(Developer Only) Toggle global training mode for shift initialization')
+    .addStringOption(option => option.setName('action').setDescription('Set training mode state').setRequired(true)
+      .addChoices(
+        { name: 'On', value: 'on' },
+        { name: 'Off', value: 'off' },
+        { name: 'Status', value: 'status' }
+      )),
+  new SlashCommandBuilder()
     .setName('help-team-leader')
     .setDescription('Show a comprehensive guide for Team Leaders and SMEs'),
 ].map(command => command.toJSON());

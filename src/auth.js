@@ -326,6 +326,11 @@ function getAgentShiftAccessState(agent) {
   return agent?.agent_status === 'standby' ? 'standby' : 'ready';
 }
 
+function isTrainingModeEnabled() {
+  const raw = db.prepare("SELECT value FROM config WHERE key = 'training_mode_enabled'").get()?.value;
+  return String(raw || '0') === '1';
+}
+
 function normalizeAgentRole(role) {
   const cleaned = String(role || '')
     .trim()
@@ -1427,6 +1432,13 @@ async function handleStartShiftClick(interaction) {
 
     // Standard Agent route:
     // **LOCK-IN ENFORCEMENT**
+    if (isTrainingModeEnabled() && !isDeveloper(interaction) && !interactionHasRoleAtLeast(interaction, 'sme', { allowDeveloper: false })) {
+      return interaction.reply({
+        content: 'Training mode is currently ON. Initialize Shift is temporarily locked to prevent accidental live logins during training.',
+        ephemeral: true
+      });
+    }
+
     if (agent.hotel_id) {
        if (HOTEL_NAMES[agent.hotel_id]) {
           if (getAgentShiftAccessState(agent) === 'standby') {
@@ -3740,6 +3752,7 @@ async function handleHelpDev(interaction) {
         '> `/db-assign-hotel`: Permanently link an agent to a hotel.\n' +
         '> `/db-agent-ready`: Clear a standby agent for live shifts.\n' +
         '> `/db-agent-standby`: Put an agent back into training-only mode.\n' +
+        '> `/training-mode action:on|off|status`: Global lock for Initialize Shift during training windows.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
         '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles.\n\n' +
@@ -3997,6 +4010,43 @@ async function handleDbAgentReady(interaction) {
 
 async function handleDbAgentStandby(interaction) {
   return handleDbAgentStatus(interaction, 'standby');
+}
+
+async function handleTrainingMode(interaction) {
+  try {
+    if (!isDeveloper(interaction)) return interaction.reply({ content: 'Developer access required.', ephemeral: true });
+
+    const action = interaction.options.getString('action');
+    const current = isTrainingModeEnabled();
+
+    if (action === 'status') {
+      return interaction.reply({
+        content: `Training mode is currently **${current ? 'ON' : 'OFF'}**.`,
+        ephemeral: true
+      });
+    }
+
+    const next = action === 'on';
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('training_mode_enabled', ?)").run(next ? '1' : '0');
+
+    await interaction.reply({
+      content: `Training mode is now **${next ? 'ON' : 'OFF'}**.`,
+      ephemeral: true
+    });
+
+    sendAuditLog(interaction.client, {
+      title: 'Training Mode Updated',
+      description: `**State:** ${next ? 'ON' : 'OFF'}\n**Updated by:** {{AGENT_NAME}}`,
+      color: next ? 0xFEE75C : 0x57F287,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleTrainingMode:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: 'Failed to update training mode.', ephemeral: true }).catch(() => {});
+    }
+  }
 }
 
 async function handleGenerateRAC(interaction) {
@@ -4360,6 +4410,7 @@ module.exports = {
   handleDbAssignHotel,
   handleDbAgentReady,
   handleDbAgentStandby,
+  handleTrainingMode,
   handleGenerateRAC,
   handleRacSend,
   handleFindGuest,
