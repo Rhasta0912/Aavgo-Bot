@@ -713,8 +713,12 @@ async function updateHotelStatusEmbed(client, hotelId) {
         .setLabel('📝 Handover')
         .setStyle(ButtonStyle.Secondary);
 
-      actionRow.addComponents(logoutBtn, checkInBtn, checkOutBtn);
-      actionRow2.addComponents(callBtn, maintenanceBtn, handoverBtn);
+      if (hotelId === 'AD1') {
+        actionRow.addComponents(logoutBtn, callBtn, handoverBtn);
+      } else {
+        actionRow.addComponents(logoutBtn, checkInBtn, checkOutBtn);
+        actionRow2.addComponents(callBtn, maintenanceBtn, handoverBtn);
+      }
 
       // Add Break ending button if agent is on break
       if (primarySession.break_status) {
@@ -723,10 +727,14 @@ async function updateHotelStatusEmbed(client, hotelId) {
           .setCustomId(`tools_end_bio_${primarySession.discord_id}`)
           .setLabel(breakLabel)
           .setStyle(ButtonStyle.Secondary);
-        actionRow2.addComponents(endBreakBtn);
+        if (hotelId === 'AD1') {
+          actionRow.addComponents(endBreakBtn);
+        } else {
+          actionRow2.addComponents(endBreakBtn);
+        }
       }
       
-      components = [actionRow, actionRow2];
+      components = hotelId === 'AD1' ? [actionRow] : [actionRow, actionRow2];
     }
 
     const embed = new EmbedBuilder()
@@ -2298,6 +2306,13 @@ async function handleActivityClick(interaction) {
     else if (customId.startsWith('activity_handover_')) type = 'handover';
 
     const hotelId = customId.replace(`activity_${type}_`, '');
+
+    if (hotelId === 'AD1' && ['checkin', 'checkout', 'maintenance'].includes(type)) {
+      return interaction.reply({
+        content: 'This location is calls-only. Use Call Log (or Handover) activities for AD1.',
+        ephemeral: true
+      });
+    }
 
     if (type === 'checkin') {
       const modal = new ModalBuilder().setCustomId(`activity_modal_checkin_${hotelId}`).setTitle('🛎️ Guest Check-In');
@@ -4102,11 +4117,10 @@ async function handleRacSend(interaction) {
         `Congrats! By receiving this **Recruitment Code**, you are in.\n\n` +
         `**Recruitment Code:** \`${code}\`\n\n` +
         `### How to Register (Tutorial)\n` +
-        `1. Join the onboarding channel: <#1482258940879306753>\n` +
-        `2. Click the **Register / Apply to Join** button.\n` +
-        `3. In the form, paste this code into **Recruitment Access Code**.\n` +
-        `4. Fill your real details (PIN, email, PH number starting with 63 or 09).\n` +
-        `5. Submit and wait for admin approval.\n\n` +
+        `1. Click the **Register / Apply to Join** button.\n` +
+        `2. In the form, paste this code into **Recruitment Access Code**.\n` +
+        `3. Fill your real details (PIN, email, PH number starting with 63 or 09).\n` +
+        `4. Submit and wait for admin approval.\n\n` +
         `This code is **one-time use only** and expires in **24 hours**. Do not share it with anyone else.`
       )
       .setColor(0xF1C40F)
