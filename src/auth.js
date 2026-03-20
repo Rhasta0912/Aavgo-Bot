@@ -4047,7 +4047,13 @@ async function handleRacSend(interaction) {
       .setDescription(
         `Congrats! By receiving this **Recruitment Code**, you are in.\n\n` +
         `**Recruitment Code:** \`${code}\`\n\n` +
-        `This code is **one-time use only** and lasts for **24 hours**. Enter it during registration, complete your details carefully, and do not share it with anyone else.`
+        `### How to Register (Tutorial)\n` +
+        `1. Join the onboarding channel: <#1482258940879306753>\n` +
+        `2. Click the **Register / Apply to Join** button.\n` +
+        `3. In the form, paste this code into **Recruitment Access Code**.\n` +
+        `4. Fill your real details (PIN, email, PH number starting with 63 or 09).\n` +
+        `5. Submit and wait for admin approval.\n\n` +
+        `This code is **one-time use only** and expires in **24 hours**. Do not share it with anyone else.`
       )
       .setColor(0xF1C40F)
       .setFooter({ text: 'Aavgo Operations · One-Time Access' })
