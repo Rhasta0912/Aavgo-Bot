@@ -137,12 +137,12 @@ const commandData = [
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID (or "GLOBAL")').setRequired(true)
       .addChoices(
         { name: 'Global (All Hotels)', value: 'GLOBAL' },
-        { name: 'Thousand Oaks', value: 'BW_TO' },
-        { name: 'Brentwood', value: 'BRNT' },
-        { name: 'Russellville', value: 'QI_RV' },
-        { name: 'Super 8', value: 'SUP8' },
+        { name: 'Indianhead IronWood', value: 'BW_TO' },
+        { name: 'Magnuson', value: 'BRNT' },
+        { name: 'Value Suites', value: 'QI_RV' },
+        { name: 'Super8', value: 'SUP8' },
         { name: 'Ramada', value: 'RMDA' },
-        { name: 'Ad1 (Calls Only)', value: 'AD1' }
+        { name: 'AD1 (EST)', value: 'AD1' }
       ))
     .addStringOption(option => option.setName('topic').setDescription('The topic title').setRequired(true))
     .addStringOption(option => option.setName('content').setDescription('The policy details').setRequired(true)),
@@ -155,12 +155,12 @@ const commandData = [
     .addUserOption(option => option.setName('user').setDescription('The agent to schedule').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
       .addChoices(
-        { name: 'Thousand Oaks', value: 'BW_TO' },
-        { name: 'Brentwood', value: 'BRNT' },
-        { name: 'Russellville', value: 'QI_RV' },
-        { name: 'Super 8', value: 'SUP8' },
+        { name: 'Indianhead IronWood', value: 'BW_TO' },
+        { name: 'Magnuson', value: 'BRNT' },
+        { name: 'Value Suites', value: 'QI_RV' },
+        { name: 'Super8', value: 'SUP8' },
         { name: 'Ramada', value: 'RMDA' },
-        { name: 'Ad1 (Calls Only)', value: 'AD1' }
+        { name: 'AD1 (EST)', value: 'AD1' }
       ))
     .addStringOption(option => option.setName('date').setDescription('Date (YYYY-MM-DD or "Today")').setRequired(true))
     .addStringOption(option => option.setName('start').setDescription('Start Time (e.g., 09:00)').setRequired(true))
@@ -170,12 +170,12 @@ const commandData = [
     .setDescription('(Manager) View the weekly shift schedule in spreadsheet format')
     .addStringOption(option => option.setName('hotel').setDescription('Filter by hotel').setRequired(false)
       .addChoices(
-        { name: 'Thousand Oaks', value: 'BW_TO' },
-        { name: 'Brentwood', value: 'BRNT' },
-        { name: 'Russellville', value: 'QI_RV' },
-        { name: 'Super 8', value: 'SUP8' },
+        { name: 'Indianhead IronWood', value: 'BW_TO' },
+        { name: 'Magnuson', value: 'BRNT' },
+        { name: 'Value Suites', value: 'QI_RV' },
+        { name: 'Super8', value: 'SUP8' },
         { name: 'Ramada', value: 'RMDA' },
-        { name: 'Ad1 (Calls Only)', value: 'AD1' }
+        { name: 'AD1 (EST)', value: 'AD1' }
       )),
   new SlashCommandBuilder()
     .setName('schedule-export')
@@ -215,12 +215,12 @@ const commandData = [
       ))
     .addStringOption(option => option.setName('hotel').setDescription('Specific hotel to refresh').setRequired(false)
       .addChoices(
-        { name: 'Thousand Oaks', value: 'BW_TO' },
-        { name: 'Brentwood', value: 'BRNT' },
-        { name: 'Russellville', value: 'QI_RV' },
-        { name: 'Super 8', value: 'SUP8' },
+        { name: 'Indianhead IronWood', value: 'BW_TO' },
+        { name: 'Magnuson', value: 'BRNT' },
+        { name: 'Value Suites', value: 'QI_RV' },
+        { name: 'Super8', value: 'SUP8' },
         { name: 'Ramada', value: 'RMDA' },
-        { name: 'Ad1 (Calls Only)', value: 'AD1' }
+        { name: 'AD1 (EST)', value: 'AD1' }
       )),
   new SlashCommandBuilder()
     .setName('db-assign-hotel')
@@ -228,12 +228,12 @@ const commandData = [
     .addUserOption(option => option.setName('user').setDescription('The agent to link').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
       .addChoices(
-        { name: 'Thousand Oaks', value: 'BW_TO' },
-        { name: 'Brentwood', value: 'BRNT' },
-        { name: 'Russellville', value: 'QI_RV' },
-        { name: 'Super 8', value: 'SUP8' },
+        { name: 'Indianhead IronWood', value: 'BW_TO' },
+        { name: 'Magnuson', value: 'BRNT' },
+        { name: 'Value Suites', value: 'QI_RV' },
+        { name: 'Super8', value: 'SUP8' },
         { name: 'Ramada', value: 'RMDA' },
-        { name: 'Ad1 (Calls Only)', value: 'AD1' }
+        { name: 'AD1 (EST)', value: 'AD1' }
       )),
   new SlashCommandBuilder()
     .setName('db-agent-ready')

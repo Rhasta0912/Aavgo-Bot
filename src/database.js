@@ -149,17 +149,17 @@ db.exec(`
   -- Clear old seeds to avoid ID conflicts with new hotel list
 
   -- Seed new hotels with teams
-  INSERT INTO hotels (id, name, team) VALUES ('BW_TO', 'BW Plus Thousand Oaks, CA', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('BW_TO', 'Indianhead IronWood', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('BRNT', 'Brentwood Inn & Suites', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('BRNT', 'Magnuson', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'QI Russellville, KY', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'Value Suites', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('SUP8', 'Super 8', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('SUP8', 'Super8', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('RMDA', 'Ramada', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('AD1', 'Ad1 (Calls Only)', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('AD1', 'AD1 (EST)', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('TEAM_SHIFT', 'Team Operations', 'Global')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;

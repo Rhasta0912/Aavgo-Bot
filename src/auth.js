@@ -51,12 +51,12 @@ const ROLE_NAMES = {
 
 // Map hotel IDs to display names
 const HOTEL_NAMES = {
-  'BW_TO': 'BW Plus Thousand Oaks, CA',
-  'BRNT': 'Brentwood Inn & Suites',
-  'QI_RV': 'QI Russellville, KY',
-  'SUP8': 'Super 8',
+  'BW_TO': 'Indianhead IronWood',
+  'BRNT': 'Magnuson',
+  'QI_RV': 'Value Suites',
+  'SUP8': 'Super8',
   'RMDA': 'Ramada',
-  'AD1': 'Ad1 (Calls Only)'
+  'AD1': 'AD1 (EST)'
 };
 // Map hotel IDs to log-in channel IDs
 const HOTEL_LOGIN_CHANNELS = {
@@ -305,12 +305,16 @@ function normalizeHotelInput(input) {
     BWTO: 'BW_TO',
     THOUSANDOAKS: 'BW_TO',
     BWPLUSTHOUSANDOAKSCA: 'BW_TO',
+    INDIANHEAD: 'BW_TO',
+    INDIANHEADIRONWOOD: 'BW_TO',
     BRNT: 'BRNT',
     BRENTWOOD: 'BRNT',
     BRENTWOODINNSUITES: 'BRNT',
+    MAGNUSON: 'BRNT',
     QIRV: 'QI_RV',
     RUSSELLVILLE: 'QI_RV',
     QIRUSSELLVILLEKY: 'QI_RV',
+    VALUESUITES: 'QI_RV',
     SUP8: 'SUP8',
     SUPER8: 'SUP8',
     RMDA: 'RMDA',
@@ -796,7 +800,7 @@ function buildAgentKioskPayload() {
       '> **4.** Verify your **Secure PIN**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Thousand Oaks`, `Brentwood`, `Russellville`, `Super 8`, `Ramada`, `Ad1`'
+      '**Team 1:** `Indianhead IronWood`, `Magnuson`, `Value Suites`, `Super8`, `Ramada`, `AD1 (EST)`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -880,7 +884,7 @@ async function handleSetupLogin(interaction) {
         '> **4.** Verify your **Secure PIN**\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '### 🏨 Service Locations\n' +
-        '**Team 1:** `Thousand Oaks`, `Brentwood`, `Russellville`, `Super 8`, `Ramada`, `Ad1`'
+        '**Team 1:** `Indianhead IronWood`, `Magnuson`, `Value Suites`, `Super8`, `Ramada`, `AD1 (EST)`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
