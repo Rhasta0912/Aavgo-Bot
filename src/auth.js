@@ -3230,32 +3230,46 @@ async function handlePromoteSME(interaction) {
 
 
 async function handleSetOperationManager(interaction) {
-  if (!isDeveloper(interaction)) return interaction.reply({ content: '❌ Access Denied: Developer Only.', ephemeral: true });
+  if (!isDeveloper(interaction)) return interaction.reply({ content: 'Access Denied: Developer Only.', ephemeral: true });
   try {
     const targetUser = interaction.options.getUser('user');
-    const agent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
-    if (!agent) return interaction.reply({ content: `❌ **${targetUser.username}** is not a registered agent.`, ephemeral: true });
+    const existingAgent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
+    let generatedPin = null;
 
-    db.prepare("UPDATE agents SET role = 'operations_manager' WHERE discord_id = ?").run(targetUser.id);
+    if (!existingAgent) {
+      generatedPin = String(Math.floor(100000 + Math.random() * 900000));
+      db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, 'operations_manager', 'ready')").run(
+        targetUser.id,
+        targetUser.username,
+        generatedPin
+      );
+    } else {
+      db.prepare("UPDATE agents SET role = 'operations_manager' WHERE discord_id = ?").run(targetUser.id);
+    }
 
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
+      const agentsRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.AGENTS.toLowerCase());
+      const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
       const managerRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'operations manager');
-      if (managerRole) await member.roles.add(managerRole);
+
+      const rolesToAdd = [agentsRole, loggedOutRole, managerRole].filter(Boolean);
+      if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
     } catch (e) { console.warn('[PROMOTE] Operations Manager Discord role sync failed:', e.message); }
 
-    await interaction.reply({ content: `👑 **${targetUser.username}** has been promoted to **Operations Manager**.`, ephemeral: true });
+    const pinNotice = generatedPin ? `\nAuto-generated PIN: \`${generatedPin}\`` : '';
+    await interaction.reply({ content: `Success: **${targetUser.username}** has been set as **Operations Manager**.${pinNotice}\nAgent base roles were synced where available.`, ephemeral: true });
 
     sendAuditLog(interaction.client, {
-      title: '👑 Management Promotion',
-      description: `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n**New Role:** Operations Manager\n**Admin:** {{AGENT_NAME}}`,
+      title: 'Management Promotion',
+      description: `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n**New Role:** Operations Manager\n**Auto-Created:** ${existingAgent ? 'No' : 'Yes'}\n**Admin:** {{AGENT_NAME}}`,
       color: 0xF1C40F,
       userId: interaction.user.id,
       guild: interaction.guild
     });
   } catch (e) {
     console.error('Error in handleSetOperationManager:', e);
-    await interaction.reply({ content: '❌ Error during operations manager promotion.', ephemeral: true });
+    await interaction.reply({ content: 'Error during operations manager promotion.', ephemeral: true });
   }
 }
 
