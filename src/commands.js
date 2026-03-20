@@ -106,6 +106,10 @@ const commandData = [
     .setDescription('(Developer Only) Promote an agent to Subject Matter Expert (SME)')
     .addUserOption(option => option.setName('user').setDescription('The user to promote').setRequired(true)),
   new SlashCommandBuilder()
+    .setName('db-set-operation-manager')
+    .setDescription('(Developer Only) Promote an agent to Operations Manager')
+    .addUserOption(option => option.setName('user').setDescription('The user to promote').setRequired(true)),
+  new SlashCommandBuilder()
     .setName('db-demote')
     .setDescription('(Developer Only) Demote a manager back to an agent')
     .addUserOption(option => option.setName('user').setDescription('The user to demote').setRequired(true)),

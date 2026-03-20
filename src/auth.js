@@ -2634,7 +2634,7 @@ async function handleAddAgent(interaction) {
     const isDev = isDeveloper(interaction);
 
     if (role !== 'agent' && !isDev) {
-      return interaction.reply({ content: '❌ **Access Denied.** Only Developers can assign **Subject Matter Expert** or **Team Leader** roles.', ephemeral: true });
+      return interaction.reply({ content: '❌ **Access Denied.** Only Developers can assign **SME**, **Team Leader**, or **Operations Manager** roles.', ephemeral: true });
     }
 
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
@@ -3228,6 +3228,37 @@ async function handlePromoteSME(interaction) {
   }
 }
 
+
+async function handleSetOperationManager(interaction) {
+  if (!isDeveloper(interaction)) return interaction.reply({ content: '❌ Access Denied: Developer Only.', ephemeral: true });
+  try {
+    const targetUser = interaction.options.getUser('user');
+    const agent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
+    if (!agent) return interaction.reply({ content: `❌ **${targetUser.username}** is not a registered agent.`, ephemeral: true });
+
+    db.prepare("UPDATE agents SET role = 'operations_manager' WHERE discord_id = ?").run(targetUser.id);
+
+    try {
+      const member = await interaction.guild.members.fetch(targetUser.id);
+      const managerRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'operations manager');
+      if (managerRole) await member.roles.add(managerRole);
+    } catch (e) { console.warn('[PROMOTE] Operations Manager Discord role sync failed:', e.message); }
+
+    await interaction.reply({ content: `👑 **${targetUser.username}** has been promoted to **Operations Manager**.`, ephemeral: true });
+
+    sendAuditLog(interaction.client, {
+      title: '👑 Management Promotion',
+      description: `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n**New Role:** Operations Manager\n**Admin:** {{AGENT_NAME}}`,
+      color: 0xF1C40F,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (e) {
+    console.error('Error in handleSetOperationManager:', e);
+    await interaction.reply({ content: '❌ Error during operations manager promotion.', ephemeral: true });
+  }
+}
+
 async function handleDemote(interaction) {
   if (!isDeveloper(interaction)) return interaction.reply({ content: '❌ Access Denied: Developer Only.', ephemeral: true });
   try {
@@ -3241,7 +3272,7 @@ async function handleDemote(interaction) {
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
       const rolesToRemove = interaction.guild.roles.cache.filter(r => 
-        r.name.toLowerCase() === 'team leader' || r.name.toLowerCase() === 'subject matter expert'
+        r.name.toLowerCase() === 'team leader' || r.name.toLowerCase() === 'subject matter expert' || r.name.toLowerCase() === 'operations manager'
       );
       if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
     } catch (e) { console.warn('[DEMOTE] Role cleanup failed:', e.message); }
@@ -3697,7 +3728,7 @@ async function handleHelpDev(interaction) {
         '> `/db-agent-standby`: Put an agent back into training-only mode.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
-        '> `/db-promote-tl`, `/db-promote-sme`, `/db-demote`: Change leadership roles.\n\n' +
+        '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles.\n\n' +
         '### 🧰 Database & Recovery\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/db-info`: Inspect DB path, schema, and table layout.\n' +
@@ -4298,6 +4329,7 @@ module.exports = {
   handleDbLogCheckin,
   handlePromoteTL,
   handlePromoteSME,
+  handleSetOperationManager,
   handleDemote,
   handleDbRemoveUser,
   handleMemberLeave,

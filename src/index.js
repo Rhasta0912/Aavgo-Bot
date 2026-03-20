@@ -246,6 +246,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handlePromoteTL(interaction);
     } else if (commandName === 'db-promote-sme') {
       await auth.handlePromoteSME(interaction);
+    } else if (commandName === 'db-set-operation-manager') {
+      await auth.handleSetOperationManager(interaction);
     } else if (commandName === 'db-demote') {
       await auth.handleDemote(interaction);
     } else if (commandName === 'db-remove-user') {
