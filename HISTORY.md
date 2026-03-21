@@ -125,5 +125,5 @@ Working rules:
   - Standby agents are blocked at modal-based shift initialization before any assignment is saved.
   - `handleConfirmHotelLink` now denies standby users directly.
   - This matches the latest operations rule: standby users cannot pick/re-pick hotel until `/db-agent-ready`.
-- Added automatic `Applicants` role assignment on server join, then removed `Applicants` automatically when a user is promoted to `Trainees` or `Agent` through the onboarding/promotion flows.
+- Added automatic `Applicants` role assignment on server join, and added promotion sync so `Applicants` is removed whenever a user gains `Trainees` or `Agents` through either the command flow or a direct Discord role update.
 

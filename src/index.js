@@ -187,6 +187,27 @@ client.on('guildMemberAdd', async member => {
   await sendRealNameTutorial(member);
 });
 
+client.on('guildMemberUpdate', async (oldMember, newMember) => {
+  try {
+    const traineeRoleId = '1484705126026449029';
+    const agentRoleId = '1482227287159078964';
+    const applicantsRoleId = '1484919969689894912';
+
+    const gainedTrainee = !oldMember.roles.cache.has(traineeRoleId) && newMember.roles.cache.has(traineeRoleId);
+    const gainedAgent = !oldMember.roles.cache.has(agentRoleId) && newMember.roles.cache.has(agentRoleId);
+
+    if (!(gainedTrainee || gainedAgent)) return;
+
+    const applicantsRole = newMember.guild.roles.cache.get(applicantsRoleId) || newMember.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
+    if (applicantsRole && newMember.roles.cache.has(applicantsRole.id)) {
+      await newMember.roles.remove(applicantsRole);
+      console.log(`[ROLE SYNC] Removed Applicants role from ${newMember.user.username} after promotion`);
+    }
+  } catch (error) {
+    console.warn('[ROLE SYNC] Failed to clear Applicants role after promotion:', error.message);
+  }
+});
+
 client.on('guildMemberRemove', async member => {
   await auth.handleMemberLeave(member);
 });

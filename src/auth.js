@@ -469,6 +469,24 @@ async function removeApplicantsRoleFromMember(member, guild, contextLabel = 'ROL
   }
 }
 
+async function removeApplicantsRoleIfPromoted(member, guild, contextLabel = 'ROLE SYNC') {
+  try {
+    if (!member || !guild) return;
+
+    const traineeRole = guild.roles.cache.get('1484705126026449029') || guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
+    const agentsRole = guild.roles.cache.get('1482227287159078964') || guild.roles.cache.find(r => r.name.toLowerCase() === 'agents');
+    const hasPromotionRole =
+      (traineeRole && member.roles.cache.has(traineeRole.id)) ||
+      (agentsRole && member.roles.cache.has(agentsRole.id));
+
+    if (hasPromotionRole) {
+      await removeApplicantsRoleFromMember(member, guild, contextLabel);
+    }
+  } catch (error) {
+    console.warn(`[${contextLabel}] Could not sync Applicants role after promotion:`, error.message);
+  }
+}
+
 async function showShiftInitModal(interaction, agent) {
   const modal = new ModalBuilder()
     .setCustomId('shift_init_modal')
@@ -2826,6 +2844,7 @@ async function handleAddAgent(interaction) {
       try {
         const member = await interaction.guild.members.fetch(targetUser.id);
         await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+        await removeApplicantsRoleFromMember(member, interaction.guild, 'ADD-AGENT');
       } catch (roleErr) {
         console.warn('[ADD-AGENT] Could not clear Trainees role:', roleErr.message);
       }
