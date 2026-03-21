@@ -4428,6 +4428,68 @@ async function checkSchedules(client) {
   } catch (e) { console.error('[SCHEDULER] Error:', e); }
 }
 
+// Override: stable add-agent flow that always uses deferred interaction responses.
+async function handleAddAgent(interaction) {
+  try {
+    await interaction.deferReply({ ephemeral: true });
+    const targetUser = interaction.options.getUser('user');
+    const pin = interaction.options.getString('pin');
+    const role = normalizeAgentRole(interaction.options.getString('role') || 'agent');
+
+    const isDev = isDeveloper(interaction);
+    if (role !== 'agent' && !isDev) {
+      return interaction.editReply({ content: '❌ **Access Denied.** Only Developers can assign **SME**, **Team Leader**, or **Operations Manager** roles.' });
+    }
+
+    const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
+    if (existing) {
+      db.prepare("UPDATE agents SET pin = ?, role = ? WHERE discord_id = ?").run(pin, role, targetUser.id);
+      try {
+        const member = await interaction.guild.members.fetch(targetUser.id);
+        await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+      } catch (roleErr) {
+        console.warn('[ADD-AGENT] Could not clear Trainees role:', roleErr.message);
+      }
+      return interaction.editReply({ content: `✅ **${targetUser.username}** role updated to **${role}** and PIN refreshed.` });
+    }
+
+    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, ?, 'standby')").run(
+      targetUser.id,
+      targetUser.username,
+      pin,
+      role
+    );
+
+    try {
+      const member = await interaction.guild.members.fetch(targetUser.id);
+      const agentsRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.AGENTS.toLowerCase());
+      const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+      const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
+      if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+      await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+    } catch (roleErr) {
+      console.warn('[ADD-AGENT] Could not assign roles:', roleErr.message);
+    }
+
+    await interaction.editReply({ content: `✅ **${targetUser.username}** has been added as **${role}** with PIN \`${pin}\`.` });
+
+    sendAuditLog(interaction.client, {
+      title: 'Agent Added',
+      description: `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n**Role:** ${role}\n**Added by:** {{AGENT_NAME}}`,
+      color: 0x57F287,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleAddAgent:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'Something went wrong.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'Something went wrong.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 module.exports = { 
   HOTEL_NAMES,
   HOTEL_LOGIN_CHANNELS,

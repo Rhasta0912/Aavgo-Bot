@@ -53,6 +53,7 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed `/add-agent` `InteractionAlreadyReplied` crash path by hardening response flow to deferred-mode semantics (`deferReply` + `editReply`) in all success/deny/error branches.
 - Temporarily disabled WhatsApp bridge sends across live bot flows by replacing direct WhatsApp module imports in `src/auth.js` and `src/tools.js` with a no-op async bridge. Result: operational commands still complete normally in Discord, but no WhatsApp messages are sent.
 - Fixed `/db-remove-user` interaction timeout crash (`DiscordAPIError 10062: Unknown interaction`) by acknowledging early with `deferReply({ ephemeral: true })`, then completing with `editReply`, plus safe fallback reply logic inside catch. This prevents 3-second interaction expiry during heavy DB+role purge work.
 - Redesigned shift activity log embeds (`check-in`, `check-out`, `call`, `maintenance`, `handover`) into a cleaner dashboard card style with:
