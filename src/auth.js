@@ -1766,7 +1766,7 @@ async function handleHotelSelectMenu(interaction) {
       return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
     }
 
-    if (agent.hotel_id) {
+    if (agent.hotel_id && getAgentShiftAccessState(agent) !== 'standby') {
       return interaction.update({
         content: '🔒 **Hotel Already Linked.** Your account is permanently assigned. Contact a Developer to change it.',
         embeds: [], components: []
