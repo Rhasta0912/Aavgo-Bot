@@ -53,6 +53,8 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Tightened the trainee cleanup flow so `/register`, `/add-agent`, and registration approval now remove the `Trainees` role even when the user is already in DB or already has the base `Agents` role, preventing stale trainee badges after promotion.
+- Updated agent promotion flows so when a trainee becomes a real agent through `/register`, `/add-agent`, or registration approval, the bot now removes the `Trainees` role automatically after granting `Agents`/`Logged Out`.
 - Fixed `/select-trainee` so it now defers immediately, uses ephemeral flags instead of deprecated `ephemeral` replies, and edits the deferred response after role assignment. This prevents the `Unknown interaction` crash when management marks a trainee.
 - Added a pre-change review rule to `SOP.md` and both history files requiring SOP, repo history, desktop history, and the latest Git/`Brief` updates to be read before making changes.
 - Updated help docs so `/select-trainee` appears in the developer reference and the management guide.

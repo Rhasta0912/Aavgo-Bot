@@ -371,6 +371,19 @@ function buildShiftStandbyMessage(agent) {
   return `⏸️ **Shift access is locked.** Your account is currently marked as **${statusLabel}**.\n\nPlease complete training and have a developer run the ready command before you initialize a live shift.`;
 }
 
+async function removeTraineeRoleFromMember(member, guild, contextLabel = 'ROLE SYNC') {
+  try {
+    if (!member || !guild) return;
+    const traineeRole = guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
+    if (traineeRole && member.roles.cache.has(traineeRole.id)) {
+      await member.roles.remove(traineeRole);
+      console.log(`[${contextLabel}] Removed Trainees role from ${member.user.username}`);
+    }
+  } catch (error) {
+    console.warn(`[${contextLabel}] Could not remove Trainees role:`, error.message);
+  }
+}
+
 async function showShiftInitModal(interaction, agent) {
   const modal = new ModalBuilder()
     .setCustomId('shift_init_modal')
@@ -1065,6 +1078,11 @@ async function handleRegister(interaction) {
 
     // Already in DB AND has the role — truly registered
     if (existing && hasAgentsRole) {
+      try {
+        await removeTraineeRoleFromMember(interaction.member, interaction.guild, 'REGISTER');
+      } catch (roleErr) {
+        console.warn('[REGISTER] Could not clear Trainees role:', roleErr.message);
+      }
       return interaction.reply({ content: '⚠️ You are already registered as an agent.', ephemeral: true });
     }
 
@@ -1076,6 +1094,7 @@ async function handleRegister(interaction) {
         const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
         if (agentsRole) await interaction.member.roles.add(agentsRole);
         if (loggedOutRole) await interaction.member.roles.add(loggedOutRole);
+        await removeTraineeRoleFromMember(interaction.member, guild, 'REGISTER');
       } catch (roleErr) {
         console.warn('[REGISTER] Could not fix missing roles:', roleErr.message);
       }
@@ -1278,6 +1297,11 @@ async function handleApproveReg(interaction) {
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(userId);
     if (existing) {
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(userId);
+      try {
+        await removeTraineeRoleFromMember(member, guild, 'APPROVE');
+      } catch (roleErr) {
+        console.warn('[REGISTER] Could not clear Trainees role:', roleErr.message);
+      }
       return interaction.reply({ content: '⚠️ This agent is already registered.', ephemeral: true });
     }
 
@@ -1295,6 +1319,7 @@ async function handleApproveReg(interaction) {
       
       const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
       if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+      await removeTraineeRoleFromMember(member, guild, 'REGISTER');
     } catch (roleErr) {
       console.warn('[REGISTER] Could not assign roles:', roleErr.message);
     }
@@ -2672,6 +2697,12 @@ async function handleAddAgent(interaction) {
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
     if (existing) {
       db.prepare("UPDATE agents SET pin = ?, role = ? WHERE discord_id = ?").run(pin, role, targetUser.id);
+      try {
+        const member = await interaction.guild.members.fetch(targetUser.id);
+        await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+      } catch (roleErr) {
+        console.warn('[ADD-AGENT] Could not clear Trainees role:', roleErr.message);
+      }
       return interaction.reply({ content: `✅ **${targetUser.username}** role updated to **${role}** and PIN refreshed.`, ephemeral: true });
     }
 
@@ -2684,6 +2715,7 @@ async function handleAddAgent(interaction) {
       
       const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
       if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+      await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
     } catch (roleErr) {
       console.warn('[ADD-AGENT] Could not assign roles:', roleErr.message);
     }
