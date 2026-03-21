@@ -139,6 +139,15 @@ const commandData = [
     .setDescription('(Management/Developer) Assign the Trainees role to a user')
     .addUserOption(option => option.setName('name').setDescription('The user to mark as trainee').setRequired(true)),
   new SlashCommandBuilder()
+    .setName('assign-team')
+    .setDescription('(Management/Developer) Assign an agent to Team 1 or Team 2')
+    .addStringOption(option => option.setName('team').setDescription('The team to assign').setRequired(true)
+      .addChoices(
+        { name: 'Team 1', value: 'Team 1' },
+        { name: 'Team 2', value: 'Team 2' }
+      ))
+    .addUserOption(option => option.setName('name').setDescription('The user to reassign').setRequired(true)),
+  new SlashCommandBuilder()
     .setName('find-guest')
     .setDescription('(Manager/Dev) Search for guest records by name or room number')
     .addStringOption(option => option.setName('query').setDescription('Guest name or room number').setRequired(true)),

@@ -122,4 +122,5 @@ Working rules:
 - Moved management `TEAM_SHIFT` audit cards for login and shift analytics out of the general audit channel and into `tl-logs`, so the image-style login cards shown for Team Leaders/management now land in the dedicated TL log channel.
 - Removed the standby-agent gate from the live shift flow so freshly registered agents now behave as normal agents right away, and `/db-agent-ready` / `/db-agent-standby` were removed from the bot surface.
 - Added automatic `Applicants` role assignment on server join, and added promotion sync so `Applicants` is removed whenever a user gains `Trainees` or `Agents` through either the command flow or a direct Discord role update.
+- Added `/assign-team` for developers and management so they can reassign an agent between Team 1 and Team 2, and the bot now removes the old team role when the new one is applied.
 

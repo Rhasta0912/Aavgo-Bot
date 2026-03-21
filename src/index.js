@@ -305,6 +305,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleHelpAgent(interaction);
     } else if (commandName === 'select-trainee') {
       await auth.handleSelectTrainee(interaction);
+    } else if (commandName === 'assign-team') {
+      await auth.handleAssignTeam(interaction);
     } else if (commandName === 'help-team-leader') {
       await auth.handleHelpTeamLeader(interaction);
     } else if (commandName === 'hotel-status') {

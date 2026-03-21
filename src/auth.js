@@ -369,6 +369,10 @@ function normalizeTeamInput(input) {
   return null;
 }
 
+function getOtherTeamName(teamName) {
+  return teamName === 'Team 1' ? 'Team 2' : teamName === 'Team 2' ? 'Team 1' : null;
+}
+
 function normalizeHotelInput(input) {
   const cleaned = (input || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   const aliases = {
@@ -3903,6 +3907,7 @@ async function handleHelpDev(interaction) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
+        '> `/assign-team`: Move an agent between Team 1 and Team 2.\n' +
         '> `/db-assign-hotel` or `/assign-hotel`: Permanently link an agent to a hotel.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
@@ -3980,7 +3985,8 @@ async function handleHelpAgent(interaction) {
         '> `/guide`: Search SOPs and hotel process guides by topic.\n\n' +
         '### 👥 Onboarding Support\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-        '> `/select-trainee`: Mark a user as a trainee during onboarding.\n\n' +
+        '> `/select-trainee`: Mark a user as a trainee during onboarding.\n' +
+        '> `/assign-team`: Reassign a user to Team 1 or Team 2.\n\n' +
         '### 📌 Your Current Access\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         `> **DB Role:** ${roleLabel}\n` +
@@ -4050,6 +4056,56 @@ async function handleSelectTrainee(interaction) {
       await interaction.reply({ content: '❌ Failed to assign the Trainees role.', flags: MessageFlags.Ephemeral });
     } else {
       await interaction.editReply({ content: '❌ Failed to assign the Trainees role.' }).catch(() => {});
+    }
+  }
+}
+
+async function handleAssignTeam(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const teamName = normalizeTeamInput(interaction.options.getString('team'));
+    const targetUser = interaction.options.getUser('name');
+
+    if (!teamName) {
+      return interaction.editReply({ content: '❌ Please choose Team 1 or Team 2.' });
+    }
+
+    const member = await interaction.guild.members.fetch(targetUser.id);
+    const currentTeam = db.prepare("SELECT team FROM agents WHERE discord_id = ?").get(targetUser.id)?.team || null;
+    const targetTeamRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === teamName.toLowerCase());
+    const otherTeamName = getOtherTeamName(teamName);
+    const otherTeamRole = otherTeamName ? interaction.guild.roles.cache.find(r => r.name.toLowerCase() === otherTeamName.toLowerCase()) : null;
+
+    db.prepare("UPDATE agents SET team = ? WHERE discord_id = ?").run(teamName, targetUser.id);
+
+    if (otherTeamRole && member.roles.cache.has(otherTeamRole.id)) {
+      await member.roles.remove(otherTeamRole);
+    }
+
+    if (targetTeamRole && !member.roles.cache.has(targetTeamRole.id)) {
+      await member.roles.add(targetTeamRole);
+    }
+
+    sendAuditLog(interaction.client, {
+      title: '👥 Team Assigned',
+      description: `**User:** ${targetUser.username} (<@${targetUser.id}>)\n**Team:** ${teamName}\n**Previous Team:** ${currentTeam || 'None'}\n**Assigned By:** {{AGENT_NAME}}`,
+      color: 0x57F287,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+
+    await interaction.editReply({ content: `✅ **${targetUser.username}** is now assigned to **${teamName}**.` });
+  } catch (error) {
+    console.error('Error in handleAssignTeam:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Failed to assign the team.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.editReply({ content: '❌ Failed to assign the team.' }).catch(() => {});
     }
   }
 }
@@ -4657,6 +4713,7 @@ module.exports = {
   handleHelpDev,
   handleHelpAgent,
   handleSelectTrainee,
+  handleAssignTeam,
   handleHelpTeamLeader,
   handleHotelStatusRefresh,
   handleDbAssignHotel,
