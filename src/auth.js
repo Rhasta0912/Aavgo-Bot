@@ -405,12 +405,7 @@ function normalizeHotelInput(input) {
 }
 
 function getAgentShiftAccessState(agent) {
-  return agent?.agent_status === 'standby' ? 'standby' : 'ready';
-}
-
-function buildShiftStandbyMessage(agent) {
-  const statusLabel = AGENT_STATUS_LABELS[getAgentShiftAccessState(agent)] || 'Standby Agent';
-  return `⏸️ **Initialize Shift is locked.** Your account is currently marked as **${statusLabel}**.\n\nAsk a Developer / Operations Manager to run \`/db-agent-ready\` when you are cleared to go live.`;
+  return 'ready';
 }
 
 function normalizeAgentRole(role) {
@@ -523,10 +518,6 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   const recentSession = db.prepare("SELECT id FROM sessions WHERE agent_id = ? AND hotel_id = ? AND login_time >= ?").get(agent.id, hotelId, fiveSecondsAgo);
   if (recentSession) {
     return interaction.editReply({ content: '⚠️ You just logged in! Please wait a moment for the status to update.' });
-  }
-
-  if (hotelId !== 'TEAM_SHIFT' && getAgentShiftAccessState(agent) === 'standby') {
-    return interaction.editReply({ content: buildShiftStandbyMessage(agent) });
   }
 
   await closeAllActiveSessionsForAgent(agent.id, interaction.client);
@@ -1421,7 +1412,7 @@ async function handleApproveReg(interaction) {
     const member = await guild.members.fetch(userId);
 
     // Insert into DB
-    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status, approval_message_id, phone, email) VALUES (?, ?, ?, 'agent', 'standby', ?, ?, ?)").run(userId, member.user.username, pin, interaction.message.id, phone, email);
+    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status, approval_message_id, phone, email) VALUES (?, ?, ?, 'agent', 'ready', ?, ?, ?)").run(userId, member.user.username, pin, interaction.message.id, phone, email);
 
     // Grant base roles (non-blocking)
     try {
@@ -1542,9 +1533,6 @@ async function handleStartShiftClick(interaction) {
     const isTLButton = interaction.customId === 'tl_start_shift_btn';
     const discordId = interaction.user.id;
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
-    if (agent && getAgentShiftAccessState(agent) === 'standby') {
-      return interaction.reply({ content: buildShiftStandbyMessage(agent), ephemeral: true });
-    }
     if (!agent) {
       return interaction.reply({ 
         content: '❌ **Access Denied.** You must be a registered agent. Please use the **Register** button to apply.',
@@ -1586,29 +1574,6 @@ async function handleStartShiftClick(interaction) {
     // Standard Agent route:
     if (agent.hotel_id) {
        if (HOTEL_NAMES[agent.hotel_id]) {
-          if (false && getAgentShiftAccessState(agent) === 'standby') {
-            if (!agent.team) {
-              const embed = new EmbedBuilder()
-                .setTitle('👥 Team Selection')
-                .setDescription(
-                  `### 🎮 WHICH TEAM ARE YOU?\n` +
-                  `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-                  `> Select your **assigned team** to continue setup.\n` +
-                  `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-                )
-                .setColor(0x5865F2);
-
-              const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId('team_btn_Team 1').setLabel('Team 1').setStyle(ButtonStyle.Primary).setEmoji('🧑‍💼'),
-                new ButtonBuilder().setCustomId('team_btn_Team 2').setLabel('Team 2').setStyle(ButtonStyle.Primary).setEmoji('🧑‍💻')
-              );
-
-              return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-            }
-
-            return await showHotelSelection(interaction, agent.team, false);
-          }
-
           const hotelSession = db.prepare(
             "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
           ).get(agent.hotel_id, agent.id);
@@ -1683,10 +1648,6 @@ async function handleTeamSelect(interaction) {
     const discordId = interaction.user.id;
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
     
-    if (agent && getAgentShiftAccessState(agent) === 'standby') {
-      return interaction.reply({ content: buildShiftStandbyMessage(agent), ephemeral: true });
-    }
-
     // SECURITY GUARD: HARD LOCK-IN
     if (agent && agent.hotel_id) {
        console.warn(`[SECURITY] ${interaction.user.username} tried to re-select team while locked into ${agent.hotel_id}`);
@@ -1763,10 +1724,6 @@ async function handleHotelSelect(interaction) {
   try {
     const hotelId = interaction.customId.replace('hotel_btn_', '');
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
-    if (agent && getAgentShiftAccessState(agent) === 'standby') {
-      return interaction.update({ content: buildShiftStandbyMessage(agent), embeds: [], components: [] });
-    }
-
     if (!agent) {
       return interaction.reply({ content: '❌ You are not registered as an agent. Use `/register` to apply.', ephemeral: true });
     }
@@ -1806,10 +1763,6 @@ async function handleHotelSelectMenu(interaction) {
   try {
     const hotelId = interaction.values[0];
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
-    if (agent && getAgentShiftAccessState(agent) === 'standby') {
-      return interaction.update({ content: buildShiftStandbyMessage(agent), embeds: [], components: [] });
-    }
-
     if (!agent) {
       return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
     }
@@ -1865,9 +1818,6 @@ async function handleConfirmHotelLink(interaction) {
       return interaction.editReply({ content: '❌ Account error. Please contact a developer.', ephemeral: true });
     }
 
-    if (getAgentShiftAccessState(agent) === 'standby') {
-      return interaction.update({ content: buildShiftStandbyMessage(agent), embeds: [], components: [] });
-    }
     // [Safety] Check if locked during the confirmation delay
     if (agent.hotel_id && agent.hotel_id !== hotelId) {
        return interaction.update({ content: '❌ **Access Denied.** Your account is already linked to another hotel.', embeds: [], components: [] });
@@ -2001,9 +1951,6 @@ async function handleShiftInitModalSubmit(interaction) {
       return interaction.editReply({ content: '❌ You must be a registered agent before initializing a shift.' });
     }
 
-    if (getAgentShiftAccessState(agent) === 'standby') {
-      return interaction.editReply({ content: buildShiftStandbyMessage(agent) });
-    }
     const hotelInput = interaction.fields.getTextInputValue('shift_hotel');
     const pin = interaction.fields.getTextInputValue('shift_pin');
 
@@ -2034,12 +1981,6 @@ async function handleShiftInitModalSubmit(interaction) {
 
     db.prepare("UPDATE agents SET team = COALESCE(team, ?), hotel_id = COALESCE(hotel_id, ?) WHERE discord_id = ?").run(normalizedTeam, normalizedHotel, interaction.user.id);
     const refreshedAgent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(interaction.user.id);
-
-    if (false && getAgentShiftAccessState(refreshedAgent) === 'standby') {
-      return interaction.editReply({
-        content: `✅ Your assignment has been saved as **${HOTEL_NAMES[normalizedHotel]}** under **${normalizedTeam}**.\n\n${buildShiftStandbyMessage(refreshedAgent)}`
-      });
-    }
 
     try {
       const teamRole = interaction.guild.roles.cache.find(r => r.name === normalizedTeam);
@@ -2851,7 +2792,7 @@ async function handleAddAgent(interaction) {
       return interaction.reply({ content: `✅ **${targetUser.username}** role updated to **${role}** and PIN refreshed.`, ephemeral: true });
     }
 
-    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, ?, 'standby')").run(targetUser.id, targetUser.username, pin, role);
+    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, ?, 'ready')").run(targetUser.id, targetUser.username, pin, role);
 
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
@@ -3963,8 +3904,6 @@ async function handleHelpDev(interaction) {
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
         '> `/db-assign-hotel` or `/assign-hotel`: Permanently link an agent to a hotel.\n' +
-        '> `/db-agent-ready`: Clear a standby agent for live shifts.\n' +
-        '> `/db-agent-standby`: Put an agent back into training-only mode.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
         '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles.\n\n' +
@@ -4232,49 +4171,6 @@ async function handleDbAssignHotel(interaction) {
     console.error('Error in handleDbAssignHotel:', e);
     await interaction.reply({ content: '❌ Error assigning hotel.', ephemeral: true });
   }
-}
-
-async function handleDbAgentStatus(interaction, nextStatus) {
-  try {
-    if (!isDeveloper(interaction)) {
-      return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
-    }
-
-    const target = interaction.options.getUser('user');
-    const agent = db.prepare("SELECT username, agent_status FROM agents WHERE discord_id = ?").get(target.id);
-    if (!agent) {
-      return interaction.reply({ content: '❌ That user is not a registered agent.', ephemeral: true });
-    }
-
-    db.prepare("UPDATE agents SET agent_status = ? WHERE discord_id = ?").run(nextStatus, target.id);
-
-    const statusLabel = AGENT_STATUS_LABELS[nextStatus] || nextStatus;
-    await interaction.reply({
-      content: `✅ **${target.username}** is now marked as **${statusLabel}**.`,
-      ephemeral: true
-    });
-
-    sendAuditLog(interaction.client, {
-      title: nextStatus === 'ready' ? '✅ Agent Cleared for Live Shifts' : '⏸️ Agent Put on Standby',
-      description: `**Agent:** ${target.username} (<@${target.id}>)\n**New Status:** ${statusLabel}\n**Updated by:** {{AGENT_NAME}}`,
-      color: nextStatus === 'ready' ? 0x57F287 : 0xFEE75C,
-      userId: interaction.user.id,
-      guild: interaction.guild
-    });
-  } catch (error) {
-    console.error('Error in handleDbAgentStatus:', error);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Failed to update agent status.', ephemeral: true }).catch(() => {});
-    }
-  }
-}
-
-async function handleDbAgentReady(interaction) {
-  return handleDbAgentStatus(interaction, 'ready');
-}
-
-async function handleDbAgentStandby(interaction) {
-  return handleDbAgentStatus(interaction, 'standby');
 }
 
 async function handleGenerateRAC(interaction) {
@@ -4764,8 +4660,6 @@ module.exports = {
   handleHelpTeamLeader,
   handleHotelStatusRefresh,
   handleDbAssignHotel,
-  handleDbAgentReady,
-  handleDbAgentStandby,
   handleGenerateRAC,
   handleRacSend,
   handleFindGuest,
