@@ -3099,6 +3099,11 @@ async function handleDbAddDeveloper(interaction) {
     await interaction.reply({ embeds: [embed], components: [row] });
   } catch (e) {
     console.error('Error in handleDbAddDeveloper:', e);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to create developer approval request.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to create developer approval request.', ephemeral: true }).catch(() => {});
+    }
   }
 }
 

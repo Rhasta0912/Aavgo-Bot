@@ -53,6 +53,9 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Hardened interaction reliability to reduce “The application did not respond” failures:
+  - Added a global try/catch fallback in `interactionCreate` so unexpected handler crashes now return a user-visible error response instead of timing out silently.
+  - Patched `/db-add-developer` catch path to always send a fallback reply/editReply when request creation fails.
 - Elevated `operations_manager` to full developer-equivalent authority by updating the shared `isDeveloper()` gate. Result: all dev-gated commands now allow Operations Manager automatically (including DB/admin surfaces and RAC generation flows).
 - Fixed `/add-agent` `InteractionAlreadyReplied` crash path by hardening response flow to deferred-mode semantics (`deferReply` + `editReply`) in all success/deny/error branches.
 - Temporarily disabled WhatsApp bridge sends across live bot flows by replacing direct WhatsApp module imports in `src/auth.js` and `src/tools.js` with a no-op async bridge. Result: operational commands still complete normally in Discord, but no WhatsApp messages are sent.

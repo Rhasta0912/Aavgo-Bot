@@ -196,7 +196,7 @@ process.on('SIGHUP', () => {
 client.on('interactionCreate', async interaction => {
   const auth = require('./auth');
   const tools = require('./tools');
-
+  try {
   if (interaction.isChatInputCommand()) {
     const { commandName } = interaction;
 
@@ -368,6 +368,18 @@ client.on('interactionCreate', async interaction => {
       await tools.handleAgentCallStart(interaction);
     } else if (interaction.customId === 'hotel_select_menu') {
       await auth.handleHotelSelectMenu(interaction);
+    }
+  }
+  } catch (error) {
+    console.error('[INTERACTION] Handler failure:', error);
+    try {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({ content: '❌ Command failed while processing. Please try again.' });
+      } else {
+        await interaction.reply({ content: '❌ Command failed while processing. Please try again.', ephemeral: true });
+      }
+    } catch (respondErr) {
+      console.warn('[INTERACTION] Failed to send fallback error response:', respondErr.message);
     }
   }
 });
