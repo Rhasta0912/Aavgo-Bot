@@ -196,7 +196,19 @@ process.on('SIGHUP', () => {
 client.on('interactionCreate', async interaction => {
   const auth = require('./auth');
   const tools = require('./tools');
+  let autoAckTimer = null;
   try {
+  if (interaction.isChatInputCommand()) {
+    autoAckTimer = setTimeout(async () => {
+      try {
+        if (!interaction.deferred && !interaction.replied) {
+          await interaction.deferReply({ ephemeral: true });
+        }
+      } catch (ackErr) {
+        console.warn('[INTERACTION] Auto-defer failed:', ackErr.message);
+      }
+    }, 1500);
+  }
   if (interaction.isChatInputCommand()) {
     const { commandName } = interaction;
 
@@ -385,6 +397,8 @@ client.on('interactionCreate', async interaction => {
     } catch (respondErr) {
       console.warn('[INTERACTION] Failed to send fallback error response:', respondErr.message);
     }
+  } finally {
+    if (autoAckTimer) clearTimeout(autoAckTimer);
   }
 });
 

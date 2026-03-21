@@ -53,6 +53,10 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added a hardened override for `/db-remove-user` to eliminate timeout/no-response behavior:
+  - immediate ack path (`deferReply`) before heavy DB/role purge
+  - consistent `editReply` completion and robust fallback error response handling
+  - designed to prevent repeated “The application did not respond” on long purge operations
 - Reintroduced standby readiness controls for launch/training flow:
   - Added `/db-agent-ready` and `/db-agent-standby` back to slash commands and routing.
   - Restored DB-backed status handlers (`agent_status`) with audit logging.

@@ -4503,6 +4503,71 @@ async function checkSchedules(client) {
   } catch (e) { console.error('[SCHEDULER] Error:', e); }
 }
 
+// Override: stable db-remove-user flow that always acknowledges quickly.
+async function handleDbRemoveUser(interaction) {
+  try {
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ ephemeral: true });
+    }
+    if (!isDeveloper(interaction)) {
+      return interaction.editReply({ content: '❌ Access Denied: Developer Only.' });
+    }
+
+    const targetUser = interaction.options.getUser('user');
+    const discordId = targetUser.id;
+    const agent = db.prepare("SELECT id FROM agents WHERE discord_id = ?").get(discordId);
+
+    db.transaction(() => {
+      if (agent) {
+        db.prepare("DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)").run(agent.id);
+        db.prepare("DELETE FROM sessions WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+      }
+      db.prepare("DELETE FROM agents WHERE discord_id = ?").run(discordId);
+      db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(discordId);
+      db.prepare("DELETE FROM developers WHERE discord_id = ?").run(discordId);
+      db.prepare("DELETE FROM dev_approvals WHERE target_id = ? OR proposed_by = ?").run(discordId, discordId);
+    })();
+
+    let remainingRoleNames = [];
+    try {
+      const member = await interaction.guild.members.fetch(discordId);
+      const removableRoles = member.roles.cache.filter(role => role.id !== interaction.guild.id && role.editable);
+      if (removableRoles.size > 0) {
+        await member.roles.remove(removableRoles);
+      }
+      remainingRoleNames = member.roles.cache
+        .filter(role => role.id !== interaction.guild.id)
+        .map(role => role.name);
+    } catch (e) {
+      console.warn('[REMOVE-USER] Role purge failed:', e.message);
+    }
+
+    const rolePurgeNote = remainingRoleNames.length > 0
+      ? ` Remaining uneditable roles: ${remainingRoleNames.join(', ')}.`
+      : ' All removable Discord roles were cleared.';
+
+    await interaction.editReply({ content: `🔥 **COMPLETED PURGE:** **${targetUser.username}** has been wiped from the database and Discord role state.${rolePurgeNote}` });
+
+    sendAuditLog(interaction.client, {
+      title: '🔥 Total User Purge',
+      description: `**User:** ${targetUser.username} (\`${discordId}\`)\n**Action:** COMPLETE DB & ROLE WIPE\n**Admin:** {{AGENT_NAME}}`,
+      color: 0x000000,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleDbRemoveUser:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Error during purge: ' + error.message }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Error during purge: ' + error.message, ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 // Override: stable add-agent flow that always uses deferred interaction responses.
 async function handleAddAgent(interaction) {
   try {
