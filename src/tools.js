@@ -1,7 +1,9 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('./database');
 const { sendAuditLog, HOTEL_NAMES, HOTEL_LOGIN_CHANNELS, updateHotelStatusEmbed, isDeveloper, interactionHasRoleAtLeast } = require('./auth');
-const whatsapp = require('./whatsapp');
+const whatsapp = {
+  sendToWhatsApp: async () => false
+};
 
 const TL_ALERT_CHANNEL_ID = '1482222657935118487';
 const TL_TOOLS_CHANNEL_ID = '1482222657935118487';

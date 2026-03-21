@@ -11,7 +11,9 @@ const {
   StringSelectMenuOptionBuilder 
 } = require('discord.js');
 const db = require('./database');
-const whatsapp = require('./whatsapp');
+const whatsapp = {
+  sendToWhatsApp: async () => false
+};
 
 // ─── Identity Helpers ────────────────────────────────
 async function getAgentDisplayName(guild, discordId) {
