@@ -10,11 +10,20 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 - Long-form ops memory: `C:\Users\chugc\Desktop\Aavgo Bot\History.md`
 - Repo memory mirror: `HISTORY.md`
 
+## Pre-Change Review
+- Before making any code, documentation, or deployment changes, read:
+  - this `SOP.md`
+  - repo `HISTORY.md`
+  - desktop `History.md`
+  - the latest Git updates / `Brief` summary
+- Do not edit until the current repo state and recent updates are confirmed.
+
 ## Team Workflow
 - `Alpha`: main developer
 - `Astra`: second developer
 - `Brief` protocol:
   - Check Git for new updates first.
+  - Re-read SOP and both history files before making changes.
   - Summarize new commits on `origin/main`.
   - Summarize local-only changes if any.
   - If none, respond `No updates`.

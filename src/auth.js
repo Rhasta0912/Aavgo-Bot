@@ -6,6 +6,7 @@ const {
   EmbedBuilder, 
   ButtonBuilder, 
   ButtonStyle, 
+  MessageFlags,
   StringSelectMenuBuilder, 
   StringSelectMenuOptionBuilder 
 } = require('discord.js');
@@ -3763,6 +3764,7 @@ async function handleHelpDev(interaction) {
         '> `/setup-login`: Rebuild or refresh the persistent agent login kiosk.\n' +
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
         '> `/setup-register`: Rebuild the recruitment kiosk for new applicants.\n' +
+        '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
         '### 👥 Agent Lifecycle Controls\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
@@ -3846,6 +3848,9 @@ async function handleHelpAgent(interaction) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/tools`: Open the agent tools panel for break and emergency actions.\n' +
         '> `/guide`: Search SOPs and hotel process guides by topic.\n\n' +
+        '### 👥 Onboarding Support\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        '> `/select-trainee`: Mark a user as a trainee during onboarding.\n\n' +
         '### 📌 Your Current Access\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         `> **DB Role:** ${roleLabel}\n` +
@@ -3872,27 +3877,28 @@ async function handleHelpAgent(interaction) {
 async function handleSelectTrainee(interaction) {
   try {
     if (!interactionHasRoleAtLeast(interaction, 'sme')) {
-      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+      return interaction.reply({ content: '❌ Management or Developer access required.', flags: MessageFlags.Ephemeral });
     }
+
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const targetUser = interaction.options.getUser('name');
     const traineeRoleId = '1484705126026449029';
     const traineeRole = interaction.guild.roles.cache.get(traineeRoleId);
 
     if (!traineeRole) {
-      return interaction.reply({ content: '❌ Trainees role not found in this server.', ephemeral: true });
+      return interaction.editReply({ content: '❌ Trainees role not found in this server.' });
     }
 
     const member = await interaction.guild.members.fetch(targetUser.id);
     if (member.roles.cache.has(traineeRoleId)) {
-      return interaction.reply({ content: `⚠️ **${targetUser.username}** already has the Trainees role.`, ephemeral: true });
+      return interaction.editReply({ content: `⚠️ **${targetUser.username}** already has the Trainees role.` });
     }
 
     await member.roles.add(traineeRole);
 
-    await interaction.reply({
+    await interaction.editReply({
       content: `✅ **${targetUser.username}** has been assigned the **Trainees** role.`,
-      ephemeral: true
     });
 
     sendAuditLog(interaction.client, {
@@ -3905,7 +3911,9 @@ async function handleSelectTrainee(interaction) {
   } catch (error) {
     console.error('Error in handleSelectTrainee:', error);
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Failed to assign the Trainees role.', ephemeral: true });
+      await interaction.reply({ content: '❌ Failed to assign the Trainees role.', flags: MessageFlags.Ephemeral });
+    } else {
+      await interaction.editReply({ content: '❌ Failed to assign the Trainees role.' }).catch(() => {});
     }
   }
 }

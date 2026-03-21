@@ -8,6 +8,7 @@ Primary local ops archive:
 Working rules:
 - Keep this history append-only.
 - Log meaningful fixes, feature work, deployment changes, and mistakes/fixes.
+- Before making changes, read `SOP.md`, this `HISTORY.md`, the desktop `History.md`, and the latest Git updates / `Brief` summary first.
 - Treat the live workspace as source of truth for code.
 - Treat database permissions as the real authority, with Discord roles mostly used for channel access and presentation.
 - Shared shorthand: when the user says `Brief`, check Git for new updates first and summarize:
@@ -52,6 +53,9 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed `/select-trainee` so it now defers immediately, uses ephemeral flags instead of deprecated `ephemeral` replies, and edits the deferred response after role assignment. This prevents the `Unknown interaction` crash when management marks a trainee.
+- Added a pre-change review rule to `SOP.md` and both history files requiring SOP, repo history, desktop history, and the latest Git/`Brief` updates to be read before making changes.
+- Updated help docs so `/select-trainee` appears in the developer reference and the management guide.
 - Added `/help-agent` so registered agents can open a yellow Aavgo quick-reference for daily commands, shift workflow, and their current DB-backed access state.
 - Relocated live in-shift outputs for check-ins, check-outs, call logs, maintenance reports, and handover notes into Discord channel `1484192529485140099`, while keeping handover note delivery to the next overtaking agent through DM.
 - Fixed mojibake / broken success lettering in activity replies on Astra so check-in, checkout, handover, and maintenance confirmations render readable text again.
