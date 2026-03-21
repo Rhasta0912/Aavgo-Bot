@@ -53,6 +53,20 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Removed training lock controls from the live command surface and shift flow. `/training-mode`, `/db-agent-ready`, and `/db-agent-standby` were removed from slash-command registration, interaction routing, and developer help docs, and the remaining standby/training gate checks were stripped from `Initialize Shift` handling.
+- Updated Team 1 hotel mapping to the new live set and IDs across auth + command surfaces:
+  - `BW_TO` Indianhead IronWood
+  - `BRNT` Magnuson
+  - `VALS` Value Suites
+  - `GICP` The Garden Inn At Campsite
+  - `QI_RV` Russelville
+  - `SUP8` Super8
+  - `RMDA` Ramada
+  - `AD1` AD1
+- Synced new channel bindings for initialize/login routing (`HOTEL_LOGIN_CHANNELS`) and role map IDs for both permission (green) and assignment/ghost (grey) roles, including new `VALS` and `GICP` entries.
+- Polished Initialize Shift copy and kiosk/service-location text so agents see the updated hotel set in prompts/placeholders.
+- Fixed `/db-assign-hotel` role sync to compare by role **IDs** (not names), preventing mismatched cleanup/add behavior when assigning a new permanent hotel.
+- Updated DB seeds to include `VALS` and `GICP` as live hotels plus `hotel_status` seed rows, and updated legacy `QI_RV` display name to Russelville for continuity.
 - Tightened the trainee cleanup flow so `/register`, `/add-agent`, and registration approval now remove the `Trainees` role even when the user is already in DB or already has the base `Agents` role, preventing stale trainee badges after promotion.
 - Updated agent promotion flows so when a trainee becomes a real agent through `/register`, `/add-agent`, or registration approval, the bot now removes the `Trainees` role automatically after granting `Agents`/`Logged Out`.
 - Fixed `/select-trainee` so it now defers immediately, uses ephemeral flags instead of deprecated `ephemeral` replies, and edits the deferred response after role assignment. This prevents the `Unknown interaction` crash when management marks a trainee.

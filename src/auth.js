@@ -34,6 +34,8 @@ const ROLE_NAMES = {
   GREEN: {
     'BW_TO': '1482227783232000070',
     'BRNT': '1482227501894996079',
+    'VALS': '1484858995150684170',
+    'GICP': '1484531060699168778',
     'QI_RV': '1482227230343041115',
     'SUP8': '1482227848440971408',
     'RMDA': '1483418491464843345',
@@ -43,6 +45,8 @@ const ROLE_NAMES = {
   GREY: {
     'BW_TO': '1483429969807020032',
     'BRNT': '1483430008105210008',
+    'VALS': '1484859243671847114',
+    'GICP': '1484531611549831189',
     'QI_RV': '1483430045153362012',
     'SUP8': '1483430096013623427',
     'RMDA': '1483430118016684135',
@@ -54,15 +58,19 @@ const ROLE_NAMES = {
 const HOTEL_NAMES = {
   'BW_TO': 'Indianhead IronWood',
   'BRNT': 'Magnuson',
-  'QI_RV': 'Value Suites',
+  'VALS': 'Value Suites',
+  'GICP': 'The Garden Inn At Campsite',
+  'QI_RV': 'Russelville',
   'SUP8': 'Super8',
   'RMDA': 'Ramada',
-  'AD1': 'AD1 (EST)'
+  'AD1': 'AD1'
 };
 // Map hotel IDs to log-in channel IDs
 const HOTEL_LOGIN_CHANNELS = {
   'BW_TO': '1482303551614095441',
   'BRNT': '1482222138927874058',
+  'VALS': '1484857862588203148',
+  'GICP': '1484531330308903005',
   'QI_RV': '1482303818904637563',
   'SUP8': '1482303747706191962',
   'RMDA': '1483417977859870881',
@@ -75,7 +83,7 @@ const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TL_PORTAL_CHANNEL_ID = '1482516531505266770';
 
-const TEAM_1_HOTELS = ['BW_TO', 'BRNT', 'QI_RV', 'SUP8', 'RMDA', 'AD1'];
+const TEAM_1_HOTELS = ['BW_TO', 'BRNT', 'VALS', 'GICP', 'QI_RV', 'SUP8', 'RMDA', 'AD1'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Training',
@@ -312,10 +320,18 @@ function normalizeHotelInput(input) {
     BRENTWOOD: 'BRNT',
     BRENTWOODINNSUITES: 'BRNT',
     MAGNUSON: 'BRNT',
+    VALS: 'VALS',
+    VALUESUITES: 'VALS',
+    THEVALUESUITES: 'VALS',
+    GICP: 'GICP',
+    GARDENINN: 'GICP',
+    GARDENINNCAMPSITE: 'GICP',
+    THEGARDENINNATCAMPSITE: 'GICP',
     QIRV: 'QI_RV',
     RUSSELLVILLE: 'QI_RV',
+    RUSSELVILLE: 'QI_RV',
+    RUESSELVILLE: 'QI_RV',
     QIRUSSELLVILLEKY: 'QI_RV',
-    VALUESUITES: 'QI_RV',
     SUP8: 'SUP8',
     SUPER8: 'SUP8',
     RMDA: 'RMDA',
@@ -329,11 +345,6 @@ function normalizeHotelInput(input) {
 
 function getAgentShiftAccessState(agent) {
   return agent?.agent_status === 'standby' ? 'standby' : 'ready';
-}
-
-function isTrainingModeEnabled() {
-  const raw = db.prepare("SELECT value FROM config WHERE key = 'training_mode_enabled'").get()?.value;
-  return String(raw || '0') === '1';
 }
 
 function normalizeAgentRole(role) {
@@ -366,11 +377,6 @@ function getAgentRoleByDiscordId(discordId) {
   return normalizeAgentRole(agent?.role);
 }
 
-function buildShiftStandbyMessage(agent) {
-  const statusLabel = AGENT_STATUS_LABELS[getAgentShiftAccessState(agent)] || 'Standby Training';
-  return `⏸️ **Shift access is locked.** Your account is currently marked as **${statusLabel}**.\n\nPlease complete training and have a developer run the ready command before you initialize a live shift.`;
-}
-
 async function removeTraineeRoleFromMember(member, guild, contextLabel = 'ROLE SYNC') {
   try {
     if (!member || !guild) return;
@@ -394,7 +400,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type BW_TO, BRNT, QI_RV, SUP8, RMDA, AD1, or hotel name');
+    .setPlaceholder('Type BW_TO, BRNT, VALS, GICP, QI_RV, SUP8, RMDA, AD1, or hotel name');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -822,7 +828,7 @@ function buildAgentKioskPayload() {
       '> **4.** Verify your **Secure PIN**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead IronWood`, `Magnuson`, `Value Suites`, `Super8`, `Ramada`, `AD1 (EST)`'
+      '**Team 1:** `Indianhead IronWood`, `Magnuson`, `Value Suites`, `The Garden Inn At Campsite`, `Russelville`, `Super8`, `Ramada`, `AD1`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -906,7 +912,7 @@ async function handleSetupLogin(interaction) {
         '> **4.** Verify your **Secure PIN**\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '### 🏨 Service Locations\n' +
-        '**Team 1:** `Indianhead IronWood`, `Magnuson`, `Value Suites`, `Super8`, `Ramada`, `AD1 (EST)`'
+        '**Team 1:** `Indianhead IronWood`, `Magnuson`, `Value Suites`, `The Garden Inn At Campsite`, `Russelville`, `Super8`, `Ramada`, `AD1`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -1469,23 +1475,9 @@ async function handleStartShiftClick(interaction) {
     }
 
     // Standard Agent route:
-    // **LOCK-IN ENFORCEMENT**
-    if (isTrainingModeEnabled() && !isDeveloper(interaction) && !interactionHasRoleAtLeast(interaction, 'sme', { allowDeveloper: false })) {
-      return interaction.reply({
-        content: 'Training mode is currently ON. Initialize Shift is temporarily locked to prevent accidental live logins during training.',
-        ephemeral: true
-      });
-    }
 
     if (agent.hotel_id) {
        if (HOTEL_NAMES[agent.hotel_id]) {
-          if (getAgentShiftAccessState(agent) === 'standby') {
-            return interaction.reply({
-              content: buildShiftStandbyMessage(agent),
-              ephemeral: true
-            });
-          }
-
           const hotelSession = db.prepare(
             "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
           ).get(agent.hotel_id, agent.id);
@@ -1637,10 +1629,6 @@ async function handleHotelSelect(interaction) {
     const hotelId = interaction.customId.replace('hotel_btn_', '');
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
 
-    if (hotelId !== 'TEAM_SHIFT' && getAgentShiftAccessState(agent) === 'standby') {
-      return interaction.editReply({ content: buildShiftStandbyMessage(agent) });
-    }
-
     if (!agent) {
       return interaction.reply({ content: '❌ You are not registered as an agent. Use `/register` to apply.', ephemeral: true });
     }
@@ -1779,17 +1767,14 @@ async function handleConfirmHotelLink(interaction) {
     }
 
     // Proceed to PIN modal
-    const isStandby = getAgentShiftAccessState(agent) === 'standby';
     const linkedEmbed = new EmbedBuilder()
       .setTitle('✅ Hotel Successfully Linked')
       .setDescription(`### 🏨 ASSIGNMENT COMPLETE\n` +
                       `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
                       `You have been permanently linked to **${HOTEL_NAMES[hotelId]}**.\n\n` +
-                      (isStandby
-                        ? `> **STATUS:** Standby Training\n> Your assignment is saved, but a developer must mark you ready before you can start a live shift.\n`
-                        : `> **NEXT STEP:** You are NOT in a shift yet. To check-in, please go to the hotel channel and click **Start Shift** to initialize your login.\n`) +
+                      `> **NEXT STEP:** You are NOT in a shift yet. To check-in, please go to the hotel channel and click **Start Shift** to initialize your login.\n` +
                       `━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
-      .setColor(isStandby ? 0xFEE75C : 0x57F287);
+      .setColor(0x57F287);
 
     await interaction.update({ embeds: [linkedEmbed], components: [] });
 
@@ -1882,7 +1867,7 @@ async function handleShiftInitModalSubmit(interaction) {
     const normalizedHotel = normalizeHotelInput(hotelInput);
 
     if (!normalizedHotel || !HOTEL_NAMES[normalizedHotel]) {
-      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: `BW_TO`, `BRNT`, `QI_RV`, `SUP8`, `RMDA`, or `AD1`.' });
+      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: `BW_TO`, `BRNT`, `VALS`, `GICP`, `QI_RV`, `SUP8`, `RMDA`, or `AD1`.' });
     }
 
     const hotelRecord = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotel);
@@ -1902,12 +1887,6 @@ async function handleShiftInitModalSubmit(interaction) {
 
     db.prepare("UPDATE agents SET team = COALESCE(team, ?), hotel_id = COALESCE(hotel_id, ?) WHERE discord_id = ?").run(normalizedTeam, normalizedHotel, interaction.user.id);
     const refreshedAgent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(interaction.user.id);
-
-    if (getAgentShiftAccessState(refreshedAgent) === 'standby') {
-      return interaction.editReply({
-        content: `✅ Your assignment has been saved as **${HOTEL_NAMES[normalizedHotel]}** under **${normalizedTeam}**.\n\n${buildShiftStandbyMessage(refreshedAgent)}`
-      });
-    }
 
     try {
       const teamRole = interaction.guild.roles.cache.find(r => r.name === normalizedTeam);
@@ -3803,9 +3782,6 @@ async function handleHelpDev(interaction) {
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
         '> `/db-assign-hotel`: Permanently link an agent to a hotel.\n' +
-        '> `/db-agent-ready`: Clear a standby agent for live shifts.\n' +
-        '> `/db-agent-standby`: Put an agent back into training-only mode.\n' +
-        '> `/training-mode action:on|off|status`: Global lock for Initialize Shift during training windows.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
         '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles.\n\n' +
@@ -4037,19 +4013,19 @@ async function handleDbAssignHotel(interaction) {
     try {
       const member = await interaction.guild.members.fetch(target.id);
       if (member) {
-        const greyRoleNames = Object.values(ROLE_NAMES.GREY);
-        const greenRoleNames = Object.values(ROLE_NAMES.GREEN);
+        const greyRoleIds = Object.values(ROLE_NAMES.GREY);
+        const greenRoleIds = Object.values(ROLE_NAMES.GREEN);
         
         // Find existing Grey/Green roles to remove
         const rolesToRemove = member.roles.cache.filter(r => 
-          greyRoleNames.includes(r.name) || greenRoleNames.includes(r.name)
+          greyRoleIds.includes(r.id) || greenRoleIds.includes(r.id)
         );
         
         if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
         
         // Add new Grey role (Assignment)
-        const newGreyRoleName = ROLE_NAMES.GREY[hotelId];
-        const newGreyRole = interaction.guild.roles.cache.find(r => r.name === newGreyRoleName);
+        const newGreyRoleId = ROLE_NAMES.GREY[hotelId];
+        const newGreyRole = interaction.guild.roles.cache.get(newGreyRoleId);
         
         const rolesToAdd = [newGreyRole].filter(Boolean);
         
@@ -4066,86 +4042,6 @@ async function handleDbAssignHotel(interaction) {
   } catch (e) {
     console.error('Error in handleDbAssignHotel:', e);
     await interaction.reply({ content: '❌ Error assigning hotel.', ephemeral: true });
-  }
-}
-
-async function handleDbAgentStatus(interaction, nextStatus) {
-  try {
-    if (!isDeveloper(interaction)) {
-      return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
-    }
-
-    const target = interaction.options.getUser('user');
-    const agent = db.prepare("SELECT username, agent_status FROM agents WHERE discord_id = ?").get(target.id);
-    if (!agent) {
-      return interaction.reply({ content: '❌ That user is not registered as an agent.', ephemeral: true });
-    }
-
-    db.prepare("UPDATE agents SET agent_status = ? WHERE discord_id = ?").run(nextStatus, target.id);
-
-    const statusLabel = AGENT_STATUS_LABELS[nextStatus] || nextStatus;
-    await interaction.reply({
-      content: `✅ **${target.username}** is now marked as **${statusLabel}**.`,
-      ephemeral: true
-    });
-
-    sendAuditLog(interaction.client, {
-      title: nextStatus === 'ready' ? '✅ Agent Cleared for Live Shifts' : '⏸️ Agent Put on Standby',
-      description: `**Agent:** ${target.username} (<@${target.id}>)\n**New Status:** ${statusLabel}\n**Updated by:** {{AGENT_NAME}}`,
-      color: nextStatus === 'ready' ? 0x57F287 : 0xFEE75C,
-      userId: interaction.user.id,
-      guild: interaction.guild
-    });
-  } catch (error) {
-    console.error('Error in handleDbAgentStatus:', error);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Failed to update agent status.', ephemeral: true }).catch(() => {});
-    }
-  }
-}
-
-async function handleDbAgentReady(interaction) {
-  return handleDbAgentStatus(interaction, 'ready');
-}
-
-async function handleDbAgentStandby(interaction) {
-  return handleDbAgentStatus(interaction, 'standby');
-}
-
-async function handleTrainingMode(interaction) {
-  try {
-    if (!isDeveloper(interaction)) return interaction.reply({ content: 'Developer access required.', ephemeral: true });
-
-    const action = interaction.options.getString('action');
-    const current = isTrainingModeEnabled();
-
-    if (action === 'status') {
-      return interaction.reply({
-        content: `Training mode is currently **${current ? 'ON' : 'OFF'}**.`,
-        ephemeral: true
-      });
-    }
-
-    const next = action === 'on';
-    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('training_mode_enabled', ?)").run(next ? '1' : '0');
-
-    await interaction.reply({
-      content: `Training mode is now **${next ? 'ON' : 'OFF'}**.`,
-      ephemeral: true
-    });
-
-    sendAuditLog(interaction.client, {
-      title: 'Training Mode Updated',
-      description: `**State:** ${next ? 'ON' : 'OFF'}\n**Updated by:** {{AGENT_NAME}}`,
-      color: next ? 0xFEE75C : 0x57F287,
-      userId: interaction.user.id,
-      guild: interaction.guild
-    });
-  } catch (error) {
-    console.error('Error in handleTrainingMode:', error);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: 'Failed to update training mode.', ephemeral: true }).catch(() => {});
-    }
   }
 }
 
@@ -4508,9 +4404,6 @@ module.exports = {
   handleHelpTeamLeader,
   handleHotelStatusRefresh,
   handleDbAssignHotel,
-  handleDbAgentReady,
-  handleDbAgentStandby,
-  handleTrainingMode,
   handleGenerateRAC,
   handleRacSend,
   handleFindGuest,

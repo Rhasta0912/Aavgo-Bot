@@ -1,5 +1,16 @@
 const { SlashCommandBuilder } = require('discord.js');
 
+const HOTEL_CHOICES = [
+  { name: 'Indianhead Ironwood', value: 'BW_TO' },
+  { name: 'Magnuson', value: 'BRNT' },
+  { name: 'Value Suites', value: 'VALS' },
+  { name: 'The Garden Inn At Campsite', value: 'GICP' },
+  { name: 'Russelville', value: 'QI_RV' },
+  { name: 'Super8', value: 'SUP8' },
+  { name: 'Ramada', value: 'RMDA' },
+  { name: 'AD1', value: 'AD1' }
+];
+
 const commandData = [
   new SlashCommandBuilder()
     .setName('login')
@@ -141,12 +152,7 @@ const commandData = [
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID (or "GLOBAL")').setRequired(true)
       .addChoices(
         { name: 'Global (All Hotels)', value: 'GLOBAL' },
-        { name: 'Indianhead IronWood', value: 'BW_TO' },
-        { name: 'Magnuson', value: 'BRNT' },
-        { name: 'Value Suites', value: 'QI_RV' },
-        { name: 'Super8', value: 'SUP8' },
-        { name: 'Ramada', value: 'RMDA' },
-        { name: 'AD1 (EST)', value: 'AD1' }
+        ...HOTEL_CHOICES
       ))
     .addStringOption(option => option.setName('topic').setDescription('The topic title').setRequired(true))
     .addStringOption(option => option.setName('content').setDescription('The policy details').setRequired(true)),
@@ -158,14 +164,7 @@ const commandData = [
     .setDescription('(Manager) Assign an agent to a hotel shift')
     .addUserOption(option => option.setName('user').setDescription('The agent to schedule').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
-      .addChoices(
-        { name: 'Indianhead IronWood', value: 'BW_TO' },
-        { name: 'Magnuson', value: 'BRNT' },
-        { name: 'Value Suites', value: 'QI_RV' },
-        { name: 'Super8', value: 'SUP8' },
-        { name: 'Ramada', value: 'RMDA' },
-        { name: 'AD1 (EST)', value: 'AD1' }
-      ))
+      .addChoices(...HOTEL_CHOICES))
     .addStringOption(option => option.setName('date').setDescription('Date (YYYY-MM-DD or "Today")').setRequired(true))
     .addStringOption(option => option.setName('start').setDescription('Start Time (e.g., 09:00)').setRequired(true))
     .addStringOption(option => option.setName('end').setDescription('End Time (e.g., 17:00)').setRequired(true)),
@@ -173,14 +172,7 @@ const commandData = [
     .setName('schedule-view')
     .setDescription('(Manager) View the weekly shift schedule in spreadsheet format')
     .addStringOption(option => option.setName('hotel').setDescription('Filter by hotel').setRequired(false)
-      .addChoices(
-        { name: 'Indianhead IronWood', value: 'BW_TO' },
-        { name: 'Magnuson', value: 'BRNT' },
-        { name: 'Value Suites', value: 'QI_RV' },
-        { name: 'Super8', value: 'SUP8' },
-        { name: 'Ramada', value: 'RMDA' },
-        { name: 'AD1 (EST)', value: 'AD1' }
-      )),
+      .addChoices(...HOTEL_CHOICES)),
   new SlashCommandBuilder()
     .setName('schedule-export')
     .setDescription('(Manager) Download the schedule as a CSV spreadsheet'),
@@ -218,44 +210,13 @@ const commandData = [
         { name: 'Refresh Specific', value: 'refresh_one' }
       ))
     .addStringOption(option => option.setName('hotel').setDescription('Specific hotel to refresh').setRequired(false)
-      .addChoices(
-        { name: 'Indianhead IronWood', value: 'BW_TO' },
-        { name: 'Magnuson', value: 'BRNT' },
-        { name: 'Value Suites', value: 'QI_RV' },
-        { name: 'Super8', value: 'SUP8' },
-        { name: 'Ramada', value: 'RMDA' },
-        { name: 'AD1 (EST)', value: 'AD1' }
-      )),
+      .addChoices(...HOTEL_CHOICES)),
   new SlashCommandBuilder()
     .setName('db-assign-hotel')
     .setDescription('(Developer Only) Manually set an agent\'s permanent hotel linking')
     .addUserOption(option => option.setName('user').setDescription('The agent to link').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
-      .addChoices(
-        { name: 'Indianhead IronWood', value: 'BW_TO' },
-        { name: 'Magnuson', value: 'BRNT' },
-        { name: 'Value Suites', value: 'QI_RV' },
-        { name: 'Super8', value: 'SUP8' },
-        { name: 'Ramada', value: 'RMDA' },
-        { name: 'AD1 (EST)', value: 'AD1' }
-      )),
-  new SlashCommandBuilder()
-    .setName('db-agent-ready')
-    .setDescription('(Developer Only) Allow a standby agent to start shifts')
-    .addUserOption(option => option.setName('user').setDescription('The agent to mark ready').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('db-agent-standby')
-    .setDescription('(Developer Only) Put an agent back into standby training mode')
-    .addUserOption(option => option.setName('user').setDescription('The agent to put on standby').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('training-mode')
-    .setDescription('(Developer Only) Toggle global training mode for shift initialization')
-    .addStringOption(option => option.setName('action').setDescription('Set training mode state').setRequired(true)
-      .addChoices(
-        { name: 'On', value: 'on' },
-        { name: 'Off', value: 'off' },
-        { name: 'Status', value: 'status' }
-      )),
+      .addChoices(...HOTEL_CHOICES)),
   new SlashCommandBuilder()
     .setName('help-team-leader')
     .setDescription('Show a comprehensive guide for Team Leaders and SMEs'),

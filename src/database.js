@@ -153,13 +153,17 @@ db.exec(`
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('BRNT', 'Magnuson', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'Value Suites', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('VALS', 'Value Suites', 'Team 1')
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
+  INSERT INTO hotels (id, name, team) VALUES ('GICP', 'The Garden Inn At Campsite', 'Team 1')
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
+  INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'Russelville', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('SUP8', 'Super8', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('RMDA', 'Ramada', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('AD1', 'AD1 (EST)', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('AD1', 'AD1', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('TEAM_SHIFT', 'Team Operations', 'Global')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
@@ -167,6 +171,8 @@ db.exec(`
   -- Seed hotel_status
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('BW_TO');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('BRNT');
+  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('VALS');
+  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('GICP');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('QI_RV');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('SUP8');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('RMDA');
