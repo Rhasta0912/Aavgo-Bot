@@ -53,6 +53,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Redesigned shift activity log embeds (`check-in`, `check-out`, `call`, `maintenance`, `handover`) into a cleaner dashboard card style with:
+  - stronger visual headers per activity type
+  - consistent summary chips (Agent, Hotel, Guest/Ref)
+  - cleaner detail section formatting
+  - improved footer labeling for the activity feed channel
+- Wired the new activity card template through maintenance/handover/general logging so all operational activity entries use the same polished layout.
 - Removed training lock controls from the live command surface and shift flow. `/training-mode`, `/db-agent-ready`, and `/db-agent-standby` were removed from slash-command registration, interaction routing, and developer help docs, and the remaining standby/training gate checks were stripped from `Initialize Shift` handling.
 - Updated Team 1 hotel mapping to the new live set and IDs across auth + command surfaces:
   - `BW_TO` Indianhead IronWood

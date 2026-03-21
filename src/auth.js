@@ -199,6 +199,63 @@ async function sendShiftActivityLog(client, { title, color, description, fields 
   }
 }
 
+function formatActivityLabel(key) {
+  return String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+// Override with richer activity-card layout for cleaner ops logs.
+async function sendShiftActivityLog(client, { title, color, description, fields = [], activityType = '', agentName = '', hotelName = '', guestName = '' }) {
+  try {
+    const channel = await client.channels.fetch(SHIFT_ACTIVITY_LOG_CHANNEL_ID);
+    if (!channel) return console.warn('[SHIFT-ACTIVITY] Log channel not found.');
+
+    const typeMap = {
+      checkin: { emoji: '🛎️', label: 'Guest Check-In' },
+      checkout: { emoji: '🗝️', label: 'Guest Check-Out' },
+      call: { emoji: '📞', label: 'Call Activity' },
+      maintenance: { emoji: '🛠️', label: 'Maintenance' },
+      handover: { emoji: '📝', label: 'Handover' }
+    };
+    const typeInfo = typeMap[activityType] || { emoji: '📌', label: 'Shift Activity' };
+
+    const summaryFields = [
+      { name: '👤 Agent', value: agentName || 'Unknown', inline: true },
+      { name: '🏨 Hotel', value: hotelName || 'Unknown', inline: true }
+    ];
+    if (guestName) {
+      summaryFields.push({ name: '🧾 Guest / Ref', value: guestName, inline: true });
+    }
+
+    const detailFields = fields
+      .filter(field => String(field?.value || '').trim().length > 0)
+      .map(field => ({
+        name: `• ${formatActivityLabel(field.name)}`.slice(0, 256),
+        value: String(field.value).slice(0, 1024),
+        inline: false
+      }))
+      .slice(0, 7);
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${typeInfo.emoji} ${title}`)
+      .setDescription(`### ${typeInfo.label} Logged\n${description || 'Operational event recorded.'}`)
+      .setColor(color || 0xF1C40F)
+      .setFooter({ text: 'Aavgo Operations • Shift Activity Feed' })
+      .setTimestamp();
+
+    embed.addFields(summaryFields);
+    if (detailFields.length > 0) {
+      embed.addFields({ name: '📋 Details', value: '━━━━━━━━━━━━━━━━━━', inline: false });
+      embed.addFields(detailFields);
+    }
+
+    await channel.send({ embeds: [embed] });
+  } catch (err) {
+    console.warn('[SHIFT-ACTIVITY] Failed to send activity log:', err.message);
+  }
+}
+
 // ─── Centralized Session Maintenance ────────────────
 async function closeAllActiveSessionsForAgent(agentId, client) {
   const nowIso = new Date().toISOString();
@@ -2437,6 +2494,9 @@ async function handleActivityModalSubmit(interaction) {
         title: 'Maintenance Reported',
         description: `**Agent:** ${nickname}\n**Hotel:** ${hotelName}`,
         color: 0xE67E22,
+        activityType: 'maintenance',
+        agentName: nickname,
+        hotelName,
         fields: [
           { name: 'Room', value: room, inline: true },
           { name: 'Category', value: cat, inline: true },
@@ -2478,6 +2538,9 @@ async function handleActivityModalSubmit(interaction) {
         title: 'Handover Note Left',
         description: `**Agent:** ${nickname}\n**Hotel:** ${hotelName}`,
         color: 0x9B59B6,
+        activityType: 'handover',
+        agentName: nickname,
+        hotelName,
         fields: [
           { name: 'Note', value: content.slice(0, 1024), inline: false }
         ]
@@ -2519,6 +2582,10 @@ async function handleActivityModalSubmit(interaction) {
       title: activityTitleMap[type] || 'Operation Logged',
       description: `**Agent:** ${nickname}\n**Hotel:** ${hotelName}\n**Guest:** ${guest_name}`,
       color: type === 'checkin' ? 0x57F287 : (type === 'checkout' ? 0xED4245 : 0x3498DB),
+      activityType: type,
+      agentName: nickname,
+      hotelName,
+      guestName: guest_name,
       fields: detailFields
     });
 
