@@ -94,3 +94,4 @@ Working rules:
 - Updated AD1 (calls-only) activity controls in hotel status cards: AD1 now shows only End Shift, Call Log, and Handover actions (with break-end button when applicable), and blocks check-in/check-out/maintenance modal actions if triggered from stale messages.
 - Added `SOP.md` to the repo as the operational standard for Alpha/Astra workflow, DB-first permissions, command-governance requirements, training-mode policy, AD1 calls-only behavior, deployment checklist, and incident handling.
 - Added `/select-trainee` for developers and management to assign the `1484705126026449029` Trainees role to a chosen user.
+- Moved the Team Leader login/status log channel from `1482516531505266770` to `1484878480046031099` so TL-related login portal activity now routes to `tl-logs`.
