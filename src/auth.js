@@ -456,6 +456,19 @@ async function removeTraineeRoleFromMember(member, guild, contextLabel = 'ROLE S
   }
 }
 
+async function removeApplicantsRoleFromMember(member, guild, contextLabel = 'ROLE SYNC') {
+  try {
+    if (!member || !guild) return;
+    const applicantsRole = guild.roles.cache.get('1484919969689894912') || guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
+    if (applicantsRole && member.roles.cache.has(applicantsRole.id)) {
+      await member.roles.remove(applicantsRole);
+      console.log(`[${contextLabel}] Removed Applicants role from ${member.user.username}`);
+    }
+  } catch (error) {
+    console.warn(`[${contextLabel}] Could not remove Applicants role:`, error.message);
+  }
+}
+
 async function showShiftInitModal(interaction, agent) {
   const modal = new ModalBuilder()
     .setCustomId('shift_init_modal')
@@ -1157,6 +1170,7 @@ async function handleRegister(interaction) {
     if (existing && hasAgentsRole) {
       try {
         await removeTraineeRoleFromMember(interaction.member, interaction.guild, 'REGISTER');
+        await removeApplicantsRoleFromMember(interaction.member, interaction.guild, 'REGISTER');
       } catch (roleErr) {
         console.warn('[REGISTER] Could not clear Trainees role:', roleErr.message);
       }
@@ -1172,6 +1186,7 @@ async function handleRegister(interaction) {
         if (agentsRole) await interaction.member.roles.add(agentsRole);
         if (loggedOutRole) await interaction.member.roles.add(loggedOutRole);
         await removeTraineeRoleFromMember(interaction.member, guild, 'REGISTER');
+        await removeApplicantsRoleFromMember(interaction.member, guild, 'REGISTER');
       } catch (roleErr) {
         console.warn('[REGISTER] Could not fix missing roles:', roleErr.message);
       }
@@ -1376,6 +1391,7 @@ async function handleApproveReg(interaction) {
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(userId);
       try {
         await removeTraineeRoleFromMember(member, guild, 'APPROVE');
+        await removeApplicantsRoleFromMember(member, guild, 'APPROVE');
       } catch (roleErr) {
         console.warn('[REGISTER] Could not clear Trainees role:', roleErr.message);
       }
@@ -1397,6 +1413,7 @@ async function handleApproveReg(interaction) {
       const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
       if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
       await removeTraineeRoleFromMember(member, guild, 'REGISTER');
+      await removeApplicantsRoleFromMember(member, guild, 'REGISTER');
     } catch (roleErr) {
       console.warn('[REGISTER] Could not assign roles:', roleErr.message);
     }
@@ -4056,6 +4073,12 @@ async function handleSelectTrainee(interaction) {
       content: `✅ **${targetUser.username}** has been assigned the **Trainees** role.`,
     });
 
+    try {
+      await removeApplicantsRoleFromMember(member, interaction.guild, 'SELECT-TRAINEE');
+    } catch (roleErr) {
+      console.warn('[SELECT-TRAINEE] Could not clear Applicants role:', roleErr.message);
+    }
+
     sendAuditLog(interaction.client, {
       title: '🎓 Trainee Role Assigned',
       description: `**User:** ${targetUser.username} (<@${targetUser.id}>)\n**Assigned By:** {{AGENT_NAME}}\n**Role:** Trainees`,
@@ -4646,6 +4669,7 @@ async function handleAddAgent(interaction) {
       const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
       if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
       await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+      await removeApplicantsRoleFromMember(member, interaction.guild, 'ADD-AGENT');
     } catch (roleErr) {
       console.warn('[ADD-AGENT] Could not assign roles:', roleErr.message);
     }

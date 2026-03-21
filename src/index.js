@@ -174,6 +174,16 @@ client.on('messageCreate', async (message) => {
 });
 
 client.on('guildMemberAdd', async member => {
+  try {
+    const applicantsRole = member.guild.roles.cache.get('1484919969689894912') || member.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
+    if (applicantsRole) {
+      await member.roles.add(applicantsRole);
+      console.log(`[JOIN] Assigned Applicants role to ${member.user.username}`);
+    }
+  } catch (error) {
+    console.warn('[JOIN] Failed to assign Applicants role:', error.message);
+  }
+
   await sendRealNameTutorial(member);
 });
 
