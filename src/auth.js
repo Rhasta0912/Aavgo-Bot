@@ -3041,6 +3041,10 @@ function isDeveloper(interaction) {
   const devIds = ['320128931971727360', '1186978205018632242'];
   if (devIds.includes(discordId)) return true;
 
+  // Operations Manager has full developer-equivalent access.
+  const opsManager = db.prepare("SELECT discord_id FROM agents WHERE discord_id = ? AND role = 'operations_manager'").get(discordId);
+  if (opsManager) return true;
+
   // Check database
   const dev = db.prepare("SELECT discord_id FROM developers WHERE discord_id = ?").get(discordId);
   return !!dev;
