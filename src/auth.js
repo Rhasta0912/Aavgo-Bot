@@ -466,7 +466,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type BW_TO, BRNT, VALS, GICP, QI_RV, SUP8, RMDA, AD1, or hotel name');
+    .setPlaceholder('Type hotel name (Indianhead IronWood, Magnuson, Value Suites, Garden Inn, Russelville, Super8, Ramada, AD1)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -477,7 +477,7 @@ async function showShiftInitModal(interaction, agent) {
     .setMaxLength(6)
     .setPlaceholder('Enter your 4-6 digit PIN');
 
-  if (agent?.hotel_id && HOTEL_NAMES[agent.hotel_id]) hotelInput.setValue(agent.hotel_id);
+  if (agent?.hotel_id && HOTEL_NAMES[agent.hotel_id]) hotelInput.setValue(HOTEL_NAMES[agent.hotel_id]);
 
   modal.addComponents(
     new ActionRowBuilder().addComponents(hotelInput),
@@ -1940,7 +1940,7 @@ async function handleShiftInitModalSubmit(interaction) {
     const normalizedHotel = normalizeHotelInput(hotelInput);
 
     if (!normalizedHotel || !HOTEL_NAMES[normalizedHotel]) {
-      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: `BW_TO`, `BRNT`, `VALS`, `GICP`, `QI_RV`, `SUP8`, `RMDA`, or `AD1`.' });
+      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead IronWood, Magnuson, Value Suites, The Garden Inn At Campsite, Russelville, Super8, Ramada, AD1**.' });
     }
 
     const hotelRecord = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotel);
@@ -3887,7 +3887,7 @@ async function handleHelpDev(interaction) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
-        '> `/db-assign-hotel`: Permanently link an agent to a hotel.\n' +
+        '> `/db-assign-hotel` or `/assign-hotel`: Permanently link an agent to a hotel.\n' +
         '> `/db-agent-ready`: Clear a standby agent for live shifts.\n' +
         '> `/db-agent-standby`: Put an agent back into training-only mode.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +

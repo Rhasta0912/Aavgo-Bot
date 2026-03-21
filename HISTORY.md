@@ -53,6 +53,9 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added `/assign-hotel` as a clean alias to hotel assignment flow (routes to the same assign handler as `/db-assign-hotel`) for faster operations usage.
+- Updated Initialize Shift user-facing placeholder and invalid-hotel validation text to use the new hotel names (no legacy code-style placeholder hints shown to agents).
+- Updated `/help-dev` copy to document both `/db-assign-hotel` and `/assign-hotel`.
 - Added a hardened override for `/db-remove-user` to eliminate timeout/no-response behavior:
   - immediate ack path (`deferReply`) before heavy DB/role purge
   - consistent `editReply` completion and robust fallback error response handling

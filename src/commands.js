@@ -218,6 +218,12 @@ const commandData = [
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
       .addChoices(...HOTEL_CHOICES)),
   new SlashCommandBuilder()
+    .setName('assign-hotel')
+    .setDescription('(Developer/Management) Assign an agent to a hotel')
+    .addUserOption(option => option.setName('user').setDescription('The agent to assign').setRequired(true))
+    .addStringOption(option => option.setName('hotel').setDescription('Select hotel').setRequired(true)
+      .addChoices(...HOTEL_CHOICES)),
+  new SlashCommandBuilder()
     .setName('db-agent-ready')
     .setDescription('(Developer Only) Allow a standby agent to start shifts')
     .addUserOption(option => option.setName('user').setDescription('The agent to mark ready').setRequired(true)),
