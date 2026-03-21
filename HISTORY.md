@@ -53,6 +53,9 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Updated standby wording from “Standby Training” to **Standby Agent**.
+- Updated standby flow behavior so agents in standby can still use setup selection (team/hotel picking) while live hotel login remains blocked until `/db-agent-ready`.
+- Relaxed lock-in guard for standby state so assignment setup can be changed before ready clearance.
 - Adjusted standby behavior to match operations flow:
   - Standby users can still open **Initialize Shift** and complete setup screens.
   - Live hotel login is blocked only at final login stage (not at initial portal click).

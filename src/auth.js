@@ -88,7 +88,7 @@ const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TEAM_1_HOTELS = ['BW_TO', 'BRNT', 'VALS', 'GICP', 'QI_RV', 'SUP8', 'RMDA', 'AD1'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
 const AGENT_STATUS_LABELS = {
-  standby: 'Standby Training',
+  standby: 'Standby Agent',
   ready: 'Ready for Live Shifts'
 };
 const ROLE_LABELS = {
@@ -409,7 +409,7 @@ function getAgentShiftAccessState(agent) {
 }
 
 function buildShiftStandbyMessage(agent) {
-  const statusLabel = AGENT_STATUS_LABELS[getAgentShiftAccessState(agent)] || 'Standby Training';
+  const statusLabel = AGENT_STATUS_LABELS[getAgentShiftAccessState(agent)] || 'Standby Agent';
   return `⏸️ **Live shift start is locked.** Your account is currently marked as **${statusLabel}**.\n\nYou can still use **Initialize Shift** for setup, but you cannot go live in a hotel until a Developer / Operations Manager runs \`/db-agent-ready\`.`;
 }
 
@@ -1548,6 +1548,29 @@ async function handleStartShiftClick(interaction) {
     // Standard Agent route:
     if (agent.hotel_id) {
        if (HOTEL_NAMES[agent.hotel_id]) {
+          if (getAgentShiftAccessState(agent) === 'standby') {
+            if (!agent.team) {
+              const embed = new EmbedBuilder()
+                .setTitle('👥 Team Selection')
+                .setDescription(
+                  `### 🎮 WHICH TEAM ARE YOU?\n` +
+                  `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+                  `> Select your **assigned team** to continue setup.\n` +
+                  `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+                )
+                .setColor(0x5865F2);
+
+              const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('team_btn_Team 1').setLabel('Team 1').setStyle(ButtonStyle.Primary).setEmoji('🧑‍💼'),
+                new ButtonBuilder().setCustomId('team_btn_Team 2').setLabel('Team 2').setStyle(ButtonStyle.Primary).setEmoji('🧑‍💻')
+              );
+
+              return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+            }
+
+            return await showHotelSelection(interaction, agent.team, false);
+          }
+
           const hotelSession = db.prepare(
             "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
           ).get(agent.hotel_id, agent.id);
@@ -1623,7 +1646,7 @@ async function handleTeamSelect(interaction) {
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
     
     // SECURITY GUARD: HARD LOCK-IN
-    if (agent && agent.hotel_id) {
+    if (agent && agent.hotel_id && getAgentShiftAccessState(agent) !== 'standby') {
        console.warn(`[SECURITY] ${interaction.user.username} tried to re-select team while locked into ${agent.hotel_id}`);
        return interaction.reply({ content: '❌ **Access Denied.** Your account is permanently linked to another hotel. Contact a developer to reassign.', ephemeral: true });
     }
@@ -1795,7 +1818,7 @@ async function handleConfirmHotelLink(interaction) {
     }
 
     // [Safety] Check if locked during the confirmation delay
-    if (agent.hotel_id && agent.hotel_id !== hotelId) {
+    if (agent.hotel_id && agent.hotel_id !== hotelId && getAgentShiftAccessState(agent) !== 'standby') {
        return interaction.update({ content: '❌ **Access Denied.** Your account is already linked to another hotel.', embeds: [], components: [] });
     }
 
