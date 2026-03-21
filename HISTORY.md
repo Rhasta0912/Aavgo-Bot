@@ -53,6 +53,7 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed `/db-remove-user` interaction timeout crash (`DiscordAPIError 10062: Unknown interaction`) by acknowledging early with `deferReply({ ephemeral: true })`, then completing with `editReply`, plus safe fallback reply logic inside catch. This prevents 3-second interaction expiry during heavy DB+role purge work.
 - Redesigned shift activity log embeds (`check-in`, `check-out`, `call`, `maintenance`, `handover`) into a cleaner dashboard card style with:
   - stronger visual headers per activity type
   - consistent summary chips (Agent, Hotel, Guest/Ref)

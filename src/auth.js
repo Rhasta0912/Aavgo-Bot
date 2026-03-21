@@ -2730,6 +2730,7 @@ async function handleRemoveAgent(interaction) {
 // ─── /add-agent (Admin) ──────────────────────────────
 async function handleAddAgent(interaction) {
   try {
+    await interaction.deferReply({ ephemeral: true });
     const targetUser = interaction.options.getUser('user');
     const pin = interaction.options.getString('pin');
     const role = normalizeAgentRole(interaction.options.getString('role') || 'agent');
@@ -3218,6 +3219,7 @@ async function handleDbDeleteAgent(interaction) {
   try {
     const targetUser = interaction.options.getUser('user');
     const discordId = targetUser.id;
+    await interaction.deferReply({ ephemeral: true });
     
     // Get agent internal ID first for session cleanup
     const agent = db.prepare("SELECT id FROM agents WHERE discord_id = ?").get(discordId);
@@ -3421,6 +3423,7 @@ async function handleDbRemoveUser(interaction) {
   try {
     const targetUser = interaction.options.getUser('user');
     const discordId = targetUser.id;
+    await interaction.deferReply({ ephemeral: true });
     
     const agent = db.prepare("SELECT id FROM agents WHERE discord_id = ?").get(discordId);
     
@@ -3456,7 +3459,7 @@ async function handleDbRemoveUser(interaction) {
       ? ` Remaining uneditable roles: ${remainingRoleNames.join(', ')}.`
       : ' All removable Discord roles were cleared.';
 
-    await interaction.reply({ content: `🔥 **COMPLETED PURGE:** **${targetUser.username}** has been wiped from the database and Discord role state.${rolePurgeNote}`, ephemeral: true });
+    await interaction.editReply({ content: `🔥 **COMPLETED PURGE:** **${targetUser.username}** has been wiped from the database and Discord role state.${rolePurgeNote}` });
 
     sendAuditLog(interaction.client, {
       title: '🔥 Total User Purge',
@@ -3467,7 +3470,11 @@ async function handleDbRemoveUser(interaction) {
     });
   } catch (error) {
     console.error('Error in handleDbRemoveUser:', error);
-    await interaction.reply({ content: '❌ Error during purge: ' + error.message, ephemeral: true });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Error during purge: ' + error.message }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Error during purge: ' + error.message, ephemeral: true }).catch(() => {});
+    }
   }
 }
 
