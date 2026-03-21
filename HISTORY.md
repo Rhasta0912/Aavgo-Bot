@@ -95,3 +95,4 @@ Working rules:
 - Added `SOP.md` to the repo as the operational standard for Alpha/Astra workflow, DB-first permissions, command-governance requirements, training-mode policy, AD1 calls-only behavior, deployment checklist, and incident handling.
 - Added `/select-trainee` for developers and management to assign the `1484705126026449029` Trainees role to a chosen user.
 - Moved the Team Leader login/status log channel from `1482516531505266770` to `1484878480046031099` so TL-related login portal activity now routes to `tl-logs`.
+- Moved management `TEAM_SHIFT` audit cards for login and shift analytics out of the general audit channel and into `tl-logs`, so the image-style login cards shown for Team Leaders/management now land in the dedicated TL log channel.

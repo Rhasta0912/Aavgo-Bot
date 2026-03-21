@@ -144,7 +144,9 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
     }
 
     // Categorized Logging
-    if (forceManagerLog) {
+    if (hotelId === 'TEAM_SHIFT') {
+      targetChannelId = TL_PORTAL_CHANNEL_ID;
+    } else if (forceManagerLog) {
       targetChannelId = AUDIT_LOG_CHANNEL_ID; // Ensure manager audit
     } else if (hotelId && TEAM_1_HOTELS.includes(hotelId)) {
       targetChannelId = TEAM_1_LOG_CHANNEL_ID;
@@ -628,6 +630,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     description: `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
     color: 0x57F287,
     userId: interaction.user.id,
+    hotelId: hotelId === 'TEAM_SHIFT' ? 'TEAM_SHIFT' : undefined,
     guild: interaction.guild
   });
 }
@@ -2298,6 +2301,7 @@ async function handleLogout(interaction) {
       description: summaryDesc,
       color: isManagement ? 0xED4245 : 0x3498DB,
       forceManagerLog: true,
+      hotelId: isManagement ? 'TEAM_SHIFT' : undefined,
       userId: interaction.user.id,
       guild: interaction.guild
     });
