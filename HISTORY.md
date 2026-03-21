@@ -64,3 +64,4 @@ Working rules:
 - Refined `/rac-send` onboarding DM by removing the onboarding-channel line per operations preference. Tutorial still includes clear registration steps and 24-hour one-time RAC safety guidance.
 - Updated AD1 (calls-only) activity controls in hotel status cards: AD1 now shows only End Shift, Call Log, and Handover actions (with break-end button when applicable), and blocks check-in/check-out/maintenance modal actions if triggered from stale messages.
 - Added `SOP.md` to the repo as the operational standard for Alpha/Astra workflow, DB-first permissions, command-governance requirements, training-mode policy, AD1 calls-only behavior, deployment checklist, and incident handling.
+- Added `/select-trainee` for developers and management to assign the `1484705126026449029` Trainees role to a chosen user.

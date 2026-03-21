@@ -3869,6 +3869,47 @@ async function handleHelpAgent(interaction) {
   }
 }
 
+async function handleSelectTrainee(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
+    const targetUser = interaction.options.getUser('name');
+    const traineeRoleId = '1484705126026449029';
+    const traineeRole = interaction.guild.roles.cache.get(traineeRoleId);
+
+    if (!traineeRole) {
+      return interaction.reply({ content: '❌ Trainees role not found in this server.', ephemeral: true });
+    }
+
+    const member = await interaction.guild.members.fetch(targetUser.id);
+    if (member.roles.cache.has(traineeRoleId)) {
+      return interaction.reply({ content: `⚠️ **${targetUser.username}** already has the Trainees role.`, ephemeral: true });
+    }
+
+    await member.roles.add(traineeRole);
+
+    await interaction.reply({
+      content: `✅ **${targetUser.username}** has been assigned the **Trainees** role.`,
+      ephemeral: true
+    });
+
+    sendAuditLog(interaction.client, {
+      title: '🎓 Trainee Role Assigned',
+      description: `**User:** ${targetUser.username} (<@${targetUser.id}>)\n**Assigned By:** {{AGENT_NAME}}\n**Role:** Trainees`,
+      color: 0xF1C40F,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleSelectTrainee:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Failed to assign the Trainees role.', ephemeral: true });
+    }
+  }
+}
+
 async function handleHelpTeamLeader(interaction) {
   try {
     if (!interactionHasRoleAtLeast(interaction, 'sme')) {
@@ -4423,6 +4464,7 @@ module.exports = {
   handleMemberLeave,
   handleHelpDev,
   handleHelpAgent,
+  handleSelectTrainee,
   handleHelpTeamLeader,
   handleHotelStatusRefresh,
   handleDbAssignHotel,

@@ -124,6 +124,10 @@ const commandData = [
     .setName('help-agent')
     .setDescription('Show a quick guide for core agent commands and daily workflow'),
   new SlashCommandBuilder()
+    .setName('select-trainee')
+    .setDescription('(Management/Developer) Assign the Trainees role to a user')
+    .addUserOption(option => option.setName('name').setDescription('The user to mark as trainee').setRequired(true)),
+  new SlashCommandBuilder()
     .setName('find-guest')
     .setDescription('(Manager/Dev) Search for guest records by name or room number')
     .addStringOption(option => option.setName('query').setDescription('Guest name or room number').setRequired(true)),
