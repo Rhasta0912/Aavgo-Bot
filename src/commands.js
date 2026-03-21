@@ -218,6 +218,14 @@ const commandData = [
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
       .addChoices(...HOTEL_CHOICES)),
   new SlashCommandBuilder()
+    .setName('db-agent-ready')
+    .setDescription('(Developer Only) Allow a standby agent to start shifts')
+    .addUserOption(option => option.setName('user').setDescription('The agent to mark ready').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('db-agent-standby')
+    .setDescription('(Developer Only) Put an agent back into standby training mode')
+    .addUserOption(option => option.setName('user').setDescription('The agent to put on standby').setRequired(true)),
+  new SlashCommandBuilder()
     .setName('help-team-leader')
     .setDescription('Show a comprehensive guide for Team Leaders and SMEs'),
 ].map(command => command.toJSON());

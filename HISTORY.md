@@ -53,6 +53,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Reintroduced standby readiness controls for launch/training flow:
+  - Added `/db-agent-ready` and `/db-agent-standby` back to slash commands and routing.
+  - Restored DB-backed status handlers (`agent_status`) with audit logging.
+  - Restored shift-entry gate so standby agents cannot start live shifts.
+  - Kept assignment capture behavior: standby agents can still save team/hotel via init flow, then get prompted to be marked ready.
 - Hardened interaction reliability to reduce “The application did not respond” failures:
   - Added a global try/catch fallback in `interactionCreate` so unexpected handler crashes now return a user-visible error response instead of timing out silently.
   - Patched `/db-add-developer` catch path to always send a fallback reply/editReply when request creation fails.

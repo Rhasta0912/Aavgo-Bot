@@ -408,6 +408,11 @@ function getAgentShiftAccessState(agent) {
   return agent?.agent_status === 'standby' ? 'standby' : 'ready';
 }
 
+function buildShiftStandbyMessage(agent) {
+  const statusLabel = AGENT_STATUS_LABELS[getAgentShiftAccessState(agent)] || 'Standby Training';
+  return `⏸️ **Shift access is locked.** Your account is currently marked as **${statusLabel}**.\n\nPlease complete training first, then ask a Developer / Operations Manager to run \`/db-agent-ready\`.`;
+}
+
 function normalizeAgentRole(role) {
   const cleaned = String(role || '')
     .trim()
@@ -1537,6 +1542,12 @@ async function handleStartShiftClick(interaction) {
     }
 
     // Standard Agent route:
+    if (!isTLOrSME && getAgentShiftAccessState(agent) === 'standby') {
+      return interaction.reply({
+        content: buildShiftStandbyMessage(agent),
+        ephemeral: true
+      });
+    }
 
     if (agent.hotel_id) {
        if (HOTEL_NAMES[agent.hotel_id]) {
@@ -1949,6 +1960,12 @@ async function handleShiftInitModalSubmit(interaction) {
 
     db.prepare("UPDATE agents SET team = COALESCE(team, ?), hotel_id = COALESCE(hotel_id, ?) WHERE discord_id = ?").run(normalizedTeam, normalizedHotel, interaction.user.id);
     const refreshedAgent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(interaction.user.id);
+
+    if (getAgentShiftAccessState(refreshedAgent) === 'standby') {
+      return interaction.editReply({
+        content: `✅ Your assignment has been saved as **${HOTEL_NAMES[normalizedHotel]}** under **${normalizedTeam}**.\n\n${buildShiftStandbyMessage(refreshedAgent)}`
+      });
+    }
 
     try {
       const teamRole = interaction.guild.roles.cache.find(r => r.name === normalizedTeam);
@@ -3871,6 +3888,8 @@ async function handleHelpDev(interaction) {
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
         '> `/db-assign-hotel`: Permanently link an agent to a hotel.\n' +
+        '> `/db-agent-ready`: Clear a standby agent for live shifts.\n' +
+        '> `/db-agent-standby`: Put an agent back into training-only mode.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
         '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles.\n\n' +
@@ -4132,6 +4151,49 @@ async function handleDbAssignHotel(interaction) {
     console.error('Error in handleDbAssignHotel:', e);
     await interaction.reply({ content: '❌ Error assigning hotel.', ephemeral: true });
   }
+}
+
+async function handleDbAgentStatus(interaction, nextStatus) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
+    }
+
+    const target = interaction.options.getUser('user');
+    const agent = db.prepare("SELECT username, agent_status FROM agents WHERE discord_id = ?").get(target.id);
+    if (!agent) {
+      return interaction.reply({ content: '❌ That user is not a registered agent.', ephemeral: true });
+    }
+
+    db.prepare("UPDATE agents SET agent_status = ? WHERE discord_id = ?").run(nextStatus, target.id);
+
+    const statusLabel = AGENT_STATUS_LABELS[nextStatus] || nextStatus;
+    await interaction.reply({
+      content: `✅ **${target.username}** is now marked as **${statusLabel}**.`,
+      ephemeral: true
+    });
+
+    sendAuditLog(interaction.client, {
+      title: nextStatus === 'ready' ? '✅ Agent Cleared for Live Shifts' : '⏸️ Agent Put on Standby',
+      description: `**Agent:** ${target.username} (<@${target.id}>)\n**New Status:** ${statusLabel}\n**Updated by:** {{AGENT_NAME}}`,
+      color: nextStatus === 'ready' ? 0x57F287 : 0xFEE75C,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleDbAgentStatus:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Failed to update agent status.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleDbAgentReady(interaction) {
+  return handleDbAgentStatus(interaction, 'ready');
+}
+
+async function handleDbAgentStandby(interaction) {
+  return handleDbAgentStatus(interaction, 'standby');
 }
 
 async function handleGenerateRAC(interaction) {
@@ -4555,6 +4617,8 @@ module.exports = {
   handleHelpTeamLeader,
   handleHotelStatusRefresh,
   handleDbAssignHotel,
+  handleDbAgentReady,
+  handleDbAgentStandby,
   handleGenerateRAC,
   handleRacSend,
   handleFindGuest,

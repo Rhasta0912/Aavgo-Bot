@@ -268,6 +268,10 @@ client.on('interactionCreate', async interaction => {
       await auth.handleHotelStatusRefresh(interaction);
     } else if (commandName === 'db-assign-hotel') {
       await auth.handleDbAssignHotel(interaction);
+    } else if (commandName === 'db-agent-ready') {
+      await auth.handleDbAgentReady(interaction);
+    } else if (commandName === 'db-agent-standby') {
+      await auth.handleDbAgentStandby(interaction);
     } else if (commandName === 'generate-rac') {
       await auth.handleGenerateRAC(interaction);
     } else if (commandName === 'rac-send') {
