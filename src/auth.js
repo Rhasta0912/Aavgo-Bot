@@ -410,7 +410,7 @@ function getAgentShiftAccessState(agent) {
 
 function buildShiftStandbyMessage(agent) {
   const statusLabel = AGENT_STATUS_LABELS[getAgentShiftAccessState(agent)] || 'Standby Training';
-  return `⏸️ **Shift access is locked.** Your account is currently marked as **${statusLabel}**.\n\nPlease complete training first, then ask a Developer / Operations Manager to run \`/db-agent-ready\`.`;
+  return `⏸️ **Live shift start is locked.** Your account is currently marked as **${statusLabel}**.\n\nYou can still use **Initialize Shift** for setup, but you cannot go live in a hotel until a Developer / Operations Manager runs \`/db-agent-ready\`.`;
 }
 
 function normalizeAgentRole(role) {
@@ -492,6 +492,10 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   const recentSession = db.prepare("SELECT id FROM sessions WHERE agent_id = ? AND hotel_id = ? AND login_time >= ?").get(agent.id, hotelId, fiveSecondsAgo);
   if (recentSession) {
     return interaction.editReply({ content: '⚠️ You just logged in! Please wait a moment for the status to update.' });
+  }
+
+  if (hotelId !== 'TEAM_SHIFT' && getAgentShiftAccessState(agent) === 'standby') {
+    return interaction.editReply({ content: buildShiftStandbyMessage(agent) });
   }
 
   await closeAllActiveSessionsForAgent(agent.id, interaction.client);
@@ -1542,13 +1546,6 @@ async function handleStartShiftClick(interaction) {
     }
 
     // Standard Agent route:
-    if (!isTLOrSME && getAgentShiftAccessState(agent) === 'standby') {
-      return interaction.reply({
-        content: buildShiftStandbyMessage(agent),
-        ephemeral: true
-      });
-    }
-
     if (agent.hotel_id) {
        if (HOTEL_NAMES[agent.hotel_id]) {
           const hotelSession = db.prepare(

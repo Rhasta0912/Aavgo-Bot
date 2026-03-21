@@ -53,6 +53,10 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Adjusted standby behavior to match operations flow:
+  - Standby users can still open **Initialize Shift** and complete setup screens.
+  - Live hotel login is blocked only at final login stage (not at initial portal click).
+  - Updated standby message copy to clarify it is a **live shift lock**, not a full access lock.
 - Added `/assign-hotel` as a clean alias to hotel assignment flow (routes to the same assign handler as `/db-assign-hotel`) for faster operations usage.
 - Updated Initialize Shift user-facing placeholder and invalid-hotel validation text to use the new hotel names (no legacy code-style placeholder hints shown to agents).
 - Updated `/help-dev` copy to document both `/db-assign-hotel` and `/assign-hotel`.
