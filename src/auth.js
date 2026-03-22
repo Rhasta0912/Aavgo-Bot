@@ -1342,6 +1342,145 @@ async function handleSetupRegister(interaction) {
 }
 
 // ─── /register ───────────────────────────────────────
+async function handleSetupSecurity(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle('🔐 Aavgo Security Setup')
+      .setDescription(
+        '# Security Update Kiosk\n' +
+        'Use the button below to set your **security PIN** and **phone number**.\n\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        '> • PIN must be **4-6 digits**\n' +
+        '> • Phone must start with **63** or **09**\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+        '*Only registered agents can submit this form.*'
+      )
+      .setColor(0xF1C40F)
+      .setFooter({ text: 'Aavgo Operations • Security Kiosk' })
+      .setTimestamp();
+
+    const setupBtn = new ButtonBuilder()
+      .setCustomId('security_setup_btn')
+      .setLabel('Set Security PIN & Phone')
+      .setStyle(ButtonStyle.Primary);
+
+    await interaction.reply({
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(setupBtn)]
+    });
+  } catch (error) {
+    console.error('Error in handleSetupSecurity:', error);
+  }
+}
+
+async function handleSecuritySetupStart(interaction) {
+  try {
+    const agent = db.prepare("SELECT pin, phone FROM agents WHERE discord_id = ?").get(interaction.user.id);
+    if (!agent) {
+      return interaction.reply({
+        content: '❌ You are not a registered agent. Ask Operations Manager or Developer to run `/add-agent` first.',
+        ephemeral: true
+      });
+    }
+
+    const modal = new ModalBuilder()
+      .setCustomId('security_setup_modal')
+      .setTitle('Setup Security');
+
+    const pinInput = new TextInputBuilder()
+      .setCustomId('security_pin')
+      .setLabel('New Security PIN (4-6 digits)')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMinLength(4)
+      .setMaxLength(6)
+      .setPlaceholder('e.g. 1234');
+
+    const confirmPinInput = new TextInputBuilder()
+      .setCustomId('security_pin_confirm')
+      .setLabel('Confirm Security PIN')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setMinLength(4)
+      .setMaxLength(6)
+      .setPlaceholder('Re-enter your PIN');
+
+    const phoneInput = new TextInputBuilder()
+      .setCustomId('security_phone')
+      .setLabel('Phone Number (63 or 09)')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true)
+      .setPlaceholder('e.g. 639273068312 or 09123456789');
+
+    if (agent.phone) {
+      phoneInput.setValue(agent.phone);
+    }
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(pinInput),
+      new ActionRowBuilder().addComponents(confirmPinInput),
+      new ActionRowBuilder().addComponents(phoneInput)
+    );
+
+    await interaction.showModal(modal);
+  } catch (error) {
+    console.error('Error in handleSecuritySetupStart:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Could not open security setup form.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleSecuritySetupSubmit(interaction) {
+  try {
+    await interaction.deferReply({ ephemeral: true });
+
+    const pin = interaction.fields.getTextInputValue('security_pin').trim();
+    const pinConfirm = interaction.fields.getTextInputValue('security_pin_confirm').trim();
+    const phone = interaction.fields.getTextInputValue('security_phone').trim();
+
+    if (!/^\d{4,6}$/.test(pin)) {
+      return interaction.editReply({ content: '❌ PIN must be **4 to 6 digits**.' });
+    }
+    if (pin !== pinConfirm) {
+      return interaction.editReply({ content: '❌ PIN and confirm PIN do not match.' });
+    }
+    const phonePattern = /^(?:63\d{10}|09\d{9})$/;
+    if (!phonePattern.test(phone)) {
+      return interaction.editReply({ content: '❌ Invalid phone number. Use PH format starting with `63` or `09`.' });
+    }
+
+    const agent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(interaction.user.id);
+    if (!agent) {
+      return interaction.editReply({ content: '❌ You are not a registered agent. Ask Operations Manager or Developer to run `/add-agent` first.' });
+    }
+
+    db.prepare("UPDATE agents SET pin = ?, phone = ?, username = ? WHERE discord_id = ?")
+      .run(pin, phone, interaction.user.username, interaction.user.id);
+
+    await interaction.editReply({ content: '✅ Security profile updated. Your PIN and phone number are now saved.' });
+
+    sendAuditLog(interaction.client, {
+      title: '🔐 Security Setup Updated',
+      description: `**Agent:** ${interaction.user.username} (<@${interaction.user.id}>)\n**Action:** Updated PIN and phone via security kiosk`,
+      color: 0xF1C40F,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleSecuritySetupSubmit:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to save security setup.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to save security setup.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 async function handleRegister(interaction) {
   console.log(`[AUTH] Register button clicked by ${interaction.user.username} (${interaction.user.id})`);
   try {
@@ -4133,6 +4272,7 @@ async function handleHelpDev(interaction) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/setup-login`: Rebuild or refresh the persistent agent login kiosk.\n' +
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
+        '> `/setup-security`: Deploy the security setup kiosk (PIN + phone form).\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
         '### 👥 Agent Lifecycle Controls\n' +
@@ -4209,7 +4349,8 @@ async function handleHelpAgent(interaction) {
         '> `/my-schedule`: Check your next assigned shifts.\n' +
         '> `/login`: Start your shift from the correct hotel flow.\n' +
         '> `/status`: Review current staffing and shift coverage.\n' +
-        '> `/reset-pin` or `/setup-security`: Change your own security PIN.\n' +
+        '> `/reset-pin`: Change your own security PIN.\n' +
+        '> Security kiosk: click **Set Security PIN & Phone** when management posts `/setup-security`.\n' +
         '> `/check-hours`: Review your logged hours.\n' +
         '> `/end-shift` or `/logout`: End your current shift safely.\n\n' +
         '### 🧰 During Shift\n' +
@@ -4887,6 +5028,7 @@ module.exports = {
   updateHotelStatusEmbed,
   handleSetupLogin, 
   handleSetupRegister,
+  handleSetupSecurity,
   handleStartShiftClick, 
   handleHotelSelect, 
   handleLogin, 
@@ -4935,6 +5077,8 @@ module.exports = {
   handleAssignTeam,
   handleHelpTeamLeader,
   handleHotelStatusRefresh,
+  handleSecuritySetupStart,
+  handleSecuritySetupSubmit,
   handleDbAssignHotel,
   handleGenerateRAC,
   handleRacSend,

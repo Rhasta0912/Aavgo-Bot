@@ -317,7 +317,7 @@ client.on('interactionCreate', async interaction => {
     } else if (commandName === 'reset-pin') {
       await auth.handleResetPin(interaction);
     } else if (commandName === 'setup-security') {
-      await auth.handleResetPin(interaction);
+      await auth.handleSetupSecurity(interaction);
     } else if (commandName === 'remove-agent') {
       await auth.handleRemoveAgentCommand(interaction);
     } else if (commandName === 'check-hours') {
@@ -400,6 +400,8 @@ client.on('interactionCreate', async interaction => {
   } else if (interaction.isModalSubmit()) {
     if (interaction.customId === 'register_modal') {
       await interaction.reply({ content: '⛔ Registration is disabled. Please contact Operations Manager or Developer.', ephemeral: true });
+    } else if (interaction.customId === 'security_setup_modal') {
+      await auth.handleSecuritySetupSubmit(interaction);
     } else if (interaction.customId.startsWith('activity_modal_')) {
       await auth.handleActivityModalSubmit(interaction);
     } else if (interaction.customId.startsWith('bio_deny_modal_')) {
@@ -412,6 +414,8 @@ client.on('interactionCreate', async interaction => {
   } else if (interaction.isButton()) {
     if (interaction.customId === 'start_shift_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
       await auth.handleStartShiftClick(interaction);
+    } else if (interaction.customId === 'security_setup_btn') {
+      await auth.handleSecuritySetupStart(interaction);
     } else if (interaction.customId === 'register_start_btn') {
       await interaction.reply({ content: '⛔ Registration is disabled. Use `/add-agent` onboarding instead.', ephemeral: true });
     } else if (interaction.customId.startsWith('team_btn_')) {

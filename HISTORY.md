@@ -139,7 +139,7 @@ Working rules:
 - Updated add-agent promotion messaging to stop displaying PIN values in `/add-agent` DM notices and success confirmations.
 - Removed self-registration command surface from slash commands (`/register`, `/setup-register`).
 - Added `/reset-pin` for agent self-service security PIN rotation (current PIN + new PIN + confirm PIN).
-- Added `/setup-security` as an onboarding-friendly alias to the same secure PIN rotation flow used by `/reset-pin`.
+- Added `/setup-security` as a management-posted security kiosk (embed + button + modal) where registered agents can submit PIN + phone updates.
 - Updated interaction routing so legacy register modal/button paths now return a clear "registration disabled" response instead of continuing old onboarding flow.
 - Updated SOP onboarding policy: Operations Manager/Developer-only onboarding via `/add-agent`, then agent-side PIN rotation via `/reset-pin`.
 
