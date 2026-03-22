@@ -4059,7 +4059,7 @@ async function handleHelpDev(interaction) {
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
         '> `/assign-team`: Move an agent between Team 1 and Team 2.\n' +
-        '> `/db-assign-hotel` or `/assign-hotel`: Permanently link an agent to a hotel.\n' +
+        '> `/db-assign-hotel`: Permanently link an agent to a hotel.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
         '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles.\n\n' +

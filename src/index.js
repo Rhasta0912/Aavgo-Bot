@@ -366,7 +366,7 @@ client.on('interactionCreate', async interaction => {
       await auth.handleHelpTeamLeader(interaction);
     } else if (commandName === 'hotel-status') {
       await auth.handleHotelStatusRefresh(interaction);
-    } else if (commandName === 'db-assign-hotel' || commandName === 'assign-hotel') {
+    } else if (commandName === 'db-assign-hotel') {
       await auth.handleDbAssignHotel(interaction);
     } else if (commandName === 'generate-rac') {
       await auth.handleGenerateRAC(interaction);

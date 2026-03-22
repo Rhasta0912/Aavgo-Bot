@@ -11,6 +11,7 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 - Repo memory mirror: `HISTORY.md`
 
 ## Pre-Change Review
+- This is mandatory for every bug fix, new feature, and update before touching code.
 - Before making any code, documentation, or deployment changes, read:
   - this `SOP.md`
   - repo `HISTORY.md`
