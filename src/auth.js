@@ -332,10 +332,10 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
 }
 
 // ─── PIN Verification Modal ─────────────────────────
-async function showPinModal(interaction, hotelId, isTakeover = false) {
+async function showPinModal(interaction, hotelId, isTakeover = false, allowMultiHotel = false) {
   const hotelName = HOTEL_NAMES[hotelId] || (hotelId === 'TEAM_SHIFT' ? 'Management Shift' : hotelId);
   const modal = new ModalBuilder()
-    .setCustomId(`loginmodal_${hotelId}${isTakeover ? '_takeover' : ''}`)
+    .setCustomId(`loginmodal_${hotelId}${isTakeover ? '_takeover' : ''}${allowMultiHotel ? '_multi' : ''}`)
     .setTitle(`🔑 Verify PIN — ${hotelName}`.substring(0, 45));
 
   const pinInput = new TextInputBuilder()
@@ -483,12 +483,15 @@ async function removeApplicantsRoleIfPromoted(member, guild, contextLabel = 'ROL
   }
 }
 
-async function sendAgentPinDM(member, pin, roleLabel = 'Agent') {
+async function sendAgentPinDM(member, pin, roleLabel = 'Agent', includePin = true) {
+  const pinBlock = includePin
+    ? `Your secure PIN is: \`${pin}\`\n\n`
+    : 'Your secure PIN has been set by management.\nFor security, it is not shown in this DM.\n\n';
   const embed = new EmbedBuilder()
     .setTitle(`🎉 Welcome to Aavgo, ${member.user.username}`)
     .setDescription(
       `You have been promoted to **${roleLabel}**.\n\n` +
-      `Your secure PIN is: \`${pin}\`\n\n` +
+      pinBlock +
       `Please keep this private and use it only for your Aavgo login flow.`
     )
     .setColor(0xF1C40F)
@@ -529,7 +532,7 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
     console.warn(`[${sourceLabel}] Role sync warning:`, roleErr.message);
   }
 
-  await sendAgentPinDM(member, pin, getRoleLabel(normalizedRole)).catch(error => {
+  await sendAgentPinDM(member, pin, getRoleLabel(normalizedRole), sourceLabel !== 'ADD-AGENT').catch(error => {
     console.warn(`[${sourceLabel}] Could not DM PIN:`, error.message);
   });
 
@@ -683,14 +686,16 @@ async function showShiftInitModal(interaction, agent) {
   await interaction.showModal(modal);
 }
 
-async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false) {
+async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false, allowMultiHotel = false) {
   const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
   const recentSession = db.prepare("SELECT id FROM sessions WHERE agent_id = ? AND hotel_id = ? AND login_time >= ?").get(agent.id, hotelId, fiveSecondsAgo);
   if (recentSession) {
     return interaction.editReply({ content: '⚠️ You just logged in! Please wait a moment for the status to update.' });
   }
 
-  await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+  if (!allowMultiHotel) {
+    await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+  }
 
   if (hotelId !== 'TEAM_SHIFT') {
     const conflictingSession = db.prepare(
@@ -1701,6 +1706,7 @@ async function handleDenyReg(interaction) {
 async function handleStartShiftClick(interaction) {
   try {
     const isTLButton = interaction.customId === 'tl_start_shift_btn';
+    const allowMultiHotel = interaction.customId === 'start_shift_multi_confirm_btn' || interaction.customId === 'tl_start_shift_multi_confirm_btn';
     const discordId = interaction.user.id;
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
     if (!agent) {
@@ -1722,10 +1728,29 @@ async function handleStartShiftClick(interaction) {
 
     // Check if agent is already on shift
     const activeSession = db.prepare("SELECT * FROM sessions WHERE agent_id = ? AND status = 'active'").get(agent.id);
-    if (activeSession) {
-      return interaction.reply({ 
-        content: `⚠️ You are already logged into **${HOTEL_NAMES[activeSession.hotel_id] || activeSession.hotel_id}**. Please log out first.`,
-        ephemeral: true 
+    if (activeSession && !allowMultiHotel) {
+      const multiEmbed = new EmbedBuilder()
+        .setTitle('🏨 Multiple Hotels Check')
+        .setDescription(
+          `You are already logged into **${HOTEL_NAMES[activeSession.hotel_id] || activeSession.hotel_id}**.\n\n` +
+          'Are you handling **multiple hotels** right now?'
+        )
+        .setColor(0xFEE75C);
+
+      const continueBtn = new ButtonBuilder()
+        .setCustomId(isTLButton ? 'tl_start_shift_multi_confirm_btn' : 'start_shift_multi_confirm_btn')
+        .setLabel('Yes, Continue')
+        .setStyle(ButtonStyle.Primary);
+
+      const cancelBtn = new ButtonBuilder()
+        .setCustomId('start_shift_multi_cancel_btn')
+        .setLabel('No, Cancel')
+        .setStyle(ButtonStyle.Secondary);
+
+      return interaction.reply({
+        embeds: [multiEmbed],
+        components: [new ActionRowBuilder().addComponents(continueBtn, cancelBtn)],
+        ephemeral: true
       });
     }
 
@@ -1737,7 +1762,7 @@ async function handleStartShiftClick(interaction) {
             ephemeral: true
           });
        }
-       return await showPinModal(interaction, 'TEAM_SHIFT');
+       return await showPinModal(interaction, 'TEAM_SHIFT', false, allowMultiHotel);
     }
 
 
@@ -1770,7 +1795,7 @@ async function handleStartShiftClick(interaction) {
           }
 
           console.log(`[LOCK-IN] ${interaction.user.username} bypassing selection for linked hotel ${agent.hotel_id}`);
-          return await showPinModal(interaction, agent.hotel_id);
+          return await showPinModal(interaction, agent.hotel_id, false, allowMultiHotel);
        } else {
           db.prepare("UPDATE agents SET hotel_id = NULL WHERE discord_id = ?").run(interaction.user.id);
        }
@@ -2090,6 +2115,18 @@ async function handleCancelTakeover(interaction) {
   }
 }
 
+async function handleCancelMultiHotelStart(interaction) {
+  try {
+    await interaction.update({
+      content: '✅ No problem. Multi-hotel shift start cancelled.',
+      embeds: [],
+      components: []
+    });
+  } catch (error) {
+    console.error('Error in handleCancelMultiHotelStart:', error);
+  }
+}
+
 async function handleTakeoverShift(interaction) {
   try {
     const hotelId = interaction.customId.replace('takeover_btn_', '');
@@ -2198,8 +2235,11 @@ async function handleModalSubmit(interaction) {
 
     if (!interaction.customId.startsWith('loginmodal_')) return;
 
-    const isTakeover = interaction.customId.endsWith('_takeover');
-    const hotelId = interaction.customId.replace('loginmodal_', '').replace('_takeover', '');
+    let modalPayload = interaction.customId.replace('loginmodal_', '');
+    const allowMultiHotel = modalPayload.endsWith('_multi');
+    if (allowMultiHotel) modalPayload = modalPayload.slice(0, -6);
+    const isTakeover = modalPayload.endsWith('_takeover');
+    const hotelId = isTakeover ? modalPayload.slice(0, -9) : modalPayload;
     const pin = interaction.fields.getTextInputValue('pin_input');
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
 
@@ -2207,7 +2247,7 @@ async function handleModalSubmit(interaction) {
       return interaction.editReply({ content: '❌ **Incorrect PIN.** Access denied.' });
     }
 
-    await finalizeShiftLogin(interaction, agent, hotelId, isTakeover);
+    await finalizeShiftLogin(interaction, agent, hotelId, isTakeover, allowMultiHotel);
     return;
 
     // Submission Guard: Block double-submissions within 5 seconds for the same hotel/agent
@@ -2957,7 +2997,7 @@ async function handleAddAgent(interaction) {
 
     await applyAgentPromotion(interaction, targetUser, pin, role, 'ADD-AGENT');
 
-    await interaction.reply({ content: `✅ **${targetUser.username}** has been added as **${role}** with PIN \`${pin}\`.`, ephemeral: true });
+    await interaction.reply({ content: `✅ **${targetUser.username}** has been added as **${role}**.`, ephemeral: true });
 
     sendAuditLog(interaction.client, {
       title: 'Agent Added',
@@ -4055,7 +4095,7 @@ async function handleHelpDev(interaction) {
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
         '> `/assign-team`: Move an agent between Team 1 and Team 2.\n' +
-        '> `/db-assign-hotel`: Permanently link an agent to a hotel.\n' +
+        '> `/db-assign-hotel`: Permanently link an agent to a hotel (`sync`: permission/ghost/both).\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
         '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles.\n\n' +
@@ -4324,17 +4364,20 @@ async function handleDbAssignHotel(interaction) {
     }
     const target = interaction.options.getUser('user');
     const hotelId = interaction.options.getString('hotel');
+    const syncMode = interaction.options.getString('sync') || 'both';
+    const syncPermission = syncMode === 'permission' || syncMode === 'both';
+    const syncGhost = syncMode === 'ghost' || syncMode === 'both';
 
     db.prepare("UPDATE agents SET hotel_id = ? WHERE discord_id = ?").run(hotelId, target.id);
     
     await interaction.reply({ 
-      content: `✅ Successfully linked **${target.username}** permanently to **${HOTEL_NAMES[hotelId]}**.`, 
+      content: `✅ Successfully linked **${target.username}** permanently to **${HOTEL_NAMES[hotelId]}**.\nRole sync mode: **${syncMode}**.`, 
       ephemeral: true 
     });
 
     sendAuditLog(interaction.client, {
       title: '🔗 Permanent Hotel Linkage',
-      description: `**Agent:** ${target.username} (<@${target.id}>)\n**Linked to:** ${HOTEL_NAMES[hotelId]}\n**Admin:** {{AGENT_NAME}}`,
+      description: `**Agent:** ${target.username} (<@${target.id}>)\n**Linked to:** ${HOTEL_NAMES[hotelId]}\n**Role Sync:** ${syncMode}\n**Admin:** {{AGENT_NAME}}`,
       color: 0x3498DB,
       userId: interaction.user.id,
       guild: interaction.guild
@@ -4344,8 +4387,8 @@ async function handleDbAssignHotel(interaction) {
     try {
       const member = await interaction.guild.members.fetch(target.id);
       if (member) {
-        const greyRoleIds = Object.values(ROLE_NAMES.GREY);
-        const greenRoleIds = Object.values(ROLE_NAMES.GREEN);
+        const greyRoleIds = syncGhost ? Object.values(ROLE_NAMES.GREY) : [];
+        const greenRoleIds = syncPermission ? Object.values(ROLE_NAMES.GREEN) : [];
         
         // Find existing Grey/Green roles to remove
         const rolesToRemove = member.roles.cache.filter(r => 
@@ -4354,11 +4397,13 @@ async function handleDbAssignHotel(interaction) {
         
         if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
         
-        // Add new Grey role (Assignment)
+        // Add selected role types for new assignment
         const newGreyRoleId = ROLE_NAMES.GREY[hotelId];
-        const newGreyRole = interaction.guild.roles.cache.get(newGreyRoleId);
+        const newGreenRoleId = ROLE_NAMES.GREEN[hotelId];
+        const newGreyRole = syncGhost ? interaction.guild.roles.cache.get(newGreyRoleId) : null;
+        const newGreenRole = syncPermission ? interaction.guild.roles.cache.get(newGreenRoleId) : null;
         
-        const rolesToAdd = [newGreyRole].filter(Boolean);
+        const rolesToAdd = [newGreyRole, newGreenRole].filter(Boolean);
         
         // If they are currently on shift (only if we can detect it easily, but better to just add Grey)
         // Actually, if they are on-shift, the Login flow handles Green roles. 
@@ -4769,7 +4814,7 @@ async function handleAddAgent(interaction) {
 
     await applyAgentPromotion(interaction, targetUser, pin, role, 'ADD-AGENT');
 
-    await interaction.editReply({ content: `✅ **${targetUser.username}** has been added as **${role}** with PIN \`${pin}\`.` });
+    await interaction.editReply({ content: `✅ **${targetUser.username}** has been added as **${role}**.` });
 
     sendAuditLog(interaction.client, {
       title: 'Agent Added',
@@ -4814,6 +4859,7 @@ module.exports = {
   handleModalSubmit,
   handleTakeoverShift,
   handleCancelTakeover,
+  handleCancelMultiHotelStart,
   handleTeamSelect,
   handleResetTeam,
   handleDbDeleteAgent,

@@ -406,7 +406,7 @@ client.on('interactionCreate', async interaction => {
       await auth.handleNewcomerAgentPinSubmit(interaction);
     }
   } else if (interaction.isButton()) {
-    if (interaction.customId === 'start_shift_btn') {
+    if (interaction.customId === 'start_shift_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'register_start_btn') {
       await auth.handleRegister(interaction);
@@ -456,11 +456,13 @@ client.on('interactionCreate', async interaction => {
       await tools.handleCallAgentMenu(interaction);
     } else if (interaction.customId === 'cancel_takeover_btn') {
       await auth.handleCancelTakeover(interaction);
+    } else if (interaction.customId === 'start_shift_multi_cancel_btn') {
+      await auth.handleCancelMultiHotelStart(interaction);
     } else if (interaction.customId.startsWith('dev_approve_')) {
       await auth.handleDevApprove(interaction);
     } else if (interaction.customId.startsWith('dev_deny_')) {
       await auth.handleDevDeny(interaction);
-    } else if (interaction.customId === 'tl_start_shift_btn') {
+    } else if (interaction.customId === 'tl_start_shift_btn' || interaction.customId === 'tl_start_shift_multi_confirm_btn') {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'tl_logout_btn') {
       await auth.handleLogout(interaction);

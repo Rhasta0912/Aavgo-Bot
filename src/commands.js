@@ -224,7 +224,13 @@ const commandData = [
     .setDescription('(Developer Only) Manually set an agent\'s permanent hotel linking')
     .addUserOption(option => option.setName('user').setDescription('The agent to link').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
-      .addChoices(...HOTEL_CHOICES)),
+      .addChoices(...HOTEL_CHOICES))
+    .addStringOption(option => option.setName('sync').setDescription('Which role type to sync').setRequired(false)
+      .addChoices(
+        { name: 'Both', value: 'both' },
+        { name: 'Permission Role', value: 'permission' },
+        { name: 'Ghost Role', value: 'ghost' }
+      )),
   new SlashCommandBuilder()
     .setName('help-team-leader')
     .setDescription('Show a comprehensive guide for Team Leaders and SMEs'),

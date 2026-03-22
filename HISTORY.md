@@ -134,4 +134,7 @@ Working rules:
 - Merged the Magnuson (`BRNT`) login-channel routing into Indianhead IronWood (`BW_TO`) by pointing both hotel IDs at `1482303551614095441`, so the old Magnuson channel can be removed without breaking login post routing.
 - Fixed `/add-agent` agent-role assignment to resolve the `Agents` role by the exact Discord role ID `1482227287159078964` first, so the command reliably restores the role again even if role-name lookup is inconsistent.
 - Collapsed the Magnuson merge into Indianhead/Magnuson by renaming BW_TO display text to `Indianhead/Magnuson`, removing Magnuson from visible hotel choices/channel routing, and adding a DB migration that folds old `BRNT` hotel records into `BW_TO`.
+- Added a multi-hotel confirmation step in shift start flow: if an agent already has an active session, the bot now prompts **“Are you handling multiple hotels?”** with continue/cancel buttons before allowing another shift login.
+- Added `/db-assign-hotel` optional `sync` mode (`permission`, `ghost`, `both`) so management can choose which role family gets synced during assignment.
+- Updated add-agent promotion messaging to stop displaying PIN values in `/add-agent` DM notices and success confirmations.
 
