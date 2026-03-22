@@ -24,12 +24,6 @@ const commandData = [
     .setName('setup-login')
     .setDescription('Setup the persistent login message (Admin only)'),
   new SlashCommandBuilder()
-    .setName('setup-register')
-    .setDescription('Setup the recruitment kiosk message (Admin only)'),
-  new SlashCommandBuilder()
-    .setName('register')
-    .setDescription('Register as an Aavgo agent (requires admin approval)'),
-  new SlashCommandBuilder()
     .setName('add-agent')
     .setDescription('(Admin) Add a user as an agent instantly')
     .addUserOption(option => option.setName('user').setDescription('The user to add').setRequired(true))
@@ -41,6 +35,12 @@ const commandData = [
         { name: 'Team Leader', value: 'team_leader' },
         { name: 'Operations Manager', value: 'operations_manager' }
       )),
+  new SlashCommandBuilder()
+    .setName('reset-pin')
+    .setDescription('Reset your own security PIN')
+    .addStringOption(option => option.setName('current_pin').setDescription('Your current PIN').setRequired(true))
+    .addStringOption(option => option.setName('new_pin').setDescription('New PIN (4-6 digits)').setRequired(true))
+    .addStringOption(option => option.setName('confirm_pin').setDescription('Confirm new PIN').setRequired(true)),
   new SlashCommandBuilder()
     .setName('remove-agent')
     .setDescription('(Admin) Remove a user as an agent')

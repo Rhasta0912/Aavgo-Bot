@@ -76,12 +76,11 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 - AD1 should not run check-in/check-out/maintenance workflows.
 
 ## Recruitment SOP
-- `/rac-send` issues one-time RAC (24h expiry) by DM.
-- DM must include:
-  - RAC code
-  - registration tutorial steps
-  - one-time/expiry warning
-- Do not share RAC publicly.
+- Self-registration is disabled.
+- Do not use recruitment/register kiosk flow for onboarding.
+- New onboarding path:
+  - Operations Manager or Developer runs `/add-agent`.
+  - Agent uses `/reset-pin` to rotate their own security PIN after onboarding.
 
 ## Hotel Naming SOP
 - Keep IDs stable for logic and database joins.

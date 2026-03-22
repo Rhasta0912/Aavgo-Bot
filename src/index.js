@@ -309,11 +309,13 @@ client.on('interactionCreate', async interaction => {
     } else if (commandName === 'setup-login-team') {
       await auth.handleSetupLoginTeam(interaction);
     } else if (commandName === 'setup-register') {
-      await auth.handleSetupRegister(interaction);
+      await interaction.reply({ content: '⛔ Registration is disabled. Use `/add-agent` for onboarding.', ephemeral: true });
     } else if (commandName === 'register') {
-      await auth.handleRegister(interaction);
+      await interaction.reply({ content: '⛔ Self-registration is disabled. Please ask Operations Manager or Developer to run `/add-agent`.', ephemeral: true });
     } else if (commandName === 'add-agent') {
       await auth.handleAddAgent(interaction);
+    } else if (commandName === 'reset-pin') {
+      await auth.handleResetPin(interaction);
     } else if (commandName === 'remove-agent') {
       await auth.handleRemoveAgentCommand(interaction);
     } else if (commandName === 'check-hours') {
@@ -395,7 +397,7 @@ client.on('interactionCreate', async interaction => {
     }
   } else if (interaction.isModalSubmit()) {
     if (interaction.customId === 'register_modal') {
-      await auth.handleRegisterSubmit(interaction);
+      await interaction.reply({ content: '⛔ Registration is disabled. Please contact Operations Manager or Developer.', ephemeral: true });
     } else if (interaction.customId.startsWith('activity_modal_')) {
       await auth.handleActivityModalSubmit(interaction);
     } else if (interaction.customId.startsWith('bio_deny_modal_')) {
@@ -409,7 +411,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.customId === 'start_shift_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'register_start_btn') {
-      await auth.handleRegister(interaction);
+      await interaction.reply({ content: '⛔ Registration is disabled. Use `/add-agent` onboarding instead.', ephemeral: true });
     } else if (interaction.customId.startsWith('team_btn_')) {
       await auth.handleTeamSelect(interaction);
     } else if (interaction.customId.startsWith('logout_btn')) {

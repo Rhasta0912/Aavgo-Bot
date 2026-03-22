@@ -3752,6 +3752,52 @@ async function handleDbSetPin(interaction) {
   }
 }
 
+async function handleResetPin(interaction) {
+  try {
+    await interaction.deferReply({ ephemeral: true });
+
+    const currentPin = interaction.options.getString('current_pin');
+    const newPin = interaction.options.getString('new_pin');
+    const confirmPin = interaction.options.getString('confirm_pin');
+
+    if (!/^\d{4,6}$/.test(newPin)) {
+      return interaction.editReply({ content: '❌ New PIN must be **4 to 6 digits** long.' });
+    }
+
+    if (newPin !== confirmPin) {
+      return interaction.editReply({ content: '❌ New PIN and confirm PIN do not match.' });
+    }
+
+    const agent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(interaction.user.id);
+    if (!agent) {
+      return interaction.editReply({ content: '❌ You are not a registered agent. Ask Operations Manager or Developer to run `/add-agent` first.' });
+    }
+
+    if (agent.pin !== currentPin) {
+      return interaction.editReply({ content: '❌ Current PIN is incorrect.' });
+    }
+
+    db.prepare("UPDATE agents SET pin = ? WHERE discord_id = ?").run(newPin, interaction.user.id);
+
+    await interaction.editReply({ content: '✅ Your security PIN has been updated.' });
+
+    sendAuditLog(interaction.client, {
+      title: '🔐 Agent PIN Reset',
+      description: `**Agent:** ${interaction.user.username} (<@${interaction.user.id}>)\n**Action:** Self PIN reset`,
+      color: 0x3498DB,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleResetPin:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to reset PIN.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to reset PIN.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 async function handleMemberLeave(member) {
   try {
     const discordId = member.id;
@@ -4087,7 +4133,6 @@ async function handleHelpDev(interaction) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/setup-login`: Rebuild or refresh the persistent agent login kiosk.\n' +
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
-        '> `/setup-register`: Rebuild the recruitment kiosk for new applicants.\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
         '### 👥 Agent Lifecycle Controls\n' +
@@ -4164,6 +4209,7 @@ async function handleHelpAgent(interaction) {
         '> `/my-schedule`: Check your next assigned shifts.\n' +
         '> `/login`: Start your shift from the correct hotel flow.\n' +
         '> `/status`: Review current staffing and shift coverage.\n' +
+        '> `/reset-pin`: Change your own security PIN.\n' +
         '> `/check-hours`: Review your logged hours.\n' +
         '> `/end-shift` or `/logout`: End your current shift safely.\n\n' +
         '### 🧰 During Shift\n' +
@@ -4867,6 +4913,7 @@ module.exports = {
   handleDbQuery,
   handleDbInfo,
   handleDbSetPin,
+  handleResetPin,
   handleSetupLoginTeam,
   updateTeamStatusEmbed,
   handleDbAddDeveloper,

@@ -137,4 +137,8 @@ Working rules:
 - Added a multi-hotel confirmation step in shift start flow: if an agent already has an active session, the bot now prompts **“Are you handling multiple hotels?”** with continue/cancel buttons before allowing another shift login.
 - Added `/db-assign-hotel` optional `sync` mode (`permission`, `ghost`, `both`) so management can choose which role family gets synced during assignment.
 - Updated add-agent promotion messaging to stop displaying PIN values in `/add-agent` DM notices and success confirmations.
+- Removed self-registration command surface from slash commands (`/register`, `/setup-register`).
+- Added `/reset-pin` for agent self-service security PIN rotation (current PIN + new PIN + confirm PIN).
+- Updated interaction routing so legacy register modal/button paths now return a clear "registration disabled" response instead of continuing old onboarding flow.
+- Updated SOP onboarding policy: Operations Manager/Developer-only onboarding via `/add-agent`, then agent-side PIN rotation via `/reset-pin`.
 
