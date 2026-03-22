@@ -4842,6 +4842,7 @@ module.exports = {
   handleHelpAgent,
   handleSelectTrainee,
   handleNewcomerPromotion,
+  handleNewcomerAgentPinSubmit,
   handleAssignTeam,
   handleHelpTeamLeader,
   handleHotelStatusRefresh,

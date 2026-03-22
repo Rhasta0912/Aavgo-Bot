@@ -128,4 +128,5 @@ Working rules:
 - Fixed the newcomer agent PIN modal submit flow so it uses deferred interaction replies correctly and no longer trips the generic "Command failed while processing" error after the PIN is entered.
 - Simplified the newcomer Agent promotion path so it reuses the same add-agent logic instead of carrying a separate promotion rule set.
 - Hardened the shared agent promotion helper so role sync and PIN DM failures are non-blocking, preventing the newcomer add-agent flow from aborting with the generic processing error when Discord refuses a role change or DM.
+- Fixed newcomer PIN modal crash: `handleNewcomerAgentPinSubmit` was implemented but missing from `module.exports`, causing `TypeError: auth.handleNewcomerAgentPinSubmit is not a function` in interaction routing. The handler is now exported so `newcomer_agent_pin_modal:*` submits process correctly.
 
