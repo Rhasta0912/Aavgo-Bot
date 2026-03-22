@@ -579,11 +579,13 @@ async function handleNewcomerAgentPinSubmit(interaction) {
       return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
     }
 
+    await interaction.deferReply({ ephemeral: true });
+
     const [, targetUserId, announcementMessageId] = interaction.customId.split(':');
     const pin = interaction.fields.getTextInputValue('newcomer_agent_pin').trim();
 
     if (!/^\d{4,6}$/.test(pin)) {
-      return interaction.reply({ content: '❌ PIN must be 4 to 6 digits long.', ephemeral: true });
+      return interaction.editReply({ content: '❌ PIN must be 4 to 6 digits long.' });
     }
 
     const member = await interaction.guild.members.fetch(targetUserId);
@@ -591,9 +593,12 @@ async function handleNewcomerAgentPinSubmit(interaction) {
     const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
     const agentsRole = interaction.guild.roles.cache.get('1482227287159078964') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'agents');
     const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
-
-    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, 'agent', 'ready') ON CONFLICT(discord_id) DO UPDATE SET username = excluded.username, pin = excluded.pin, role = 'agent', agent_status = 'ready'")
-      .run(member.id, member.user.username, pin);
+    const existing = db.prepare("SELECT id FROM agents WHERE discord_id = ?").get(member.id);
+    if (existing) {
+      db.prepare("UPDATE agents SET username = ?, pin = ?, role = 'agent', agent_status = 'ready' WHERE discord_id = ?").run(member.user.username, pin, member.id);
+    } else {
+      db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, 'agent', 'ready')").run(member.id, member.user.username, pin);
+    }
 
     const rolesToRemove = [applicantsRole, traineeRole].filter(role => role && member.roles.cache.has(role.id));
     if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
@@ -620,10 +625,12 @@ async function handleNewcomerAgentPinSubmit(interaction) {
       }
     }
 
-    await interaction.reply({ content: `✅ **${member.user.username}** has been promoted to **Agent** and their PIN was DM'd.`, ephemeral: true });
+    await interaction.editReply({ content: `✅ **${member.user.username}** has been promoted to **Agent** and their PIN was DM'd.` });
   } catch (error) {
     console.error('Error in handleNewcomerAgentPinSubmit:', error);
-    if (!interaction.replied && !interaction.deferred) {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to complete the agent promotion.' }).catch(() => {});
+    } else {
       await interaction.reply({ content: '❌ Failed to complete the agent promotion.', ephemeral: true }).catch(() => {});
     }
   }
