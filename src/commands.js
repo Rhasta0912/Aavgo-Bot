@@ -1,8 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 
 const HOTEL_CHOICES = [
-  { name: 'Indianhead Ironwood', value: 'BW_TO' },
-  { name: 'Magnuson', value: 'BRNT' },
+  { name: 'Indianhead/Magnuson', value: 'BW_TO' },
   { name: 'Value Suites', value: 'VALS' },
   { name: 'The Garden Inn At Campsite', value: 'GICP' },
   { name: 'Russelville', value: 'QI_RV' },

@@ -35,7 +35,6 @@ const ROLE_NAMES = {
   // Green (On-Shift / Permission) Roles
   GREEN: {
     'BW_TO': '1482227783232000070',
-    'BRNT': '1482227501894996079',
     'VALS': '1484858995150684170',
     'GICP': '1484531060699168778',
     'QI_RV': '1482227230343041115',
@@ -46,7 +45,6 @@ const ROLE_NAMES = {
   // Grey (Permanent / Assignment) Roles
   GREY: {
     'BW_TO': '1483429969807020032',
-    'BRNT': '1483430008105210008',
     'VALS': '1484859243671847114',
     'GICP': '1484531611549831189',
     'QI_RV': '1483430045153362012',
@@ -58,8 +56,7 @@ const ROLE_NAMES = {
 
 // Map hotel IDs to display names
 const HOTEL_NAMES = {
-  'BW_TO': 'Indianhead IronWood',
-  'BRNT': 'Magnuson',
+  'BW_TO': 'Indianhead/Magnuson',
   'VALS': 'Value Suites',
   'GICP': 'The Garden Inn At Campsite',
   'QI_RV': 'Russelville',
@@ -70,7 +67,6 @@ const HOTEL_NAMES = {
 // Map hotel IDs to log-in channel IDs
 const HOTEL_LOGIN_CHANNELS = {
   'BW_TO': '1482303551614095441',
-  'BRNT': '1482303551614095441',
   'VALS': '1484857862588203148',
   'GICP': '1484531330308903005',
   'QI_RV': '1482303818904637563',
@@ -86,7 +82,7 @@ const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 
-const TEAM_1_HOTELS = ['BW_TO', 'BRNT', 'VALS', 'GICP', 'QI_RV', 'SUP8', 'RMDA', 'AD1'];
+const TEAM_1_HOTELS = ['BW_TO', 'VALS', 'GICP', 'QI_RV', 'SUP8', 'RMDA', 'AD1'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -666,7 +662,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type hotel name (Indianhead IronWood, Magnuson, Value Suites, Garden Inn, Russelville, Super8, Ramada, AD1)');
+    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Value Suites, Garden Inn, Russelville, Super8, Ramada, AD1)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -1095,7 +1091,7 @@ function buildAgentKioskPayload() {
       '> **4.** Verify your **Secure PIN**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead IronWood`, `Magnuson`, `Value Suites`, `The Garden Inn At Campsite`, `Russelville`, `Super8`, `Ramada`, `AD1`'
+      '**Team 1:** `Indianhead/Magnuson`, `Value Suites`, `The Garden Inn At Campsite`, `Russelville`, `Super8`, `Ramada`, `AD1`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -1179,7 +1175,7 @@ async function handleSetupLogin(interaction) {
         '> **4.** Verify your **Secure PIN**\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '### 🏨 Service Locations\n' +
-        '**Team 1:** `Indianhead IronWood`, `Magnuson`, `Value Suites`, `The Garden Inn At Campsite`, `Russelville`, `Super8`, `Ramada`, `AD1`'
+      '**Team 1:** `Indianhead/Magnuson`, `Value Suites`, `The Garden Inn At Campsite`, `Russelville`, `Super8`, `Ramada`, `AD1`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -2135,7 +2131,7 @@ async function handleShiftInitModalSubmit(interaction) {
     const normalizedHotel = normalizeHotelInput(hotelInput);
 
     if (!normalizedHotel || !HOTEL_NAMES[normalizedHotel]) {
-      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead IronWood, Magnuson, Value Suites, The Garden Inn At Campsite, Russelville, Super8, Ramada, AD1**.' });
+      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, Value Suites, The Garden Inn At Campsite, Russelville, Super8, Ramada, AD1**.' });
     }
 
     const hotelRecord = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotel);

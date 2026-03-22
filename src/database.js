@@ -149,9 +149,7 @@ db.exec(`
   -- Clear old seeds to avoid ID conflicts with new hotel list
 
   -- Seed new hotels with teams
-  INSERT INTO hotels (id, name, team) VALUES ('BW_TO', 'Indianhead IronWood', 'Team 1')
-    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('BRNT', 'Magnuson', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('BW_TO', 'Indianhead/Magnuson', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('VALS', 'Value Suites', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
@@ -170,7 +168,6 @@ db.exec(`
 
   -- Seed hotel_status
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('BW_TO');
-  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('BRNT');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('VALS');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('GICP');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('QI_RV');
@@ -210,6 +207,17 @@ db.pragma('foreign_keys = ON');
       db.prepare("ALTER TABLE agents ADD COLUMN agent_status TEXT DEFAULT 'standby'").run();
     }
     db.prepare("UPDATE agents SET agent_status = 'standby' WHERE agent_status IS NULL").run();
+    db.transaction(() => {
+      db.prepare("UPDATE agents SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE sessions SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE maintenance_logs SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE handover_notes SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE schedules SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE sop_guides SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("DELETE FROM hotel_status WHERE hotel_id = 'BRNT'").run();
+      db.prepare("DELETE FROM hotels WHERE id = 'BRNT'").run();
+      db.prepare("UPDATE hotels SET name = 'Indianhead/Magnuson' WHERE id = 'BW_TO'").run();
+    })();
     const pendingTableInfo = db.prepare("PRAGMA table_info(pending_registrations)").all();
     if (!pendingTableInfo.find(col => col.name === 'pin')) {
       db.prepare("ALTER TABLE pending_registrations ADD COLUMN pin TEXT").run();
