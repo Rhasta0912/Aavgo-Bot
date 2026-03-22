@@ -126,4 +126,5 @@ Working rules:
 - Added a newcomer announcement embed in the newcomers channel so each join/rejoin shows the member profile card, avatar, username, and join details, plus manager/developer buttons to promote the member to `Trainees` or `Agents`.
 - Updated the newcomer announcement to ping Operations Manager instead of the joiner, and made the newcomer agent button open a PIN modal that creates the agent record, DMs the PIN plus congratulations, and clears the announcement buttons after submission. `/add-agent` now DM’s the PIN too.
 - Fixed the newcomer agent PIN modal submit flow so it uses deferred interaction replies correctly and no longer trips the generic "Command failed while processing" error after the PIN is entered.
+- Simplified the newcomer Agent promotion path so it reuses the same add-agent logic instead of carrying a separate promotion rule set.
 
