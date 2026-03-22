@@ -1,12 +1,13 @@
 require('dotenv').config();
 const path = require('path');
-const { Client, GatewayIntentBits, Collection, REST, Routes, AttachmentBuilder, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { registerCommands } = require('./commands');
 const db = require('./database');
 const auth = require('./auth');
 const tools = require('./tools');
 const { upsertBotStatusCard } = require('./botStatus');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
+const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 
 const client = new Client({
   intents: [
@@ -93,6 +94,50 @@ async function sendRealNameTutorial(member) {
       console.warn(`[ONBOARDING] Could not send fallback onboarding DM to ${member.user.tag}:`, fallbackError.message);
     }
   }
+}
+
+function buildNewcomerActionRow(targetUserId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`newcomer_promote_trainee:${targetUserId}`)
+      .setLabel('Promote to Trainee')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`newcomer_promote_agent:${targetUserId}`)
+      .setLabel('Promote to Agent')
+      .setStyle(ButtonStyle.Success)
+  );
+}
+
+async function sendNewcomerAnnouncement(member) {
+  const channel = await member.guild.channels.fetch(NEWCOMER_CHANNEL_ID).catch(() => null);
+  if (!channel || !channel.isTextBased()) {
+    console.warn('[NEWCOMER] Newcomers channel not found or not text-based:', NEWCOMER_CHANNEL_ID);
+    return;
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle('👋 Newcomer Joined Aavgo')
+    .setDescription(`### Welcome, ${member.user.username}\nA new member has joined the server and is ready for review.`)
+    .addFields(
+      { name: 'Username', value: member.user.tag, inline: true },
+      { name: 'Display Name', value: member.displayName, inline: true },
+      { name: 'User ID', value: member.id, inline: true },
+      { name: 'Account Created', value: member.user.createdAt ? `<t:${Math.floor(member.user.createdAt.getTime() / 1000)}:F>` : 'Unknown', inline: true },
+      { name: 'Joined Server', value: member.joinedAt ? `<t:${Math.floor(member.joinedAt.getTime() / 1000)}:F>` : 'Just joined', inline: true },
+      { name: 'Profile Link', value: `[Open Discord Profile](https://discord.com/users/${member.id})`, inline: true }
+    )
+    .setThumbnail(member.user.displayAvatarURL({ size: 512, extension: 'png' }))
+    .setColor(0xF1C40F)
+    .setFooter({ text: 'Aavgo Newcomers Channel' })
+    .setTimestamp();
+
+  await channel.send({
+    content: `<@${member.id}>`,
+    embeds: [embed],
+    components: [buildNewcomerActionRow(member.id)],
+    allowedMentions: { users: [member.id] }
+  });
 }
 
 async function handleBotShutdown(signal) {
@@ -182,6 +227,12 @@ client.on('guildMemberAdd', async member => {
     }
   } catch (error) {
     console.warn('[JOIN] Failed to assign Applicants role:', error.message);
+  }
+
+  try {
+    await sendNewcomerAnnouncement(member);
+  } catch (error) {
+    console.warn('[NEWCOMER] Failed to send newcomer announcement:', error.message);
   }
 
   await sendRealNameTutorial(member);
@@ -365,6 +416,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDenyReg(interaction);
     } else if (interaction.customId.startsWith('remove_agent_')) {
       await auth.handleRemoveAgent(interaction);
+    } else if (interaction.customId.startsWith('newcomer_promote_')) {
+      await auth.handleNewcomerPromotion(interaction);
     } else if (interaction.customId === 'tools_normal_break') {
       await tools.handleNormalBreak(interaction);
     } else if (interaction.customId === 'tools_emergency') {

@@ -486,6 +486,66 @@ async function removeApplicantsRoleIfPromoted(member, guild, contextLabel = 'ROL
   }
 }
 
+async function handleNewcomerPromotion(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
+    const [action, targetUserId] = interaction.customId.split(':');
+    const member = await interaction.guild.members.fetch(targetUserId);
+    const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
+    const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
+    const agentsRole = interaction.guild.roles.cache.get('1482227287159078964') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'agents');
+    const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+
+    const isTraineeAction = action === 'newcomer_promote_trainee';
+    const isAgentAction = action === 'newcomer_promote_agent';
+
+    if (!isTraineeAction && !isAgentAction) {
+      return interaction.reply({ content: '❌ Unknown newcomer action.', ephemeral: true });
+    }
+
+    if (isTraineeAction) {
+      if (traineeRole && member.roles.cache.has(traineeRole.id)) {
+        return interaction.reply({ content: `⚠️ **${member.user.username}** already has the Trainees role.`, ephemeral: true });
+      }
+
+      const rolesToRemove = [applicantsRole, agentsRole, loggedOutRole].filter(role => role && member.roles.cache.has(role.id));
+      if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
+      if (traineeRole) await member.roles.add(traineeRole);
+    }
+
+    if (isAgentAction) {
+      if (agentsRole && member.roles.cache.has(agentsRole.id)) {
+        return interaction.reply({ content: `⚠️ **${member.user.username}** already has the Agents role.`, ephemeral: true });
+      }
+
+      const rolesToRemove = [applicantsRole, traineeRole].filter(role => role && member.roles.cache.has(role.id));
+      if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
+
+      const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
+      if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+    }
+
+    sendAuditLog(interaction.client, {
+      title: isTraineeAction ? '👋 Newcomer Promoted to Trainee' : '👋 Newcomer Promoted to Agent',
+      description: `**User:** ${member.user.username} (<@${member.id}>)\n**Action:** ${isTraineeAction ? 'Trainee' : 'Agent'}\n**Handled By:** {{AGENT_NAME}}`,
+      color: isTraineeAction ? 0x3498DB : 0x57F287,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+
+    await interaction.message.edit({ components: [] }).catch(() => {});
+    await interaction.reply({ content: `✅ **${member.user.username}** has been promoted to **${isTraineeAction ? 'Trainee' : 'Agent'}**.`, ephemeral: true });
+  } catch (error) {
+    console.error('Error in handleNewcomerPromotion:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Failed to update the newcomer role.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 async function showShiftInitModal(interaction, agent) {
   const modal = new ModalBuilder()
     .setCustomId('shift_init_modal')
@@ -4713,6 +4773,7 @@ module.exports = {
   handleHelpDev,
   handleHelpAgent,
   handleSelectTrainee,
+  handleNewcomerPromotion,
   handleAssignTeam,
   handleHelpTeamLeader,
   handleHotelStatusRefresh,
