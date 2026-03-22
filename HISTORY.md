@@ -124,4 +124,5 @@ Working rules:
 - Added automatic `Applicants` role assignment on server join, and added promotion sync so `Applicants` is removed whenever a user gains `Trainees` or `Agents` through either the command flow or a direct Discord role update.
 - Added `/assign-team` for developers and management so they can reassign an agent between Team 1 and Team 2, and the bot now removes the old team role when the new one is applied.
 - Added a newcomer announcement embed in the newcomers channel so each join/rejoin shows the member profile card, avatar, username, and join details, plus manager/developer buttons to promote the member to `Trainees` or `Agents`.
+- Updated the newcomer announcement to ping Operations Manager instead of the joiner, and made the newcomer agent button open a PIN modal that creates the agent record, DMs the PIN plus congratulations, and clears the announcement buttons after submission. `/add-agent` now DM’s the PIN too.
 

@@ -8,6 +8,7 @@ const tools = require('./tools');
 const { upsertBotStatusCard } = require('./botStatus');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
+const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 
 const client = new Client({
   intents: [
@@ -96,14 +97,14 @@ async function sendRealNameTutorial(member) {
   }
 }
 
-function buildNewcomerActionRow(targetUserId) {
+function buildNewcomerActionRow(targetUserId, announcementMessageId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`newcomer_promote_trainee:${targetUserId}`)
+      .setCustomId(`newcomer_promote_trainee:${targetUserId}:${announcementMessageId}`)
       .setLabel('Promote to Trainee')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId(`newcomer_promote_agent:${targetUserId}`)
+      .setCustomId(`newcomer_promote_agent:${targetUserId}:${announcementMessageId}`)
       .setLabel('Promote to Agent')
       .setStyle(ButtonStyle.Success)
   );
@@ -132,12 +133,15 @@ async function sendNewcomerAnnouncement(member) {
     .setFooter({ text: 'Aavgo Newcomers Channel' })
     .setTimestamp();
 
-  await channel.send({
-    content: `<@${member.id}>`,
+  const message = await channel.send({
+    content: `<@&${OPERATIONS_MANAGER_ROLE_ID}>`,
     embeds: [embed],
-    components: [buildNewcomerActionRow(member.id)],
-    allowedMentions: { users: [member.id] }
+    allowedMentions: { roles: [OPERATIONS_MANAGER_ROLE_ID] }
   });
+
+  await message.edit({
+    components: [buildNewcomerActionRow(member.id, message.id)]
+  }).catch(() => {});
 }
 
 async function handleBotShutdown(signal) {
@@ -398,6 +402,8 @@ client.on('interactionCreate', async interaction => {
       await tools.handleBioDenySubmit(interaction);
     } else if (interaction.customId.startsWith('loginmodal_')) {
       await auth.handleModalSubmit(interaction);
+    } else if (interaction.customId.startsWith('newcomer_agent_pin_modal:')) {
+      await auth.handleNewcomerAgentPinSubmit(interaction);
     }
   } else if (interaction.isButton()) {
     if (interaction.customId === 'start_shift_btn') {

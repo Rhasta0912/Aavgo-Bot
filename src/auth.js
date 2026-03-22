@@ -84,6 +84,7 @@ const AUDIT_LOG_CHANNEL_ID = '1482239767134339182';
 const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
+const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 
 const TEAM_1_HOTELS = ['BW_TO', 'BRNT', 'VALS', 'GICP', 'QI_RV', 'SUP8', 'RMDA', 'AD1'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
@@ -486,13 +487,28 @@ async function removeApplicantsRoleIfPromoted(member, guild, contextLabel = 'ROL
   }
 }
 
+async function sendAgentPinDM(member, pin, roleLabel = 'Agent') {
+  const embed = new EmbedBuilder()
+    .setTitle(`🎉 Welcome to Aavgo, ${member.user.username}`)
+    .setDescription(
+      `You have been promoted to **${roleLabel}**.\n\n` +
+      `Your secure PIN is: \`${pin}\`\n\n` +
+      `Please keep this private and use it only for your Aavgo login flow.`
+    )
+    .setColor(0xF1C40F)
+    .setFooter({ text: 'Aavgo Operations · Promotion' })
+    .setTimestamp();
+
+  await member.send({ embeds: [embed] });
+}
+
 async function handleNewcomerPromotion(interaction) {
   try {
     if (!interactionHasRoleAtLeast(interaction, 'sme')) {
       return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
     }
 
-    const [action, targetUserId] = interaction.customId.split(':');
+    const [action, targetUserId, announcementMessageId] = interaction.customId.split(':');
     const member = await interaction.guild.members.fetch(targetUserId);
     const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
     const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
@@ -514,34 +530,101 @@ async function handleNewcomerPromotion(interaction) {
       const rolesToRemove = [applicantsRole, agentsRole, loggedOutRole].filter(role => role && member.roles.cache.has(role.id));
       if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
       if (traineeRole) await member.roles.add(traineeRole);
+      sendAuditLog(interaction.client, {
+        title: '👋 Newcomer Promoted to Trainee',
+        description: `**User:** ${member.user.username} (<@${member.id}>)\n**Action:** Trainee\n**Handled By:** {{AGENT_NAME}}`,
+        color: 0x3498DB,
+        userId: interaction.user.id,
+        guild: interaction.guild
+      });
+
+      await interaction.message.edit({ components: [] }).catch(() => {});
+      return interaction.reply({ content: `✅ **${member.user.username}** has been promoted to **Trainee**.`, ephemeral: true });
     }
 
-    if (isAgentAction) {
-      if (agentsRole && member.roles.cache.has(agentsRole.id)) {
-        return interaction.reply({ content: `⚠️ **${member.user.username}** already has the Agents role.`, ephemeral: true });
-      }
-
-      const rolesToRemove = [applicantsRole, traineeRole].filter(role => role && member.roles.cache.has(role.id));
-      if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
-
-      const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
-      if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+    if (agentsRole && member.roles.cache.has(agentsRole.id)) {
+      return interaction.reply({ content: `⚠️ **${member.user.username}** already has the Agents role.`, ephemeral: true });
     }
 
-    sendAuditLog(interaction.client, {
-      title: isTraineeAction ? '👋 Newcomer Promoted to Trainee' : '👋 Newcomer Promoted to Agent',
-      description: `**User:** ${member.user.username} (<@${member.id}>)\n**Action:** ${isTraineeAction ? 'Trainee' : 'Agent'}\n**Handled By:** {{AGENT_NAME}}`,
-      color: isTraineeAction ? 0x3498DB : 0x57F287,
-      userId: interaction.user.id,
-      guild: interaction.guild
-    });
-
-    await interaction.message.edit({ components: [] }).catch(() => {});
-    await interaction.reply({ content: `✅ **${member.user.username}** has been promoted to **${isTraineeAction ? 'Trainee' : 'Agent'}**.`, ephemeral: true });
+    return interaction.showModal(buildNewcomerAgentPinModal(targetUserId, announcementMessageId));
   } catch (error) {
     console.error('Error in handleNewcomerPromotion:', error);
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: '❌ Failed to update the newcomer role.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+function buildNewcomerAgentPinModal(targetUserId, announcementMessageId) {
+  const modal = new ModalBuilder()
+    .setCustomId(`newcomer_agent_pin_modal:${targetUserId}:${announcementMessageId}`)
+    .setTitle('Promote Newcomer to Agent');
+
+  const pinInput = new TextInputBuilder()
+    .setCustomId('newcomer_agent_pin')
+    .setLabel('Set the new agent PIN')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMinLength(4)
+    .setMaxLength(6)
+    .setPlaceholder('Enter a 4-6 digit PIN');
+
+  modal.addComponents(new ActionRowBuilder().addComponents(pinInput));
+  return modal;
+}
+
+async function handleNewcomerAgentPinSubmit(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
+    const [, targetUserId, announcementMessageId] = interaction.customId.split(':');
+    const pin = interaction.fields.getTextInputValue('newcomer_agent_pin').trim();
+
+    if (!/^\d{4,6}$/.test(pin)) {
+      return interaction.reply({ content: '❌ PIN must be 4 to 6 digits long.', ephemeral: true });
+    }
+
+    const member = await interaction.guild.members.fetch(targetUserId);
+    const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
+    const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
+    const agentsRole = interaction.guild.roles.cache.get('1482227287159078964') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'agents');
+    const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+
+    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, 'agent', 'ready') ON CONFLICT(discord_id) DO UPDATE SET username = excluded.username, pin = excluded.pin, role = 'agent', agent_status = 'ready'")
+      .run(member.id, member.user.username, pin);
+
+    const rolesToRemove = [applicantsRole, traineeRole].filter(role => role && member.roles.cache.has(role.id));
+    if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
+
+    const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
+    if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+
+    await sendAgentPinDM(member, pin, 'Agent').catch(error => {
+      console.warn('[NEWCOMER] Could not DM agent PIN:', error.message);
+    });
+
+    sendAuditLog(interaction.client, {
+      title: '👋 Newcomer Promoted to Agent',
+      description: `**User:** ${member.user.username} (<@${member.id}>)\n**Action:** Agent\n**Handled By:** {{AGENT_NAME}}`,
+      color: 0x57F287,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+
+    if (announcementMessageId) {
+      const channel = await interaction.guild.channels.fetch(NEWCOMER_CHANNEL_ID).catch(() => null);
+      if (channel && channel.isTextBased()) {
+        await channel.messages.fetch(announcementMessageId).then(msg => msg.edit({ components: [] })).catch(() => {});
+      }
+    }
+
+    await interaction.reply({ content: `✅ **${member.user.username}** has been promoted to **Agent** and their PIN was DM'd.`, ephemeral: true });
+  } catch (error) {
+    console.error('Error in handleNewcomerAgentPinSubmit:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Failed to complete the agent promotion.', ephemeral: true }).catch(() => {});
     }
   }
 }
@@ -2850,6 +2933,9 @@ async function handleAddAgent(interaction) {
         const member = await interaction.guild.members.fetch(targetUser.id);
         await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
         await removeApplicantsRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+        await sendAgentPinDM(member, pin, getRoleLabel(role)).catch(error => {
+          console.warn('[ADD-AGENT] Could not DM PIN:', error.message);
+        });
       } catch (roleErr) {
         console.warn('[ADD-AGENT] Could not clear Trainees role:', roleErr.message);
       }
@@ -2866,6 +2952,9 @@ async function handleAddAgent(interaction) {
       const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
       if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
       await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+      await sendAgentPinDM(member, pin, getRoleLabel(role)).catch(error => {
+        console.warn('[ADD-AGENT] Could not DM PIN:', error.message);
+      });
     } catch (roleErr) {
       console.warn('[ADD-AGENT] Could not assign roles:', roleErr.message);
     }
@@ -4680,6 +4769,10 @@ async function handleAddAgent(interaction) {
       try {
         const member = await interaction.guild.members.fetch(targetUser.id);
         await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+        await removeApplicantsRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+        await sendAgentPinDM(member, pin, getRoleLabel(role)).catch(error => {
+          console.warn('[ADD-AGENT] Could not DM PIN:', error.message);
+        });
       } catch (roleErr) {
         console.warn('[ADD-AGENT] Could not clear Trainees role:', roleErr.message);
       }
@@ -4701,6 +4794,9 @@ async function handleAddAgent(interaction) {
       if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
       await removeTraineeRoleFromMember(member, interaction.guild, 'ADD-AGENT');
       await removeApplicantsRoleFromMember(member, interaction.guild, 'ADD-AGENT');
+      await sendAgentPinDM(member, pin, getRoleLabel(role)).catch(error => {
+        console.warn('[ADD-AGENT] Could not DM PIN:', error.message);
+      });
     } catch (roleErr) {
       console.warn('[ADD-AGENT] Could not assign roles:', roleErr.message);
     }
