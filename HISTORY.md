@@ -132,4 +132,5 @@ Working rules:
 - Removed `/assign-hotel` alias from command registration, routing, and developer help text. `/db-assign-hotel` is now the single supported hotel-assignment command.
 - Strengthened SOP wording: before any bug fix, new feature, or update, read `SOP.md`, repo `HISTORY.md`, desktop `History.md`, and latest Git/Brief context before editing code.
 - Merged the Magnuson (`BRNT`) login-channel routing into Indianhead IronWood (`BW_TO`) by pointing both hotel IDs at `1482303551614095441`, so the old Magnuson channel can be removed without breaking login post routing.
+- Fixed `/add-agent` agent-role assignment to resolve the `Agents` role by the exact Discord role ID `1482227287159078964` first, so the command reliably restores the role again even if role-name lookup is inconsistent.
 
