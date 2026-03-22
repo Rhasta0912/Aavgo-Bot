@@ -316,6 +316,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleAddAgent(interaction);
     } else if (commandName === 'reset-pin') {
       await auth.handleResetPin(interaction);
+    } else if (commandName === 'setup-security') {
+      await auth.handleResetPin(interaction);
     } else if (commandName === 'remove-agent') {
       await auth.handleRemoveAgentCommand(interaction);
     } else if (commandName === 'check-hours') {

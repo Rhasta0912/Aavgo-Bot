@@ -80,7 +80,7 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 - Do not use recruitment/register kiosk flow for onboarding.
 - New onboarding path:
   - Operations Manager or Developer runs `/add-agent`.
-  - Agent uses `/reset-pin` to rotate their own security PIN after onboarding.
+  - Agent uses `/reset-pin` or `/setup-security` to rotate their own security PIN after onboarding.
 
 ## Hotel Naming SOP
 - Keep IDs stable for logic and database joins.

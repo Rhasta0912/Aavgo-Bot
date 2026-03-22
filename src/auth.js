@@ -4209,7 +4209,7 @@ async function handleHelpAgent(interaction) {
         '> `/my-schedule`: Check your next assigned shifts.\n' +
         '> `/login`: Start your shift from the correct hotel flow.\n' +
         '> `/status`: Review current staffing and shift coverage.\n' +
-        '> `/reset-pin`: Change your own security PIN.\n' +
+        '> `/reset-pin` or `/setup-security`: Change your own security PIN.\n' +
         '> `/check-hours`: Review your logged hours.\n' +
         '> `/end-shift` or `/logout`: End your current shift safely.\n\n' +
         '### 🧰 During Shift\n' +
