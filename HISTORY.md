@@ -127,4 +127,5 @@ Working rules:
 - Updated the newcomer announcement to ping Operations Manager instead of the joiner, and made the newcomer agent button open a PIN modal that creates the agent record, DMs the PIN plus congratulations, and clears the announcement buttons after submission. `/add-agent` now DM’s the PIN too.
 - Fixed the newcomer agent PIN modal submit flow so it uses deferred interaction replies correctly and no longer trips the generic "Command failed while processing" error after the PIN is entered.
 - Simplified the newcomer Agent promotion path so it reuses the same add-agent logic instead of carrying a separate promotion rule set.
+- Hardened the shared agent promotion helper so role sync and PIN DM failures are non-blocking, preventing the newcomer add-agent flow from aborting with the generic processing error when Discord refuses a role change or DM.
 

@@ -513,21 +513,25 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
 
   const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
   if (existing) {
-    db.prepare("UPDATE agents SET pin = ?, role = ? WHERE discord_id = ?").run(pin, normalizedRole, targetUser.id);
+    db.prepare("UPDATE agents SET username = ?, pin = ?, role = ?, agent_status = 'ready' WHERE discord_id = ?").run(targetUser.username, pin, normalizedRole, targetUser.id);
   } else {
     db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, ?, 'ready')").run(targetUser.id, targetUser.username, pin, normalizedRole);
   }
 
-  const agentsRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.AGENTS.toLowerCase());
-  const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
-  const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
-  const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
+  try {
+    const agentsRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.AGENTS.toLowerCase());
+    const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+    const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
+    const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
 
-  const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
-  const rolesToRemove = [traineeRole, applicantsRole].filter(roleObj => roleObj && member.roles.cache.has(roleObj.id));
+    const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
+    const rolesToRemove = [traineeRole, applicantsRole].filter(roleObj => roleObj && member.roles.cache.has(roleObj.id));
 
-  if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
-  if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+    if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
+    if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+  } catch (roleErr) {
+    console.warn(`[${sourceLabel}] Role sync warning:`, roleErr.message);
+  }
 
   await sendAgentPinDM(member, pin, getRoleLabel(normalizedRole)).catch(error => {
     console.warn(`[${sourceLabel}] Could not DM PIN:`, error.message);
@@ -624,10 +628,7 @@ async function handleNewcomerAgentPinSubmit(interaction) {
     }
 
     const member = await interaction.guild.members.fetch(targetUserId);
-    const existing = db.prepare("SELECT id FROM agents WHERE discord_id = ?").get(member.id);
-    await applyAgentPromotion(interaction, member.user, pin, 'agent', 'NEWCOMER').catch(error => {
-      throw error;
-    });
+    await applyAgentPromotion(interaction, member.user, pin, 'agent', 'NEWCOMER');
 
     sendAuditLog(interaction.client, {
       title: '👋 Newcomer Promoted to Agent',
