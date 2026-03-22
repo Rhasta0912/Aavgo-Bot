@@ -1349,23 +1349,30 @@ async function handleSetupSecurity(interaction) {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('🔐 Aavgo Security Setup')
+      .setTitle('🔐 Aavgo Operations · Security Kiosk')
       .setDescription(
-        '# Security Update Kiosk\n' +
-        'Use the button below to set your **security PIN** and **phone number**.\n\n' +
-        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-        '> • PIN must be **4-6 digits**\n' +
-        '> • Phone must start with **63** or **09**\n' +
+        '# Welcome to Security Setup\n' +
+        '### Agent PIN & Contact Verification\n\n' +
+        'This portal secures your account credentials and keeps your contact line updated for operations support.\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+        '### 📋 Protocol\n' +
+        '> **1.** Click **Setup Security** below\n' +
+        '> **2.** Enter your **New Security PIN**\n' +
+        '> **3.** Confirm your **Security PIN**\n' +
+        '> **4.** Submit your **PH Phone Number**\n\n' +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
+        '### 🛡️ Validation Rules\n' +
+        '> **PIN:** `4-6 digits`\n' +
+        '> **Phone:** starts with `63` or `09`\n\n' +
         '*Only registered agents can submit this form.*'
       )
-      .setColor(0xF1C40F)
-      .setFooter({ text: 'Aavgo Operations • Security Kiosk' })
+      .setColor(0x5865F2)
+      .setFooter({ text: 'Aavgo Operations · Automated Security Control' })
       .setTimestamp();
 
     const setupBtn = new ButtonBuilder()
       .setCustomId('security_setup_btn')
-      .setLabel('Set Security PIN & Phone')
+      .setLabel('🛡️ Setup Security')
       .setStyle(ButtonStyle.Primary);
 
     await interaction.reply({

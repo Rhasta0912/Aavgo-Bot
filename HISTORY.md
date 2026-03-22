@@ -142,4 +142,5 @@ Working rules:
 - Added `/setup-security` as a management-posted security kiosk (embed + button + modal) where registered agents can submit PIN + phone updates.
 - Updated interaction routing so legacy register modal/button paths now return a clear "registration disabled" response instead of continuing old onboarding flow.
 - Updated SOP onboarding policy: Operations Manager/Developer-only onboarding via `/add-agent`, then agent-side PIN rotation via `/reset-pin`.
+- Restyled `/setup-security` output into kiosk-style embed UI (matching the `/setup-login` visual language) with protocol steps, validation rules, and a cleaner security action button.
 
