@@ -564,8 +564,6 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
 
   return member;
 }
-  return member;
-}
 
 async function handleNewcomerPromotion(interaction) {
   try {

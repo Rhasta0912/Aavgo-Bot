@@ -154,3 +154,5 @@ Working rules:
 - Removed the public PIN field from /add-agent so management only passes the user now. The command generates its own internal temporary PIN, grants Agents plus Unverified for normal agent promotions, and keeps the new self-service PIN setup rule consistent.
 
 - Updated /add-agent agent promotions so they DM the same security-setup embed used by the newcomer Agent button: welcome message plus the 1-2-3 egister-set-pin tutorial, instead of a separate PIN-centric prompt.
+
+- Fixed a server startup crash caused by a malformed duplicate eturn member; block left behind in pplyAgentPromotion. The extra lines made src/auth.js invalid JavaScript and prevented the bot from booting until the duplicate was removed.
