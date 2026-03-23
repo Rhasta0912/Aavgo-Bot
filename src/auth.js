@@ -3121,9 +3121,11 @@ async function handleRemoveAgent(interaction) {
         db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
       })();
 
       if (agent.approval_message_id) {
@@ -3255,9 +3257,11 @@ async function handleRemoveAgentCommand(interaction) {
         db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
       db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
       db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
       db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
       db.prepare("DELETE FROM agents WHERE discord_id = ?").run(targetUser.id);
     })();
 
@@ -3399,6 +3403,7 @@ async function handleClearHours(interaction) {
         db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
 
     await interaction.reply({ content: `✅ Successfully cleared all **${result.changes}** sessions for **${targetUser.username}**.`, ephemeral: true });
 
@@ -3694,6 +3699,7 @@ async function handleDbDeleteAgent(interaction) {
         db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
       }
       db.prepare("DELETE FROM agents WHERE discord_id = ?").run(discordId);
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(discordId);
@@ -3897,6 +3903,7 @@ async function handleDbRemoveUser(interaction) {
         db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
       }
       db.prepare("DELETE FROM agents WHERE discord_id = ?").run(discordId);
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(discordId);
@@ -4035,6 +4042,7 @@ async function handleMemberLeave(member) {
         db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
       }
 
       db.prepare("DELETE FROM agents WHERE discord_id = ?").run(discordId);
@@ -5010,6 +5018,7 @@ async function handleDbRemoveUser(interaction) {
         db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
         db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
       }
       db.prepare("DELETE FROM agents WHERE discord_id = ?").run(discordId);
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(discordId);
