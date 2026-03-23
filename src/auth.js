@@ -4509,6 +4509,7 @@ async function handleHelpStaff(interaction) {
         '> `/setup-login`: Rebuild or refresh the persistent agent login kiosk.\n' +
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
         '> `/setup-security`: Deploy the security setup kiosk (PIN + phone form).\n' +
+        '> `/setup-profiles`: Deploy the staff profiles dashboard panel.\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
         '### 👥 Agent Lifecycle Controls\n' +

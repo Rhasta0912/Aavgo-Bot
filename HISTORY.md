@@ -53,6 +53,15 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Add profiles dashboard workflow
+  - Summary: Implemented a profiles panel in channel 1485256962617643098 with team pick, member profile cards, misc developer actions, and promote/demote/kick/ban controls (kick/ban require confirmation). Added /setup-profiles and startup auto-restore for the panel.
+  - Files touched:
+    - src/profilePanel.js
+    - src/index.js
+    - src/commands.js
+    - src/auth.js
+  - Notes:
+    - None
 - Polish update log presentation
   - Summary: Changed the update-log helper so Discord posts use a cleaner embed card with a title, summary, file list, notes, and footer instead of plain text.
   - Files touched:

@@ -5,6 +5,7 @@ const { registerCommands } = require('./commands');
 const db = require('./database');
 const auth = require('./auth');
 const tools = require('./tools');
+const profilePanel = require('./profilePanel');
 const { upsertBotStatusCard } = require('./botStatus');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
@@ -189,6 +190,9 @@ client.once('ready', async () => {
     auth.ensureAgentKioskMessage(client, '1482228169485582446').catch(error => {
       console.warn('[KIOSK] Failed to restore agent kiosk on boot:', error.message);
     });
+    profilePanel.ensureProfilesDashboard(client).catch(error => {
+      console.warn('[PROFILES] Failed to restore profiles dashboard on boot:', error.message);
+    });
     
     // Start Scheduler Loop (Every 5 minutes)
     setInterval(() => {
@@ -333,6 +337,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleResetPin(interaction);
     } else if (commandName === 'setup-security') {
       await auth.handleSetupSecurity(interaction);
+    } else if (commandName === 'setup-profiles') {
+      await profilePanel.handleSetupProfiles(interaction);
     } else if (commandName === 'remove-agent') {
       await auth.handleRemoveAgentCommand(interaction);
     } else if (commandName === 'check-hours') {
@@ -429,7 +435,9 @@ client.on('interactionCreate', async interaction => {
       await auth.handleNewcomerAgentPinSubmit(interaction);
     }
   } else if (interaction.isButton()) {
-    if (interaction.customId === 'start_shift_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
+    if (interaction.customId.startsWith('profiles_')) {
+      await profilePanel.handleButton(interaction);
+    } else if (interaction.customId === 'start_shift_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'security_setup_btn') {
       await auth.handleSecuritySetupStart(interaction);
@@ -495,7 +503,9 @@ client.on('interactionCreate', async interaction => {
       await auth.handleActivityClick(interaction);
     }
   } else if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'tl_call_select_agent') {
+    if (interaction.customId.startsWith('profiles_')) {
+      await profilePanel.handleSelectMenu(interaction);
+    } else if (interaction.customId === 'tl_call_select_agent') {
       await tools.handleAgentCallStart(interaction);
     } else if (interaction.customId.startsWith('shift_hotel_pick_menu')) {
       await auth.handleShiftHotelPickMenu(interaction);

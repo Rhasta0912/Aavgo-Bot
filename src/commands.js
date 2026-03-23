@@ -44,6 +44,9 @@ const commandData = [
     .setName('setup-security')
     .setDescription('Post the security setup kiosk (PIN + phone)'),
   new SlashCommandBuilder()
+    .setName('setup-profiles')
+    .setDescription('Post the profiles dashboard (Developer only)'),
+  new SlashCommandBuilder()
     .setName('remove-agent')
     .setDescription('(Admin) Remove a user as an agent')
     .addUserOption(option => option.setName('user').setDescription('The user to remove').setRequired(true)),
