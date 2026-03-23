@@ -490,6 +490,8 @@ client.on('interactionCreate', async interaction => {
   } else if (interaction.isStringSelectMenu()) {
     if (interaction.customId === 'tl_call_select_agent') {
       await tools.handleAgentCallStart(interaction);
+    } else if (interaction.customId.startsWith('shift_hotel_pick_menu')) {
+      await auth.handleShiftHotelPickMenu(interaction);
     } else if (interaction.customId === 'hotel_select_menu') {
       await auth.handleHotelSelectMenu(interaction);
     }

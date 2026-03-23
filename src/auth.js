@@ -1988,6 +1988,15 @@ async function handleStartShiftClick(interaction) {
        return await showPinModal(interaction, 'TEAM_SHIFT', false, allowMultiHotel);
     }
 
+    // If the agent has multiple assigned grey hotel roles, let them pick the hotel for this shift.
+    const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
+      .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && interaction.member.roles.cache.has(roleId))
+      .map(([hotelId]) => hotelId);
+    const uniqueAssignedHotelIds = [...new Set(assignedHotelIds)];
+    if (uniqueAssignedHotelIds.length > 1) {
+      return await showAssignedHotelShiftPicker(interaction, uniqueAssignedHotelIds, allowMultiHotel);
+    }
+
 
     // Standard Agent route:
     if (agent.hotel_id) {
@@ -2057,6 +2066,85 @@ async function handleStartShiftClick(interaction) {
         await interaction.reply(response);
       }
     } catch(e){}
+  }
+}
+
+async function showAssignedHotelShiftPicker(interaction, hotelIds, allowMultiHotel = false) {
+  const pickMenu = new StringSelectMenuBuilder()
+    .setCustomId(allowMultiHotel ? 'shift_hotel_pick_menu_multi' : 'shift_hotel_pick_menu')
+    .setPlaceholder('Pick your hotel for this shift')
+    .addOptions(
+      hotelIds.map(hotelId =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(HOTEL_NAMES[hotelId] || hotelId)
+          .setValue(hotelId)
+          .setDescription('Start shift on this assigned hotel')
+      )
+    );
+
+  const embed = new EmbedBuilder()
+    .setTitle('🏨 Select Hotel For This Shift')
+    .setDescription(
+      'You have multiple assigned hotel roles.\n' +
+      'Choose which hotel you are handling right now.'
+    )
+    .setColor(0xF1C40F);
+
+  const row = new ActionRowBuilder().addComponents(pickMenu);
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply({ embeds: [embed], components: [row] });
+  }
+  return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+}
+
+async function handleShiftHotelPickMenu(interaction) {
+  try {
+    const hotelId = interaction.values[0];
+    const allowMultiHotel = interaction.customId === 'shift_hotel_pick_menu_multi';
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
+    }
+
+    const hotelSession = db.prepare(
+      "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
+    ).get(hotelId, agent.id);
+
+    if (hotelSession) {
+      const otherAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(hotelSession.agent_id);
+      const promptEmbed = new EmbedBuilder()
+        .setTitle('⚠️ Overlapping Shift Detected')
+        .setDescription(
+          `Agent **${otherAgent?.username || 'Unknown Agent'}** is currently logged into **${HOTEL_NAMES[hotelId] || hotelId}**.\n\n` +
+          'Are you sure you want to take over this shift?'
+        )
+        .setColor(0xFEE75C);
+
+      const takeoverId = allowMultiHotel ? `takeover_btn_${hotelId}_multi` : `takeover_btn_${hotelId}`;
+      const takeOverBtn = new ButtonBuilder()
+        .setCustomId(takeoverId)
+        .setLabel('Yes, Take Over Shift')
+        .setStyle(ButtonStyle.Success);
+
+      const cancelBtn = new ButtonBuilder()
+        .setCustomId('cancel_takeover_btn')
+        .setLabel('Cancel')
+        .setStyle(ButtonStyle.Secondary);
+
+      return interaction.update({
+        embeds: [promptEmbed],
+        components: [new ActionRowBuilder().addComponents(takeOverBtn, cancelBtn)]
+      });
+    }
+
+    await showPinModal(interaction, hotelId, false, allowMultiHotel);
+  } catch (error) {
+    console.error('Error in handleShiftHotelPickMenu:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to select hotel for shift.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to select hotel for shift.', ephemeral: true }).catch(() => {});
+    }
   }
 }
 
@@ -2352,9 +2440,11 @@ async function handleCancelMultiHotelStart(interaction) {
 
 async function handleTakeoverShift(interaction) {
   try {
-    const hotelId = interaction.customId.replace('takeover_btn_', '');
-    
-    await showPinModal(interaction, hotelId, true);
+    const payload = interaction.customId.replace('takeover_btn_', '');
+    const allowMultiHotel = payload.endsWith('_multi');
+    const hotelId = allowMultiHotel ? payload.replace('_multi', '') : payload;
+
+    await showPinModal(interaction, hotelId, true, allowMultiHotel);
     
     // Attempt to clear the original buttons (Interaction might be deferred or replied)
     try { 
@@ -4440,6 +4530,7 @@ async function handleHelpAgent(interaction) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/my-schedule`: Check your next assigned shifts.\n' +
         '> `/login`: Start your shift from the correct hotel flow.\n' +
+        '> If you have multiple assigned hotels, the bot will prompt you to pick one before PIN entry.\n' +
         '> `/status`: Review current staffing and shift coverage.\n' +
         '> `/reset-pin`: Change your own security PIN.\n' +
         '> Security kiosk: click **Set Security PIN & Phone** when management posts `/setup-security`.\n' +
@@ -5090,6 +5181,7 @@ module.exports = {
   handlePurge,
   handleModalSubmit,
   handleTakeoverShift,
+  handleShiftHotelPickMenu,
   handleCancelTakeover,
   handleCancelMultiHotelStart,
   handleTeamSelect,
