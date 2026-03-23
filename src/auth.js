@@ -537,14 +537,12 @@ async function removeApplicantsRoleIfPromoted(member, guild, contextLabel = 'ROL
 }
 
 async function sendAgentPinDM(member, pin, roleLabel = 'Agent', includePin = true) {
-  const pinBlock = includePin
-    ? `Your secure PIN is: \`${pin}\`\n\n`
-    : 'Your secure PIN has been set by management.\nFor security, it is not shown in this DM.\n\n';
   const embed = new EmbedBuilder()
     .setTitle(`Welcome to Aavgo, ${member.user.username}`)
     .setDescription(
       `You have been promoted to **${roleLabel}**.\n\n` +
-      pinBlock +
+      `Your secure PIN has been set by management.\n` +
+      `For security, the PIN is never shown in direct messages.\n\n` +
       `Please keep this private and use it only for your Aavgo login flow.`
     )
     .setColor(0xF1C40F)
@@ -764,7 +762,7 @@ async function handleNewcomerAgentPinSubmit(interaction) {
       }
     }
 
-    await interaction.editReply({ content: `✅ **${member.user.username}** has been promoted to **Agent** and their PIN was DM'd.` });
+    await interaction.editReply({ content: `✅ **${member.user.username}** has been promoted to **Agent**.` });
   } catch (error) {
     console.error('Error in handleNewcomerAgentPinSubmit:', error);
     if (interaction.deferred || interaction.replied) {
@@ -3958,10 +3956,9 @@ async function handleSetOperationManager(interaction) {
   try {
     const targetUser = interaction.options.getUser('user');
     const existingAgent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
-    let generatedPin = null;
 
     if (!existingAgent) {
-      generatedPin = String(Math.floor(100000 + Math.random() * 900000));
+      const generatedPin = String(Math.floor(100000 + Math.random() * 900000));
       db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, 'operations_manager', 'ready')").run(
         targetUser.id,
         targetUser.username,
@@ -3981,8 +3978,7 @@ async function handleSetOperationManager(interaction) {
       if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
     } catch (e) { console.warn('[PROMOTE] Operations Manager Discord role sync failed:', e.message); }
 
-    const pinNotice = generatedPin ? `\nAuto-generated PIN: \`${generatedPin}\`` : '';
-    await interaction.reply({ content: `Success: **${targetUser.username}** has been set as **Operations Manager**.${pinNotice}\nAgent base roles were synced where available.`, ephemeral: true });
+    await interaction.reply({ content: `Success: **${targetUser.username}** has been set as **Operations Manager**.\nAgent base roles were synced where available.`, ephemeral: true });
 
     sendAuditLog(interaction.client, {
       title: 'Management Promotion',
@@ -4111,7 +4107,7 @@ async function handleDbSetPin(interaction) {
 
     db.prepare("UPDATE agents SET pin = ? WHERE discord_id = ?").run(newPin, targetUser.id);
     
-    await interaction.reply({ content: `✅ **PIN Updated!** ${targetUser.username}'s PIN has been set to \`${newPin}\`.`, ephemeral: true });
+    await interaction.reply({ content: `✅ **PIN Updated!** ${targetUser.username}'s PIN was updated successfully.`, ephemeral: true });
     
     // Audit log
     sendAuditLog(interaction.client, {

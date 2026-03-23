@@ -53,6 +53,13 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Polish profiles panel UI and harden PIN privacy
+  - Summary: Redesigned the profiles dashboard/profile cards to match the kiosk and approval style, fixed team member discovery to use effective team fallback (team/hotel/paired hotels), added in-panel team reload/switch navigation, expanded misc actions, removed set-ready/set-standby/reset-pin from the panel, and removed PIN exposure text from promotion/admin responses.
+  - Files touched:
+    - src/profilePanel.js
+    - src/auth.js
+  - Notes:
+    - None
 - Add profiles dashboard workflow
   - Summary: Implemented a profiles panel in channel 1485256962617643098 with team pick, member profile cards, misc developer actions, and promote/demote/kick/ban controls (kick/ban require confirmation). Added /setup-profiles and startup auto-restore for the panel.
   - Files touched:

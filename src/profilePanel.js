@@ -11,18 +11,23 @@ const auth = require('./auth');
 
 const PROFILES_CHANNEL_ID = '1485256962617643098';
 const PROFILE_PANEL_KEY_PREFIX = 'profiles_dashboard_msg_';
-const TEAM_KEYS = ['Team 1', 'Team 2'];
+const TEAM_1 = 'Team 1';
+const TEAM_2 = 'Team 2';
+const VALID_TEAMS = [TEAM_1, TEAM_2];
 const ROLE_STEPS = ['agent', 'sme', 'team_leader', 'operations_manager'];
 const ROLE_LABELS = {
   agent: 'Agent',
-  sme: 'SME',
+  sme: 'Subject Matter Expert (SME)',
   team_leader: 'Team Leader',
   operations_manager: 'Operations Manager'
 };
-const STATUS_LABELS = {
-  standby: 'Standby',
-  ready: 'Ready'
-};
+
+function normalizeTeamName(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'team 1' || raw === 'team1' || raw === '1') return TEAM_1;
+  if (raw === 'team 2' || raw === 'team2' || raw === '2') return TEAM_2;
+  return null;
+}
 
 function trimToTwoWords(value) {
   const words = String(value || '')
@@ -34,95 +39,147 @@ function trimToTwoWords(value) {
   return words.slice(0, 2).join(' ');
 }
 
-function trimForOptionLabel(value, maxLength = 100) {
+function trimLabel(value, maxLength = 100) {
   const text = String(value || '').trim();
   if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1)}…`;
+  return `${text.slice(0, maxLength - 1)}...`;
 }
 
 function roleLabel(role) {
-  return ROLE_LABELS[String(role || '').toLowerCase()] || 'Agent';
+  const normalized = String(role || '').toLowerCase();
+  return ROLE_LABELS[normalized] || 'Agent';
 }
 
 function statusLabel(status) {
-  return STATUS_LABELS[String(status || '').toLowerCase()] || 'Ready';
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'standby') return 'Standby';
+  if (normalized === 'ready') return 'Ready';
+  return 'Ready';
 }
 
-function toDiscordDate(value) {
+function dateTag(value) {
   if (!value) return 'Not recorded';
   const timestamp = Math.floor(new Date(value).getTime() / 1000);
   if (!Number.isFinite(timestamp) || timestamp <= 0) return 'Not recorded';
-  return `<t:${timestamp}:D>`;
+  return `<t:${timestamp}:F>`;
 }
 
 function getProfilePanelKey(channelId) {
   return `${PROFILE_PANEL_KEY_PREFIX}${channelId}`;
 }
 
-function buildDashboardEmbed() {
-  return new EmbedBuilder()
-    .setTitle('Aavgo Profiles Dashboard')
-    .setDescription(
-      'Pick a team below to view members, open a profile card, and run management actions without typing slash commands.'
-    )
-    .addFields(
-      {
-        name: 'Quick Flow',
-        value: '1. Pick team\n2. Pick member\n3. Use profile actions',
-        inline: true
-      },
-      {
-        name: 'Permission',
-        value: 'Developer / Operations Manager only',
-        inline: true
-      }
-    )
-    .setColor(0x3498DB)
-    .setFooter({ text: 'Aavgo Operations • Profiles' })
-    .setTimestamp();
-}
-
-function buildTeamPickerRow() {
+function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null) {
+  const normalizedSelected = normalizeTeamName(selectedTeam);
   const menu = new StringSelectMenuBuilder()
-    .setCustomId('profiles_team_pick')
-    .setPlaceholder('Select a team')
+    .setCustomId(customId)
+    .setPlaceholder('Select team')
     .addOptions(
-      new StringSelectMenuOptionBuilder().setLabel('Team 1').setDescription('Open Team 1 members').setValue('Team 1'),
-      new StringSelectMenuOptionBuilder().setLabel('Team 2').setDescription('Open Team 2 members').setValue('Team 2')
+      new StringSelectMenuOptionBuilder()
+        .setLabel(TEAM_1)
+        .setDescription('Browse Team 1 members')
+        .setValue(TEAM_1)
+        .setDefault(normalizedSelected === TEAM_1),
+      new StringSelectMenuOptionBuilder()
+        .setLabel(TEAM_2)
+        .setDescription('Browse Team 2 members')
+        .setValue(TEAM_2)
+        .setDefault(normalizedSelected === TEAM_2)
     );
 
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildTeamMembersEmbed(teamName, members) {
-  const lines = members.map((member, index) => {
-    const titleName = trimToTwoWords(member.display_name || member.username);
-    return `**${index + 1}. ${titleName}** • ${roleLabel(member.role)} • ${statusLabel(member.agent_status)}`;
-  });
+function buildTeamRefreshRow(teamName) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`profiles_reload_team:${teamName}`)
+      .setLabel(`Refresh ${teamName}`)
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buildDashboardEmbed(activeTeam = null) {
+  const selected = normalizeTeamName(activeTeam);
+  return new EmbedBuilder()
+    .setTitle('Aavgo Operations - Profiles Kiosk')
+    .setDescription(
+      '### Welcome to the Profiles Portal\n' +
+      'Clean profile management for staff actions without command hunting.\n\n' +
+      '------------------------------\n' +
+      '**Protocol**\n' +
+      '1. Select a team\n' +
+      '2. Select an agent profile\n' +
+      '3. Run approved management actions\n\n' +
+      '------------------------------\n' +
+      `**Current Team:** ${selected || 'Not selected'}`
+    )
+    .setColor(0x1F8B4C)
+    .setFooter({ text: 'Aavgo Operations - Profiles Access' })
+    .setTimestamp();
+}
+
+function formatMemberLine(member, index) {
+  const name = trimToTwoWords(member.display_name || member.username);
+  const role = roleLabel(member.role);
+  const status = statusLabel(member.agent_status);
+  return `**${index + 1}. ${name}** - ${role} - ${status}`;
+}
+
+function buildTeamRosterEmbed(teamName, members) {
+  const roleCount = members.reduce((acc, member) => {
+    const key = String(member.role || 'agent').toLowerCase();
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  const preview = members.slice(0, 18).map(formatMemberLine);
+  const extraCount = members.length - preview.length;
+  const rosterText = preview.length > 0 ? preview.join('\n') : 'No members found for this team.';
+  const withExtra = extraCount > 0 ? `${rosterText}\n... and ${extraCount} more.` : rosterText;
 
   return new EmbedBuilder()
-    .setTitle(`${teamName} • Member Profiles`)
-    .setDescription(lines.length > 0 ? lines.join('\n') : 'No members found for this team yet.')
-    .setColor(teamName === 'Team 1' ? 0x57F287 : 0x5865F2)
-    .setFooter({ text: 'Aavgo Operations • Team Picker' })
+    .setTitle(`${teamName} Member Profiles`)
+    .setDescription(
+      `### Team Roster\n${withExtra}\n\n` +
+      'Use the menu below to open any profile card.'
+    )
+    .addFields(
+      { name: 'Total', value: String(members.length), inline: true },
+      { name: 'Leads', value: String((roleCount.team_leader || 0) + (roleCount.operations_manager || 0)), inline: true },
+      { name: 'SME', value: String(roleCount.sme || 0), inline: true }
+    )
+    .setColor(teamName === TEAM_1 ? 0x2ECC71 : 0x5865F2)
+    .setFooter({ text: 'Aavgo Operations - Team Browser' })
     .setTimestamp();
 }
 
 function buildMemberPickerRow(teamName, members) {
   const options = members.slice(0, 25).map(member => {
-    const shortName = trimToTwoWords(member.display_name || member.username);
+    const name = trimToTwoWords(member.display_name || member.username);
     return new StringSelectMenuOptionBuilder()
-      .setLabel(trimForOptionLabel(shortName))
-      .setDescription(trimForOptionLabel(`${roleLabel(member.role)} • ${statusLabel(member.agent_status)}`))
+      .setLabel(trimLabel(name))
+      .setDescription(trimLabel(`${roleLabel(member.role)} | ${statusLabel(member.agent_status)}`))
       .setValue(member.discord_id);
   });
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`profiles_agent_pick:${teamName}`)
-    .setPlaceholder('Select a member profile')
+    .setPlaceholder('Select member profile')
     .setOptions(options);
 
   return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildTeamRosterPayload(teamName, members) {
+  const components = [buildTeamPickerRow('profiles_team_pick_local', teamName), buildTeamRefreshRow(teamName)];
+  if (members.length > 0) {
+    components.splice(1, 0, buildMemberPickerRow(teamName, members));
+  }
+
+  return {
+    embeds: [buildTeamRosterEmbed(teamName, members)],
+    components
+  };
 }
 
 function nextRole(currentRole) {
@@ -143,23 +200,23 @@ function previousRole(currentRole) {
 async function syncLeadershipDiscordRoles(member, role) {
   if (!member) return;
 
-  const roleNames = ['team leader', 'subject matter expert', 'sme', 'operations manager'];
-  const rolesToRemove = member.guild.roles.cache.filter(guildRole => roleNames.includes(guildRole.name.toLowerCase()));
-  if (rolesToRemove.size > 0) {
-    await member.roles.remove(rolesToRemove).catch(() => {});
+  const removeNames = ['team leader', 'subject matter expert', 'sme', 'operations manager'];
+  const removeRoles = member.guild.roles.cache.filter(guildRole => removeNames.includes(guildRole.name.toLowerCase()));
+  if (removeRoles.size > 0) {
+    await member.roles.remove(removeRoles).catch(() => {});
   }
 
-  const byRole = {
+  const roleTargets = {
     sme: ['subject matter expert', 'sme'],
     team_leader: ['team leader'],
     operations_manager: ['operations manager']
   };
+  const names = roleTargets[role] || [];
 
-  const targetNames = byRole[role] || [];
-  for (const name of targetNames) {
-    const targetRole = member.guild.roles.cache.find(guildRole => guildRole.name.toLowerCase() === name);
-    if (targetRole) {
-      await member.roles.add(targetRole).catch(() => {});
+  for (const name of names) {
+    const target = member.guild.roles.cache.find(guildRole => guildRole.name.toLowerCase() === name);
+    if (target) {
+      await member.roles.add(target).catch(() => {});
       break;
     }
   }
@@ -176,32 +233,64 @@ async function resolveDisplayName(guild, discordId, fallback) {
 }
 
 async function fetchTeamMembers(guild, teamName) {
+  const normalizedTeam = normalizeTeamName(teamName);
+  if (!normalizedTeam) return [];
+
   const rows = db.prepare(`
-    SELECT id, discord_id, username, role, agent_status, team
-    FROM agents
-    WHERE lower(ifnull(team, '')) = lower(?)
-    ORDER BY username COLLATE NOCASE ASC
-  `).all(teamName);
+    SELECT
+      a.id,
+      a.discord_id,
+      a.username,
+      a.role,
+      a.agent_status,
+      a.team,
+      COALESCE(NULLIF(a.team, ''), h_agent.team, h_primary.team, h_secondary.team, 'Team 1') AS effective_team
+    FROM agents a
+    LEFT JOIN hotels h_agent ON h_agent.id = a.hotel_id
+    LEFT JOIN hotel_shift_assignments hsa ON hsa.agent_id = a.id
+    LEFT JOIN hotels h_primary ON h_primary.id = hsa.primary_hotel_id
+    LEFT JOIN hotels h_secondary ON h_secondary.id = hsa.secondary_hotel_id
+    WHERE lower(COALESCE(NULLIF(a.team, ''), h_agent.team, h_primary.team, h_secondary.team, 'Team 1')) = lower(?)
+    ORDER BY a.username COLLATE NOCASE ASC
+  `).all(normalizedTeam);
 
   const members = [];
   for (const row of rows) {
     const displayName = await resolveDisplayName(guild, row.discord_id, row.username);
-    members.push({ ...row, display_name: displayName });
+    members.push({
+      ...row,
+      display_name: displayName
+    });
   }
+
   return members;
 }
 
-function getHotelNameById(hotelId) {
+function hotelName(hotelId) {
   if (!hotelId) return 'Not linked';
-  const hotel = db.prepare('SELECT name FROM hotels WHERE id = ?').get(hotelId);
-  return hotel?.name || hotelId;
+  const row = db.prepare('SELECT name FROM hotels WHERE id = ?').get(hotelId);
+  return row?.name || hotelId;
 }
 
 async function getProfileContext(guild, discordId) {
   const agent = db.prepare(`
-    SELECT id, discord_id, username, role, team, hotel_id, phone, email, agent_status
-    FROM agents
-    WHERE discord_id = ?
+    SELECT
+      a.id,
+      a.discord_id,
+      a.username,
+      a.role,
+      a.team,
+      a.hotel_id,
+      a.phone,
+      a.email,
+      a.agent_status,
+      COALESCE(NULLIF(a.team, ''), h_agent.team, h_primary.team, h_secondary.team, 'Team 1') AS effective_team
+    FROM agents a
+    LEFT JOIN hotels h_agent ON h_agent.id = a.hotel_id
+    LEFT JOIN hotel_shift_assignments hsa ON hsa.agent_id = a.id
+    LEFT JOIN hotels h_primary ON h_primary.id = hsa.primary_hotel_id
+    LEFT JOIN hotels h_secondary ON h_secondary.id = hsa.secondary_hotel_id
+    WHERE a.discord_id = ?
   `).get(discordId);
 
   if (!agent) return null;
@@ -235,16 +324,15 @@ async function getProfileContext(guild, discordId) {
   const member = await guild.members.fetch(discordId).catch(() => null);
   const displayName = member?.displayName || agent.username;
   const shortName = trimToTwoWords(displayName);
-
-  const appliedAt = pending?.requested_at || firstSession?.first_login || null;
   const email = agent.email || pending?.email || 'Not set';
   const phone = agent.phone || pending?.phone || 'Not set';
+  const appliedAt = pending?.requested_at || firstSession?.first_login;
 
   return {
     agent,
     member,
-    shortName,
     displayName,
+    shortName,
     email,
     phone,
     appliedAt,
@@ -253,44 +341,73 @@ async function getProfileContext(guild, discordId) {
   };
 }
 
-function buildProfileEmbed(profile) {
-  const { agent, shortName, email, phone, appliedAt, pair, activeSession } = profile;
-  const pairSummary = pair
-    ? `${getHotelNameById(pair.primary_hotel_id)} + ${getHotelNameById(pair.secondary_hotel_id)}`
+function buildProfileEmbed(profile, reviewerTag, notice = null) {
+  const { agent, member, shortName, email, phone, appliedAt, pair, activeSession } = profile;
+  const pairText = pair
+    ? `${hotelName(pair.primary_hotel_id)} + ${hotelName(pair.secondary_hotel_id)}`
     : 'Not set';
-  const activeSummary = activeSession
-    ? `${getHotelNameById(activeSession.hotel_id)} since ${toDiscordDate(activeSession.login_time)}`
+  const activeText = activeSession
+    ? `${hotelName(activeSession.hotel_id)} since ${dateTag(activeSession.login_time)}`
     : 'Not on an active shift';
 
-  return new EmbedBuilder()
-    .setTitle(`Profile • ${shortName}`)
-    .setDescription('Approval-style agent profile card with direct management actions.')
-    .addFields(
-      { name: 'Agent Verified', value: 'Yes', inline: true },
-      { name: 'Role', value: roleLabel(agent.role), inline: true },
-      { name: 'Status', value: statusLabel(agent.agent_status), inline: true },
-      { name: 'Discord', value: `<@${agent.discord_id}>\n\`${agent.discord_id}\``, inline: true },
-      { name: 'Team', value: agent.team || 'Unassigned', inline: true },
-      { name: 'Primary Hotel', value: getHotelNameById(agent.hotel_id), inline: true },
-      { name: 'Email', value: email, inline: true },
-      { name: 'Phone', value: phone, inline: true },
-      { name: 'Applied', value: toDiscordDate(appliedAt), inline: true },
-      { name: 'Shift Pair', value: pairSummary, inline: false },
-      { name: 'Live Session', value: activeSummary, inline: false }
+  const embed = new EmbedBuilder()
+    .setTitle('Active Agent - Verified')
+    .setDescription(
+      `## ${shortName}\n` +
+      '------------------------------\n' +
+      `Discord: <@${agent.discord_id}> (\`${agent.discord_id}\`)\n` +
+      `Email: ${email}\n` +
+      `Phone (PH): ${phone}\n` +
+      `Applied At: ${dateTag(appliedAt)}\n` +
+      `Role: ${roleLabel(agent.role)}\n` +
+      `Team: ${agent.team || profile.agent.effective_team || TEAM_1}\n` +
+      `Primary Hotel: ${hotelName(agent.hotel_id)}\n` +
+      `Hotel Pair: ${pairText}\n` +
+      `Live Session: ${activeText}\n` +
+      '------------------------------\n' +
+      'Review and choose a management action below.'
     )
-    .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations • Agent Profile' })
+    .setColor(activeSession ? 0x2ECC71 : 0x3498DB)
+    .addFields({ name: 'Reviewed by', value: reviewerTag || 'System', inline: true })
+    .setFooter({ text: `Member ID: ${agent.discord_id}` })
     .setTimestamp();
+
+  if (member) {
+    embed.setThumbnail(member.displayAvatarURL({ size: 256, extension: 'png' }));
+  }
+
+  if (notice) {
+    embed.addFields({ name: 'Update', value: notice, inline: false });
+  }
+
+  return embed;
 }
 
-function buildActionRows(profile) {
-  const role = String(profile.agent.role || 'agent').toLowerCase();
-  const roleIndex = ROLE_STEPS.indexOf(role);
-  const promoteDisabled = roleIndex >= ROLE_STEPS.length - 1;
-  const demoteDisabled = roleIndex <= 0;
-  const targetDiscordId = profile.agent.discord_id;
+function buildMiscRow(targetDiscordId) {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`profiles_misc:${targetDiscordId}`)
+    .setPlaceholder('Misc developer actions')
+    .addOptions(
+      new StringSelectMenuOptionBuilder().setLabel('Refresh Profile').setDescription('Reload profile from DB and Discord').setValue('refresh'),
+      new StringSelectMenuOptionBuilder().setLabel('Assign Team 1').setDescription('Set team assignment to Team 1').setValue('assign_team_1'),
+      new StringSelectMenuOptionBuilder().setLabel('Assign Team 2').setDescription('Set team assignment to Team 2').setValue('assign_team_2'),
+      new StringSelectMenuOptionBuilder().setLabel('Clear Team Assignment').setDescription('Remove explicit team assignment').setValue('clear_team'),
+      new StringSelectMenuOptionBuilder().setLabel('Clear Primary Hotel Link').setDescription('Unset permanent primary hotel').setValue('clear_hotel'),
+      new StringSelectMenuOptionBuilder().setLabel('Unlink Paired Hotels').setDescription('Remove multi-hotel pair assignment').setValue('clear_pair'),
+      new StringSelectMenuOptionBuilder().setLabel('End Active Sessions').setDescription('Force-close all active sessions for this agent').setValue('end_sessions'),
+      new StringSelectMenuOptionBuilder().setLabel('Remove Agent Record').setDescription('Delete agent from DB records (no kick/ban)').setValue('remove_agent_record')
+    );
 
-  const buttonRow = new ActionRowBuilder().addComponents(
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildActionButtonRow(targetDiscordId, currentRole) {
+  const normalizedRole = String(currentRole || '').toLowerCase();
+  const index = ROLE_STEPS.indexOf(normalizedRole);
+  const promoteDisabled = index >= ROLE_STEPS.length - 1;
+  const demoteDisabled = index <= 0;
+
+  return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`profiles_promote:${targetDiscordId}`)
       .setLabel('Promote')
@@ -310,28 +427,18 @@ function buildActionRows(profile) {
       .setLabel('Ban')
       .setStyle(ButtonStyle.Danger)
   );
-
-  const miscMenu = new StringSelectMenuBuilder()
-    .setCustomId(`profiles_misc:${targetDiscordId}`)
-    .setPlaceholder('Misc actions')
-    .addOptions(
-      new StringSelectMenuOptionBuilder().setLabel('Refresh Profile').setDescription('Reload current profile data').setValue('refresh'),
-      new StringSelectMenuOptionBuilder().setLabel('Set Ready').setDescription('Mark agent as ready for live shifts').setValue('set_ready'),
-      new StringSelectMenuOptionBuilder().setLabel('Set Standby').setDescription('Mark agent as standby').setValue('set_standby'),
-      new StringSelectMenuOptionBuilder().setLabel('Reset PIN').setDescription('Generate a new PIN and DM the user').setValue('reset_pin')
-    );
-
-  const miscRow = new ActionRowBuilder().addComponents(miscMenu);
-  return [buttonRow, miscRow];
 }
 
 function buildConfirmEmbed(action, discordId) {
-  const label = action === 'ban' ? 'BAN' : 'KICK';
+  const actionLabel = action === 'ban' ? 'BAN' : 'KICK';
   return new EmbedBuilder()
-    .setTitle(`Confirm ${label}`)
-    .setDescription(`Are you sure you want to **${action}** <@${discordId}>?\n\nThis needs a second confirmation.`)
+    .setTitle(`Confirm ${actionLabel}`)
+    .setDescription(
+      `Are you sure you want to ${action.toUpperCase()} <@${discordId}>?\n\n` +
+      'This action needs a second confirmation.'
+    )
     .setColor(0xED4245)
-    .setFooter({ text: 'Aavgo Operations • Safety Check' })
+    .setFooter({ text: 'Aavgo Operations - Safety Confirmation' })
     .setTimestamp();
 }
 
@@ -348,28 +455,43 @@ function buildConfirmRow(action, discordId) {
   );
 }
 
-async function showProfileCard(interaction, discordId, notice = null) {
+function buildProfileRows(profile, teamName, teamMembers) {
+  const rows = [
+    buildActionButtonRow(profile.agent.discord_id, profile.agent.role),
+    buildMiscRow(profile.agent.discord_id),
+    buildTeamPickerRow('profiles_team_pick_local', teamName)
+  ];
+
+  if (Array.isArray(teamMembers) && teamMembers.length > 0) {
+    rows.push(buildMemberPickerRow(teamName, teamMembers));
+  }
+
+  rows.push(buildTeamRefreshRow(teamName));
+  return rows.slice(0, 5);
+}
+
+async function showProfileCard(interaction, discordId, options = {}) {
   const profile = await getProfileContext(interaction.guild, discordId);
   if (!profile) {
     return interaction.update({
       embeds: [
         new EmbedBuilder()
           .setTitle('Profile Not Found')
-          .setDescription('That user is not registered as an agent in the database.')
+          .setDescription('That user is not registered as an agent.')
           .setColor(0xED4245)
       ],
-      components: []
+      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
     });
   }
 
-  const embed = buildProfileEmbed(profile);
-  if (notice) {
-    embed.addFields({ name: 'Update', value: notice, inline: false });
-  }
+  const preferredTeam = normalizeTeamName(options.teamName) || normalizeTeamName(profile.agent.effective_team) || TEAM_1;
+  const members = await fetchTeamMembers(interaction.guild, preferredTeam);
+  const embed = buildProfileEmbed(profile, interaction.user.tag, options.notice || null);
+  const rows = buildProfileRows(profile, preferredTeam, members);
 
   return interaction.update({
     embeds: [embed],
-    components: buildActionRows(profile)
+    components: rows
   });
 }
 
@@ -384,14 +506,14 @@ async function ensureProfilesDashboard(client, channelId = PROFILES_CHANNEL_ID) 
   const existingId = db.prepare('SELECT value FROM config WHERE key = ?').get(key)?.value;
   const payload = {
     embeds: [buildDashboardEmbed()],
-    components: [buildTeamPickerRow()]
+    components: [buildTeamPickerRow('profiles_team_pick')]
   };
 
   if (existingId) {
-    const existing = await channel.messages.fetch(existingId).catch(() => null);
-    if (existing) {
-      await existing.edit(payload).catch(() => {});
-      return existing;
+    const existingMessage = await channel.messages.fetch(existingId).catch(() => null);
+    if (existingMessage) {
+      await existingMessage.edit(payload).catch(() => {});
+      return existingMessage;
     }
   }
 
@@ -402,75 +524,92 @@ async function ensureProfilesDashboard(client, channelId = PROFILES_CHANNEL_ID) 
 
 async function handleSetupProfiles(interaction) {
   if (!canUsePanel(interaction)) {
-    return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
+    return interaction.reply({ content: 'Developer access required.', ephemeral: true });
   }
 
   await ensureProfilesDashboard(interaction.client, PROFILES_CHANNEL_ID);
   if (interaction.deferred || interaction.replied) {
-    return interaction.editReply({ content: `✅ Profiles dashboard refreshed in <#${PROFILES_CHANNEL_ID}>.` });
+    return interaction.editReply({ content: `Profiles dashboard refreshed in <#${PROFILES_CHANNEL_ID}>.` });
   }
-
-  return interaction.reply({ content: `✅ Profiles dashboard refreshed in <#${PROFILES_CHANNEL_ID}>.`, ephemeral: true });
+  return interaction.reply({ content: `Profiles dashboard refreshed in <#${PROFILES_CHANNEL_ID}>.`, ephemeral: true });
 }
 
 async function handleTeamPick(interaction) {
   if (!canUsePanel(interaction)) {
-    return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
+    if (interaction.deferred || interaction.replied) {
+      return interaction.editReply({ content: 'Developer access required.' });
+    }
+    return interaction.reply({ content: 'Developer access required.', ephemeral: true });
   }
 
-  const teamName = interaction.values?.[0];
-  if (!TEAM_KEYS.includes(teamName)) {
-    return interaction.reply({ content: '❌ Invalid team selection.', ephemeral: true });
+  const teamName = normalizeTeamName(interaction.values?.[0]);
+  if (!teamName) {
+    if (interaction.customId === 'profiles_team_pick_local') {
+      return interaction.update({ content: 'Invalid team selection.', embeds: [], components: [] });
+    }
+    return interaction.reply({ content: 'Invalid team selection.', ephemeral: true });
   }
 
   const members = await fetchTeamMembers(interaction.guild, teamName);
-  const embed = buildTeamMembersEmbed(teamName, members);
+  const payload = buildTeamRosterPayload(teamName, members);
 
-  if (members.length === 0) {
-    return interaction.reply({ embeds: [embed], components: [], ephemeral: true });
+  if (interaction.customId === 'profiles_team_pick') {
+    await interaction.update({
+      embeds: [buildDashboardEmbed(teamName)],
+      components: [buildTeamPickerRow('profiles_team_pick', teamName)]
+    });
+    return interaction.followUp({ ...payload, ephemeral: true });
   }
 
-  const row = buildMemberPickerRow(teamName, members);
-  return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+  return interaction.update(payload);
 }
 
 async function handleAgentPick(interaction) {
   if (!canUsePanel(interaction)) {
-    return interaction.update({ content: '❌ Developer access required.', embeds: [], components: [] });
+    return interaction.update({ content: 'Developer access required.', embeds: [], components: [] });
   }
 
+  const teamNameRaw = interaction.customId.split(':')[1];
+  const teamName = normalizeTeamName(teamNameRaw) || TEAM_1;
   const discordId = interaction.values?.[0];
-  return showProfileCard(interaction, discordId);
+
+  return showProfileCard(interaction, discordId, { teamName });
 }
 
 async function handlePromote(interaction, discordId) {
-  const agent = db.prepare('SELECT role FROM agents WHERE discord_id = ?').get(discordId);
-  if (!agent) {
-    return interaction.update({ content: '❌ Agent not found in database.', embeds: [], components: [] });
+  const current = db.prepare('SELECT role, team FROM agents WHERE discord_id = ?').get(discordId);
+  if (!current) {
+    return interaction.update({ content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
-  const newRole = nextRole(agent.role);
+  const newRole = nextRole(current.role);
   db.prepare('UPDATE agents SET role = ? WHERE discord_id = ?').run(newRole, discordId);
 
   const member = await interaction.guild.members.fetch(discordId).catch(() => null);
   await syncLeadershipDiscordRoles(member, newRole);
 
-  return showProfileCard(interaction, discordId, `Role updated to **${roleLabel(newRole)}**.`);
+  return showProfileCard(interaction, discordId, {
+    teamName: current.team,
+    notice: `Role updated to ${roleLabel(newRole)}.`
+  });
 }
 
 async function handleDemote(interaction, discordId) {
-  const agent = db.prepare('SELECT role FROM agents WHERE discord_id = ?').get(discordId);
-  if (!agent) {
-    return interaction.update({ content: '❌ Agent not found in database.', embeds: [], components: [] });
+  const current = db.prepare('SELECT role, team FROM agents WHERE discord_id = ?').get(discordId);
+  if (!current) {
+    return interaction.update({ content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
-  const newRole = previousRole(agent.role);
+  const newRole = previousRole(current.role);
   db.prepare('UPDATE agents SET role = ? WHERE discord_id = ?').run(newRole, discordId);
 
   const member = await interaction.guild.members.fetch(discordId).catch(() => null);
   await syncLeadershipDiscordRoles(member, newRole);
 
-  return showProfileCard(interaction, discordId, `Role updated to **${roleLabel(newRole)}**.`);
+  return showProfileCard(interaction, discordId, {
+    teamName: current.team,
+    notice: `Role updated to ${roleLabel(newRole)}.`
+  });
 }
 
 async function handleKickOrBanConfirm(interaction, action, discordId) {
@@ -483,7 +622,7 @@ async function handleKickOrBanConfirm(interaction, action, discordId) {
           .setDescription('Member is no longer in this server.')
           .setColor(0xED4245)
       ],
-      components: []
+      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
     });
   }
 
@@ -497,62 +636,94 @@ async function handleKickOrBanConfirm(interaction, action, discordId) {
   return interaction.update({
     embeds: [
       new EmbedBuilder()
-        .setTitle(`✅ ${action === 'ban' ? 'Ban' : 'Kick'} Completed`)
+        .setTitle(`${action === 'ban' ? 'Ban' : 'Kick'} Completed`)
         .setDescription(`<@${discordId}> was ${action === 'ban' ? 'banned' : 'kicked'} from the server.`)
         .setColor(0x57F287)
         .setTimestamp()
     ],
-    components: []
+    components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
   });
+}
+
+function removeAgentFromDb(discordId) {
+  const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(discordId);
+  db.transaction(() => {
+    if (agent) {
+      db.prepare('DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)').run(agent.id);
+      db.prepare('DELETE FROM sessions WHERE agent_id = ?').run(agent.id);
+      db.prepare('DELETE FROM maintenance_logs WHERE agent_id = ?').run(agent.id);
+      db.prepare('DELETE FROM handover_notes WHERE agent_id = ?').run(agent.id);
+      db.prepare('DELETE FROM schedules WHERE agent_id = ?').run(agent.id);
+      db.prepare('DELETE FROM hotel_shift_assignments WHERE agent_id = ?').run(agent.id);
+    }
+    db.prepare('DELETE FROM agents WHERE discord_id = ?').run(discordId);
+    db.prepare('DELETE FROM pending_registrations WHERE discord_id = ?').run(discordId);
+    db.prepare('DELETE FROM developers WHERE discord_id = ?').run(discordId);
+    db.prepare('DELETE FROM dev_approvals WHERE target_id = ? OR proposed_by = ?').run(discordId, discordId);
+  })();
 }
 
 async function handleMisc(interaction, discordId) {
   const action = interaction.values?.[0];
-  const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(discordId);
+  const agent = db.prepare('SELECT id, team FROM agents WHERE discord_id = ?').get(discordId);
   if (!agent) {
-    return interaction.update({ content: '❌ Agent not found in database.', embeds: [], components: [] });
+    return interaction.update({ content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
   if (action === 'refresh') {
-    return showProfileCard(interaction, discordId, 'Profile refreshed.');
+    return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'Profile refreshed.' });
   }
 
-  if (action === 'set_ready') {
-    db.prepare("UPDATE agents SET agent_status = 'ready' WHERE discord_id = ?").run(discordId);
-    return showProfileCard(interaction, discordId, 'Agent status set to **Ready**.');
+  if (action === 'assign_team_1') {
+    db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(TEAM_1, discordId);
+    return showProfileCard(interaction, discordId, { teamName: TEAM_1, notice: 'Assigned to Team 1.' });
   }
 
-  if (action === 'set_standby') {
-    db.prepare("UPDATE agents SET agent_status = 'standby' WHERE discord_id = ?").run(discordId);
-    return showProfileCard(interaction, discordId, 'Agent status set to **Standby**.');
+  if (action === 'assign_team_2') {
+    db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(TEAM_2, discordId);
+    return showProfileCard(interaction, discordId, { teamName: TEAM_2, notice: 'Assigned to Team 2.' });
   }
 
-  if (action === 'reset_pin') {
-    const newPin = String(Math.floor(1000 + Math.random() * 9000));
-    db.prepare('UPDATE agents SET pin = ? WHERE discord_id = ?').run(newPin, discordId);
-
-    const member = await interaction.guild.members.fetch(discordId).catch(() => null);
-    if (member) {
-      await member.send({
-        embeds: [
-          new EmbedBuilder()
-            .setTitle('Aavgo PIN Reset')
-            .setDescription(`Your security PIN was reset by management.\n\nNew PIN: \`${newPin}\``)
-            .setColor(0xF1C40F)
-            .setTimestamp()
-        ]
-      }).catch(() => {});
-    }
-
-    return showProfileCard(interaction, discordId, 'PIN reset completed. The user has been notified by DM if possible.');
+  if (action === 'clear_team') {
+    db.prepare('UPDATE agents SET team = NULL WHERE discord_id = ?').run(discordId);
+    return showProfileCard(interaction, discordId, { teamName: TEAM_1, notice: 'Explicit team assignment cleared.' });
   }
 
-  return showProfileCard(interaction, discordId);
+  if (action === 'clear_hotel') {
+    db.prepare('UPDATE agents SET hotel_id = NULL WHERE discord_id = ?').run(discordId);
+    return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'Primary hotel link removed.' });
+  }
+
+  if (action === 'clear_pair') {
+    db.prepare('DELETE FROM hotel_shift_assignments WHERE agent_id = ?').run(agent.id);
+    return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'Paired hotel assignment removed.' });
+  }
+
+  if (action === 'end_sessions') {
+    db.prepare("UPDATE sessions SET status = 'closed', logout_time = CURRENT_TIMESTAMP WHERE agent_id = ? AND status = 'active'").run(agent.id);
+    return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'All active sessions have been closed.' });
+  }
+
+  if (action === 'remove_agent_record') {
+    removeAgentFromDb(discordId);
+    return interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('Agent Record Removed')
+          .setDescription(`<@${discordId}> was removed from database records.`)
+          .setColor(0xF1C40F)
+          .setTimestamp()
+      ],
+      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
+    });
+  }
+
+  return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'No action executed.' });
 }
 
 async function handleButton(interaction) {
   if (!canUsePanel(interaction)) {
-    return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
+    return interaction.reply({ content: 'Developer access required.', ephemeral: true });
   }
 
   const customId = interaction.customId || '';
@@ -583,23 +754,32 @@ async function handleButton(interaction) {
   }
 
   if (customId.startsWith('profiles_confirm:')) {
-    const [, , action, discordId] = customId.split(':');
+    const parts = customId.split(':');
+    const action = parts[1];
+    const discordId = parts[2];
     if (!['kick', 'ban'].includes(action)) {
-      return interaction.update({ content: '❌ Invalid confirmation action.', embeds: [], components: [] });
+      return interaction.update({ content: 'Invalid confirmation action.', embeds: [], components: [] });
     }
     return handleKickOrBanConfirm(interaction, action, discordId);
   }
 
   if (customId.startsWith('profiles_cancel:')) {
     const discordId = customId.split(':')[1];
-    return showProfileCard(interaction, discordId, 'Action canceled.');
+    return showProfileCard(interaction, discordId, { notice: 'Action canceled.' });
+  }
+
+  if (customId.startsWith('profiles_reload_team:')) {
+    const teamRaw = customId.split(':')[1];
+    const teamName = normalizeTeamName(teamRaw) || TEAM_1;
+    const members = await fetchTeamMembers(interaction.guild, teamName);
+    return interaction.update(buildTeamRosterPayload(teamName, members));
   }
 
   return null;
 }
 
 async function handleSelectMenu(interaction) {
-  if (interaction.customId === 'profiles_team_pick') {
+  if (interaction.customId === 'profiles_team_pick' || interaction.customId === 'profiles_team_pick_local') {
     return handleTeamPick(interaction);
   }
 
@@ -608,10 +788,10 @@ async function handleSelectMenu(interaction) {
   }
 
   if (interaction.customId.startsWith('profiles_misc:')) {
-    const discordId = interaction.customId.split(':')[1];
     if (!canUsePanel(interaction)) {
-      return interaction.update({ content: '❌ Developer access required.', embeds: [], components: [] });
+      return interaction.update({ content: 'Developer access required.', embeds: [], components: [] });
     }
+    const discordId = interaction.customId.split(':')[1];
     return handleMisc(interaction, discordId);
   }
 
