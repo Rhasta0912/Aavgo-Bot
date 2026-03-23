@@ -495,7 +495,7 @@ async function sendAgentPinDM(member, pin, roleLabel = 'Agent', includePin = tru
       `Please keep this private and use it only for your Aavgo login flow.`
     )
     .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations � Promotion' })
+    .setFooter({ text: 'Aavgo Operations � Promotion' })
     .setTimestamp();
 
   await member.send({ embeds: [embed] });
@@ -513,7 +513,7 @@ async function sendNewcomerAgentSetupDM(member) {
       `After this, your account security setup is complete.`
     )
     .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations � Security Setup' })
+    .setFooter({ text: 'Aavgo Operations � Security Setup' })
     .setTimestamp();
 
   await member.send({ embeds: [embed] });
@@ -4389,6 +4389,7 @@ async function handleHelpStaff(interaction) {
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
+        '> `/set-hotel-shifts`: Store two hotel shift options for one agent.\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +
         '### 📎 Useful SQL Snippets (`/db-query`)\n' +
@@ -4718,6 +4719,47 @@ async function handleSetSchedule(interaction) {
   } catch (e) {
     console.error('Error in handleSetSchedule:', e);
     await interaction.reply({ content: '❌ Error setting schedule.', ephemeral: true });
+  }
+}
+
+async function handleAddHotelShifts(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
+    const target = interaction.options.getUser('user');
+    const hotelOne = interaction.options.getString('hotel_1');
+    const hotelTwo = interaction.options.getString('hotel_2');
+
+    if (hotelOne === hotelTwo) {
+      return interaction.reply({ content: '❌ Please choose two different hotels.', ephemeral: true });
+    }
+
+    const agent = db.prepare("SELECT id, username FROM agents WHERE discord_id = ?").get(target.id);
+    if (!agent) return interaction.reply({ content: '❌ User is not a registered agent.', ephemeral: true });
+
+    db.prepare(`
+      INSERT INTO hotel_shift_assignments (agent_id, primary_hotel_id, secondary_hotel_id, created_by)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        primary_hotel_id = excluded.primary_hotel_id,
+        secondary_hotel_id = excluded.secondary_hotel_id,
+        created_by = excluded.created_by,
+        created_at = CURRENT_TIMESTAMP
+    `).run(agent.id, hotelOne, hotelTwo, interaction.user.id);
+
+    await interaction.reply({
+      content:
+        `✅ Saved paired hotel shifts for **${target.username}**.\n` +
+        `Primary: **${HOTEL_NAMES[hotelOne] || hotelOne}**\n` +
+        `Secondary: **${HOTEL_NAMES[hotelTwo] || hotelTwo}**\n\n` +
+        `They still occupy only one hotel at a time; this stores both approved shift options.`,
+      ephemeral: true
+    });
+  } catch (e) {
+    console.error('Error in handleAddHotelShifts:', e);
+    await interaction.reply({ content: '❌ Error saving paired hotel shifts.', ephemeral: true });
   }
 }
 
@@ -5054,6 +5096,7 @@ module.exports = {
   handleAddGuide,
   handleMaintenanceList,
   handleSetSchedule,
+  handleAddHotelShifts,
   handleScheduleView,
   handleScheduleExport,
   handleScheduleImport,

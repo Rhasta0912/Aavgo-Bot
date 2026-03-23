@@ -394,6 +394,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleMaintenanceList(interaction);
     } else if (commandName === 'db-set-schedule') {
       await auth.handleSetSchedule(interaction);
+    } else if (commandName === 'set-hotel-shifts') {
+      await auth.handleAddHotelShifts(interaction);
     } else if (commandName === 'schedule-view') {
       await auth.handleScheduleView(interaction);
     } else if (commandName === 'schedule-export') {

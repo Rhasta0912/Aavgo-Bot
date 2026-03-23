@@ -141,6 +141,18 @@ db.exec(`
     FOREIGN KEY (agent_id) REFERENCES agents(id)
   );
 
+  CREATE TABLE IF NOT EXISTS hotel_shift_assignments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id INTEGER NOT NULL UNIQUE,
+    primary_hotel_id TEXT NOT NULL,
+    secondary_hotel_id TEXT NOT NULL,
+    created_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (agent_id) REFERENCES agents(id),
+    FOREIGN KEY (primary_hotel_id) REFERENCES hotels(id),
+    FOREIGN KEY (secondary_hotel_id) REFERENCES hotels(id)
+  );
+
 
   -- Seed initial Developers
   INSERT OR IGNORE INTO developers (discord_id, username) VALUES ('320128931971727360', 'itzrvjplayz');
@@ -212,8 +224,10 @@ db.pragma('foreign_keys = ON');
       db.prepare("UPDATE sessions SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
       db.prepare("UPDATE maintenance_logs SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
       db.prepare("UPDATE handover_notes SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
-      db.prepare("UPDATE schedules SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
-      db.prepare("UPDATE sop_guides SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+    db.prepare("UPDATE schedules SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+    db.prepare("UPDATE sop_guides SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE hotel_shift_assignments SET primary_hotel_id = 'BW_TO' WHERE primary_hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE hotel_shift_assignments SET secondary_hotel_id = 'BW_TO' WHERE secondary_hotel_id = 'BRNT'").run();
       db.prepare("DELETE FROM hotel_status WHERE hotel_id = 'BRNT'").run();
       db.prepare("DELETE FROM hotels WHERE id = 'BRNT'").run();
       db.prepare("UPDATE hotels SET name = 'Indianhead/Magnuson' WHERE id = 'BW_TO'").run();

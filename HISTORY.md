@@ -162,3 +162,7 @@ Working rules:
 - Renamed /help-dev to /help-staff, removed the old RAC references from the staff guide, and kept the staff help surface available to both Developers and Operations Manager. Added a workflow rule to keep help commands updated whenever command surfaces change.
 
 - Renamed /help-dev to /help-staff, removed RAC references from the live staff guide, and kept the staff help surface available to both Developers and Operations Manager. Added the rule that when a command changes, the affected help commands must be updated in the same change set.
+
+- Added /add-hotel-shifts so management can store two approved hotel shift options for one agent without touching permanent hotel linkage. The command uses a new DB-backed paired-shift table, and the staff help guide now documents it alongside the schedule tools.
+
+- Renamed /add-hotel-shifts to /set-hotel-shifts across slash registration, routing, and staff help so the command appears under the final name in Discord command options.

@@ -179,6 +179,14 @@ const commandData = [
     .addStringOption(option => option.setName('start').setDescription('Start Time (e.g., 09:00)').setRequired(true))
     .addStringOption(option => option.setName('end').setDescription('End Time (e.g., 17:00)').setRequired(true)),
   new SlashCommandBuilder()
+    .setName('set-hotel-shifts')
+    .setDescription('(Manager) Assign an agent to two hotel shift options')
+    .addUserOption(option => option.setName('user').setDescription('The agent to update').setRequired(true))
+    .addStringOption(option => option.setName('hotel_1').setDescription('Primary hotel').setRequired(true)
+      .addChoices(...HOTEL_CHOICES))
+    .addStringOption(option => option.setName('hotel_2').setDescription('Secondary hotel').setRequired(true)
+      .addChoices(...HOTEL_CHOICES)),
+  new SlashCommandBuilder()
     .setName('schedule-view')
     .setDescription('(Manager) View the weekly shift schedule in spreadsheet format')
     .addStringOption(option => option.setName('hotel').setDescription('Filter by hotel').setRequired(false)
