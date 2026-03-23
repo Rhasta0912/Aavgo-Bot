@@ -359,6 +359,10 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDbLogCheckin(interaction);
     } else if (commandName === 'db-backup') {
       await handleDbBackup(interaction);
+    } else if (commandName === 'db-add-developer') {
+      await auth.handleDbAddDeveloper(interaction);
+    } else if (commandName === 'db-set-phone') {
+      await auth.handleDbSetPhone(interaction);
     } else if (commandName === 'db-promote-tl') {
       await auth.handlePromoteTL(interaction);
     } else if (commandName === 'db-promote-sme') {

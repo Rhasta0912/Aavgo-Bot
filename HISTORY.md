@@ -53,6 +53,13 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Restore missing developer routes
+  - Summary: Added routing for /db-add-developer and /db-set-phone in the interaction router, and updated the staff help text so the documented command surface matches the handlers.
+  - Files touched:
+    - src/index.js
+    - src/auth.js
+  - Notes:
+    - None
 - Added a shared update-log workflow so Alpha and Astra can see plain-English change notes even when one person is offline. The new `npm run log:update -- --title ... --summary ... --files ...` helper appends the same note to `HISTORY.md`, the desktop `History.md`, and Discord update log channel `1485584578927132863`.
 - Fixed standby setup regression: hotel dropdown (`handleHotelSelectMenu`) no longer blocks standby-linked users with “Hotel Already Linked.” Standby agents can now re-pick hotel during setup as intended.
 - Updated standby wording from “Standby Training” to **Standby Agent**.
