@@ -197,6 +197,9 @@ client.once('ready', async () => {
     
     // Initial check on boot
     auth.checkSchedules(client);
+    auth.broadcastUpdateLog(client).catch(error => {
+      console.warn('[UPDATE-LOG] Startup broadcast failed:', error.message);
+    });
 
     // Startup Audit Log
     upsertBotStatusCard({

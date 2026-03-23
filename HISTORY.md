@@ -171,3 +171,4 @@ Working rules:
 - Fixed /db-remove-user FOREIGN KEY purge failure by deleting hotel_shift_assignments rows before deleting the agent record, matching the new paired-hotel assignment table dependencies.
 - Added multi-assigned hotel login picker: when an agent has multiple grey hotel roles, Initialize Shift now prompts them to choose which assigned hotel to handle for this shift before PIN verification.
 - Fixed multi-hotel shift picker interaction failure: PIN modal handler now accepts select-menu interactions (not only buttons), so choosing a hotel from the picker opens PIN verification correctly.
+- Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.

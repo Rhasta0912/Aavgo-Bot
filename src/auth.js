@@ -11,6 +11,7 @@ const {
   StringSelectMenuOptionBuilder 
 } = require('discord.js');
 const db = require('./database');
+const { execSync } = require('child_process');
 const whatsapp = {
   sendToWhatsApp: async () => false
 };
@@ -258,6 +259,57 @@ async function sendShiftActivityLog(client, { title, color, description, fields 
 }
 
 // ─── Centralized Session Maintenance ────────────────
+async function broadcastUpdateLog(client) {
+  const UPDATE_LOG_CHANNEL_ID = '1485584578927132863';
+  try {
+    const channel = await client.channels.fetch(UPDATE_LOG_CHANNEL_ID).catch(() => null);
+    if (!channel || !channel.isTextBased()) return;
+
+    const currentCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    if (!currentCommit) return;
+
+    const lastPosted = db.prepare("SELECT value FROM config WHERE key = ?").get('update_log_last_commit')?.value || null;
+    if (lastPosted === currentCommit) return;
+
+    let commitLines = [];
+    try {
+      if (lastPosted) {
+        const raw = execSync(`git log --pretty=format:%h|%s ${lastPosted}..HEAD`, { encoding: 'utf8' }).trim();
+        commitLines = raw ? raw.split('\n').filter(Boolean) : [];
+      } else {
+        const raw = execSync('git log -1 --pretty=format:%h|%s', { encoding: 'utf8' }).trim();
+        commitLines = raw ? [raw] : [];
+      }
+    } catch (rangeErr) {
+      console.warn('[UPDATE-LOG] Commit range lookup failed:', rangeErr.message);
+      const fallback = execSync('git log -1 --pretty=format:%h|%s', { encoding: 'utf8' }).trim();
+      commitLines = fallback ? [fallback] : [];
+    }
+
+    const lines = commitLines.slice(0, 10).map(line => {
+      const [hash, ...subjectParts] = line.split('|');
+      const subject = subjectParts.join('|').trim() || 'Updated bot behavior';
+      return `- \`${hash}\` ${subject}`;
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle('📢 Aavgo Bot Update Log')
+      .setDescription(
+        'A new deployment is now live.\n\n' +
+        (lines.length ? lines.join('\n') : '- Latest deployment applied.')
+      )
+      .addFields({ name: 'Current Commit', value: `\`${currentCommit}\``, inline: true })
+      .setColor(0xF1C40F)
+      .setFooter({ text: 'Aavgo Operations • Update Logs' })
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run('update_log_last_commit', currentCommit);
+  } catch (error) {
+    console.warn('[UPDATE-LOG] Failed to broadcast deployment update:', error.message);
+  }
+}
+
 async function closeAllActiveSessionsForAgent(agentId, client) {
   const nowIso = new Date().toISOString();
   
@@ -5160,6 +5212,7 @@ module.exports = {
   HOTEL_NAMES,
   HOTEL_LOGIN_CHANNELS,
   sendAuditLog,
+  broadcastUpdateLog,
   ensureAgentKioskMessage,
   updateHotelStatusEmbed,
   handleSetupLogin, 
