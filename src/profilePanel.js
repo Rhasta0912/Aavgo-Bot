@@ -70,20 +70,25 @@ function getProfilePanelKey(channelId) {
 
 function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null) {
   const normalizedSelected = normalizeTeamName(selectedTeam);
+  const team1Description = normalizedSelected === TEAM_1
+    ? 'Browse Team 1 members (current)'
+    : 'Browse Team 1 members';
+  const team2Description = normalizedSelected === TEAM_2
+    ? 'Browse Team 2 members (current)'
+    : 'Browse Team 2 members';
+
   const menu = new StringSelectMenuBuilder()
     .setCustomId(customId)
     .setPlaceholder('Select team')
     .addOptions(
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_1)
-        .setDescription('Browse Team 1 members')
-        .setValue(TEAM_1)
-        .setDefault(normalizedSelected === TEAM_1),
+        .setDescription(team1Description)
+        .setValue(TEAM_1),
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_2)
-        .setDescription('Browse Team 2 members')
+        .setDescription(team2Description)
         .setValue(TEAM_2)
-        .setDefault(normalizedSelected === TEAM_2)
     );
 
   return new ActionRowBuilder().addComponents(menu);
@@ -101,20 +106,22 @@ function buildTeamRefreshRow(teamName) {
 function buildDashboardEmbed(activeTeam = null) {
   const selected = normalizeTeamName(activeTeam);
   return new EmbedBuilder()
-    .setTitle('Aavgo Operations - Profiles Kiosk')
+    .setTitle('🛡️ Aavgo Operations - Profiles Kiosk')
     .setDescription(
-      '### Welcome to the Profiles Portal\n' +
-      'Clean profile management for staff actions without command hunting.\n\n' +
-      '------------------------------\n' +
-      '**Protocol**\n' +
-      '1. Select a team\n' +
-      '2. Select an agent profile\n' +
-      '3. Run approved management actions\n\n' +
-      '------------------------------\n' +
-      `**Current Team:** ${selected || 'Not selected'}`
+      '## Welcome to the Profiles Portal\n' +
+      '### Secure Agent Management System\n' +
+      'This portal is built for fast team browsing, profile review, and developer actions.\n\n' +
+      '──────────────────────────────\n' +
+      '📋 **Protocol**\n' +
+      '1. Select a team below\n' +
+      '2. Pick an agent profile\n' +
+      '3. Run an approved action\n' +
+      '4. Refresh team data if needed\n\n' +
+      '──────────────────────────────\n' +
+      `🏨 **Current Team:** ${selected || 'Not selected'}`
     )
-    .setColor(0x1F8B4C)
-    .setFooter({ text: 'Aavgo Operations - Profiles Access' })
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Aavgo Operations - Automated Access Control' })
     .setTimestamp();
 }
 
@@ -132,21 +139,22 @@ function buildTeamRosterEmbed(teamName, members) {
     return acc;
   }, {});
 
-  const preview = members.slice(0, 18).map(formatMemberLine);
+  const preview = members.slice(0, 20).map(formatMemberLine);
   const extraCount = members.length - preview.length;
   const rosterText = preview.length > 0 ? preview.join('\n') : 'No members found for this team.';
   const withExtra = extraCount > 0 ? `${rosterText}\n... and ${extraCount} more.` : rosterText;
 
   return new EmbedBuilder()
-    .setTitle(`${teamName} Member Profiles`)
+    .setTitle(`🧾 ${teamName} - Member Profiles`)
     .setDescription(
       `### Team Roster\n${withExtra}\n\n` +
+      '──────────────────────────────\n' +
       'Use the menu below to open any profile card.'
     )
     .addFields(
-      { name: 'Total', value: String(members.length), inline: true },
-      { name: 'Leads', value: String((roleCount.team_leader || 0) + (roleCount.operations_manager || 0)), inline: true },
-      { name: 'SME', value: String(roleCount.sme || 0), inline: true }
+      { name: '👥 Total', value: String(members.length), inline: true },
+      { name: '🧭 Leads', value: String((roleCount.team_leader || 0) + (roleCount.operations_manager || 0)), inline: true },
+      { name: '🎯 SME', value: String(roleCount.sme || 0), inline: true }
     )
     .setColor(teamName === TEAM_1 ? 0x2ECC71 : 0x5865F2)
     .setFooter({ text: 'Aavgo Operations - Team Browser' })
@@ -226,7 +234,29 @@ function canUsePanel(interaction) {
   return auth.isDeveloper(interaction);
 }
 
+async function safeDeferComponentUpdate(interaction) {
+  if (!interaction || interaction.deferred || interaction.replied) return;
+  await interaction.deferUpdate().catch(() => {});
+}
+
+function sendComponentUpdate(interaction, payload) {
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(payload);
+  }
+  return interaction.update(payload);
+}
+
+function sendComponentReply(interaction, payload) {
+  if (interaction.deferred || interaction.replied) {
+    return interaction.followUp(payload);
+  }
+  return interaction.reply(payload);
+}
+
 async function resolveDisplayName(guild, discordId, fallback) {
+  const cached = guild?.members?.cache?.get(discordId);
+  if (cached) return cached.displayName;
+
   const member = await guild.members.fetch(discordId).catch(() => null);
   if (member) return member.displayName;
   return fallback || 'Unknown';
@@ -254,16 +284,10 @@ async function fetchTeamMembers(guild, teamName) {
     ORDER BY a.username COLLATE NOCASE ASC
   `).all(normalizedTeam);
 
-  const members = [];
-  for (const row of rows) {
-    const displayName = await resolveDisplayName(guild, row.discord_id, row.username);
-    members.push({
-      ...row,
-      display_name: displayName
-    });
-  }
-
-  return members;
+  return Promise.all(rows.map(async row => ({
+    ...row,
+    display_name: await resolveDisplayName(guild, row.discord_id, row.username)
+  })));
 }
 
 function hotelName(hotelId) {
@@ -351,25 +375,26 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
     : 'Not on an active shift';
 
   const embed = new EmbedBuilder()
-    .setTitle('Active Agent - Verified')
+    .setTitle('✅ Active Agent · Verified')
     .setDescription(
-      `## ${shortName}\n` +
-      '------------------------------\n' +
-      `Discord: <@${agent.discord_id}> (\`${agent.discord_id}\`)\n` +
-      `Email: ${email}\n` +
-      `Phone (PH): ${phone}\n` +
-      `Applied At: ${dateTag(appliedAt)}\n` +
-      `Role: ${roleLabel(agent.role)}\n` +
-      `Team: ${agent.team || profile.agent.effective_team || TEAM_1}\n` +
-      `Primary Hotel: ${hotelName(agent.hotel_id)}\n` +
-      `Hotel Pair: ${pairText}\n` +
-      `Live Session: ${activeText}\n` +
-      '------------------------------\n' +
-      'Review and choose a management action below.'
+      `## 👤 ${shortName}\n` +
+      '──────────────────────────────\n' +
+      `> 🧑 Discord: <@${agent.discord_id}> (\`${agent.discord_id}\`)\n` +
+      `> 📧 Email: ${email}\n` +
+      `> 📱 Phone (PH): ${phone}\n` +
+      `> ⏰ Applied At: ${dateTag(appliedAt)}\n` +
+      `> 🧩 Role: ${roleLabel(agent.role)}\n` +
+      `> 🏨 Team: ${agent.team || profile.agent.effective_team || TEAM_1}\n` +
+      `> 🏢 Primary Hotel: ${hotelName(agent.hotel_id)}\n` +
+      `> 🔗 Hotel Pair: ${pairText}\n` +
+      `> 🟢 Live Session: ${activeText}\n` +
+      '──────────────────────────────\n' +
+      '*Review the profile below.*\n\n' +
+      `**Reviewed by:** ${reviewerTag || 'System'}\n` +
+      `Member ID: ${agent.discord_id}`
     )
-    .setColor(activeSession ? 0x2ECC71 : 0x3498DB)
-    .addFields({ name: 'Reviewed by', value: reviewerTag || 'System', inline: true })
-    .setFooter({ text: `Member ID: ${agent.discord_id}` })
+    .setColor(0x2ECC71)
+    .setFooter({ text: 'Aavgo Operations - Profile Review' })
     .setTimestamp();
 
   if (member) {
@@ -473,7 +498,7 @@ function buildProfileRows(profile, teamName, teamMembers) {
 async function showProfileCard(interaction, discordId, options = {}) {
   const profile = await getProfileContext(interaction.guild, discordId);
   if (!profile) {
-    return interaction.update({
+    return sendComponentUpdate(interaction, {
       embeds: [
         new EmbedBuilder()
           .setTitle('Profile Not Found')
@@ -489,7 +514,7 @@ async function showProfileCard(interaction, discordId, options = {}) {
   const embed = buildProfileEmbed(profile, interaction.user.tag, options.notice || null);
   const rows = buildProfileRows(profile, preferredTeam, members);
 
-  return interaction.update({
+  return sendComponentUpdate(interaction, {
     embeds: [embed],
     components: rows
   });
@@ -542,32 +567,36 @@ async function handleTeamPick(interaction) {
     return interaction.reply({ content: 'Developer access required.', ephemeral: true });
   }
 
+  await safeDeferComponentUpdate(interaction);
+
   const teamName = normalizeTeamName(interaction.values?.[0]);
   if (!teamName) {
     if (interaction.customId === 'profiles_team_pick_local') {
-      return interaction.update({ content: 'Invalid team selection.', embeds: [], components: [] });
+      return sendComponentUpdate(interaction, { content: 'Invalid team selection.', embeds: [], components: [] });
     }
-    return interaction.reply({ content: 'Invalid team selection.', ephemeral: true });
+    return sendComponentReply(interaction, { content: 'Invalid team selection.', ephemeral: true });
   }
 
   const members = await fetchTeamMembers(interaction.guild, teamName);
   const payload = buildTeamRosterPayload(teamName, members);
 
   if (interaction.customId === 'profiles_team_pick') {
-    await interaction.update({
+    await sendComponentUpdate(interaction, {
       embeds: [buildDashboardEmbed(teamName)],
       components: [buildTeamPickerRow('profiles_team_pick', teamName)]
     });
-    return interaction.followUp({ ...payload, ephemeral: true });
+    return sendComponentReply(interaction, { ...payload, ephemeral: true });
   }
 
-  return interaction.update(payload);
+  return sendComponentUpdate(interaction, payload);
 }
 
 async function handleAgentPick(interaction) {
   if (!canUsePanel(interaction)) {
-    return interaction.update({ content: 'Developer access required.', embeds: [], components: [] });
+    return sendComponentUpdate(interaction, { content: 'Developer access required.', embeds: [], components: [] });
   }
+
+  await safeDeferComponentUpdate(interaction);
 
   const teamNameRaw = interaction.customId.split(':')[1];
   const teamName = normalizeTeamName(teamNameRaw) || TEAM_1;
@@ -579,7 +608,7 @@ async function handleAgentPick(interaction) {
 async function handlePromote(interaction, discordId) {
   const current = db.prepare('SELECT role, team FROM agents WHERE discord_id = ?').get(discordId);
   if (!current) {
-    return interaction.update({ content: 'Agent not found in database.', embeds: [], components: [] });
+    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
   const newRole = nextRole(current.role);
@@ -597,7 +626,7 @@ async function handlePromote(interaction, discordId) {
 async function handleDemote(interaction, discordId) {
   const current = db.prepare('SELECT role, team FROM agents WHERE discord_id = ?').get(discordId);
   if (!current) {
-    return interaction.update({ content: 'Agent not found in database.', embeds: [], components: [] });
+    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
   const newRole = previousRole(current.role);
@@ -615,7 +644,7 @@ async function handleDemote(interaction, discordId) {
 async function handleKickOrBanConfirm(interaction, action, discordId) {
   const member = await interaction.guild.members.fetch(discordId).catch(() => null);
   if (!member) {
-    return interaction.update({
+    return sendComponentUpdate(interaction, {
       embeds: [
         new EmbedBuilder()
           .setTitle('Action Failed')
@@ -633,7 +662,7 @@ async function handleKickOrBanConfirm(interaction, action, discordId) {
     await member.kick(reason).catch(() => {});
   }
 
-  return interaction.update({
+  return sendComponentUpdate(interaction, {
     embeds: [
       new EmbedBuilder()
         .setTitle(`${action === 'ban' ? 'Ban' : 'Kick'} Completed`)
@@ -664,10 +693,12 @@ function removeAgentFromDb(discordId) {
 }
 
 async function handleMisc(interaction, discordId) {
+  await safeDeferComponentUpdate(interaction);
+
   const action = interaction.values?.[0];
   const agent = db.prepare('SELECT id, team FROM agents WHERE discord_id = ?').get(discordId);
   if (!agent) {
-    return interaction.update({ content: 'Agent not found in database.', embeds: [], components: [] });
+    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
   if (action === 'refresh') {
@@ -706,7 +737,7 @@ async function handleMisc(interaction, discordId) {
 
   if (action === 'remove_agent_record') {
     removeAgentFromDb(discordId);
-    return interaction.update({
+    return sendComponentUpdate(interaction, {
       embeds: [
         new EmbedBuilder()
           .setTitle('Agent Record Removed')
@@ -726,6 +757,8 @@ async function handleButton(interaction) {
     return interaction.reply({ content: 'Developer access required.', ephemeral: true });
   }
 
+  await safeDeferComponentUpdate(interaction);
+
   const customId = interaction.customId || '';
   if (customId.startsWith('profiles_promote:')) {
     const discordId = customId.split(':')[1];
@@ -739,7 +772,7 @@ async function handleButton(interaction) {
 
   if (customId.startsWith('profiles_kick:')) {
     const discordId = customId.split(':')[1];
-    return interaction.update({
+    return sendComponentUpdate(interaction, {
       embeds: [buildConfirmEmbed('kick', discordId)],
       components: [buildConfirmRow('kick', discordId)]
     });
@@ -747,7 +780,7 @@ async function handleButton(interaction) {
 
   if (customId.startsWith('profiles_ban:')) {
     const discordId = customId.split(':')[1];
-    return interaction.update({
+    return sendComponentUpdate(interaction, {
       embeds: [buildConfirmEmbed('ban', discordId)],
       components: [buildConfirmRow('ban', discordId)]
     });
@@ -758,7 +791,7 @@ async function handleButton(interaction) {
     const action = parts[1];
     const discordId = parts[2];
     if (!['kick', 'ban'].includes(action)) {
-      return interaction.update({ content: 'Invalid confirmation action.', embeds: [], components: [] });
+      return sendComponentUpdate(interaction, { content: 'Invalid confirmation action.', embeds: [], components: [] });
     }
     return handleKickOrBanConfirm(interaction, action, discordId);
   }
@@ -772,7 +805,7 @@ async function handleButton(interaction) {
     const teamRaw = customId.split(':')[1];
     const teamName = normalizeTeamName(teamRaw) || TEAM_1;
     const members = await fetchTeamMembers(interaction.guild, teamName);
-    return interaction.update(buildTeamRosterPayload(teamName, members));
+    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
   }
 
   return null;
@@ -789,7 +822,7 @@ async function handleSelectMenu(interaction) {
 
   if (interaction.customId.startsWith('profiles_misc:')) {
     if (!canUsePanel(interaction)) {
-      return interaction.update({ content: 'Developer access required.', embeds: [], components: [] });
+      return sendComponentUpdate(interaction, { content: 'Developer access required.', embeds: [], components: [] });
     }
     const discordId = interaction.customId.split(':')[1];
     return handleMisc(interaction, discordId);

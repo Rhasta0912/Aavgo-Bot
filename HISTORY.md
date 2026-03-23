@@ -53,6 +53,14 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fix profiles interaction timeout + UI consistency
+  - Summary: Fixed profiles panel interaction expiry by acknowledging component interactions before heavy DB/member fetch work, then responding through safe edit/follow-up paths. Also refreshed profiles embeds to match kiosk/approval styling and added SOP rules for interaction reliability and no PIN exposure.
+  - Files touched:
+    - src/profilePanel.js
+    - SOP.md
+  - Notes:
+    - Prevents DiscordAPIError 10062 in team/profile selection flows
+    - No raw PIN should appear in DM/reply/log surfaces
 - Polish profiles panel UI and harden PIN privacy
   - Summary: Redesigned the profiles dashboard/profile cards to match the kiosk and approval style, fixed team member discovery to use effective team fallback (team/hotel/paired hotels), added in-panel team reload/switch navigation, expanded misc actions, removed set-ready/set-standby/reset-pin from the panel, and removed PIN exposure text from promotion/admin responses.
   - Files touched:

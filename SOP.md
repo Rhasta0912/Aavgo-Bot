@@ -118,6 +118,20 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 - Recommended command for future updates:
   - `npm run log:update -- --title "Short title" --summary "Plain English summary" --files "file1,file2"`
 
+## Interaction Reliability SOP
+- For button/select menu handlers that read DB data or fetch guild members:
+  - acknowledge fast with `deferUpdate()` before heavy work
+  - finish with `editReply()` or `followUp()` after processing
+- This prevents Discord `10062 Unknown interaction` expiry on slower operations.
+
+## PIN Privacy SOP
+- Never expose raw PIN values in:
+  - DMs
+  - slash command replies
+  - channel messages
+  - logs/history/update notes
+- Admin/developer flows may set/reset PINs, but user-facing responses must not display the PIN string.
+
 ## Incident SOP
 1. Capture error/log evidence.
 2. Reproduce issue.
