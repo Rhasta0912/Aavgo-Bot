@@ -166,3 +166,4 @@ Working rules:
 - Added /add-hotel-shifts so management can store two approved hotel shift options for one agent without touching permanent hotel linkage. The command uses a new DB-backed paired-shift table, and the staff help guide now documents it alongside the schedule tools.
 
 - Renamed /add-hotel-shifts to /set-hotel-shifts across slash registration, routing, and staff help so the command appears under the final name in Discord command options.
+- Updated /set-hotel-shifts so it now also syncs hotel assignment roles for both selected hotels, removing old hotel roles not in the selected pair and adding the new pair roles automatically.

@@ -4389,7 +4389,7 @@ async function handleHelpStaff(interaction) {
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
-        '> `/set-hotel-shifts`: Store two hotel shift options for one agent.\n' +
+        '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +
         '### 📎 Useful SQL Snippets (`/db-query`)\n' +
@@ -4749,12 +4749,41 @@ async function handleAddHotelShifts(interaction) {
         created_at = CURRENT_TIMESTAMP
     `).run(agent.id, hotelOne, hotelTwo, interaction.user.id);
 
+    let roleSyncNote = '';
+    try {
+      const member = await interaction.guild.members.fetch(target.id);
+      if (member) {
+        const allHotelRoleIds = [...Object.values(ROLE_NAMES.GREY), ...Object.values(ROLE_NAMES.GREEN)];
+        const selectedRoleIds = [
+          ROLE_NAMES.GREY[hotelOne],
+          ROLE_NAMES.GREEN[hotelOne],
+          ROLE_NAMES.GREY[hotelTwo],
+          ROLE_NAMES.GREEN[hotelTwo]
+        ].filter(Boolean);
+        const uniqueSelectedRoleIds = [...new Set(selectedRoleIds)];
+
+        const rolesToRemove = member.roles.cache.filter(
+          r => allHotelRoleIds.includes(r.id) && !uniqueSelectedRoleIds.includes(r.id)
+        );
+        if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
+
+        const rolesToAdd = uniqueSelectedRoleIds
+          .map(roleId => interaction.guild.roles.cache.get(roleId))
+          .filter(role => role && !member.roles.cache.has(role.id));
+        if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+      }
+    } catch (roleErr) {
+      console.warn('[SET-HOTEL-SHIFTS] Role sync failed:', roleErr.message);
+      roleSyncNote = '\n⚠️ Shift pair saved, but role sync failed due to Discord permissions/hierarchy.';
+    }
+
     await interaction.reply({
       content:
         `✅ Saved paired hotel shifts for **${target.username}**.\n` +
         `Primary: **${HOTEL_NAMES[hotelOne] || hotelOne}**\n` +
         `Secondary: **${HOTEL_NAMES[hotelTwo] || hotelTwo}**\n\n` +
-        `They still occupy only one hotel at a time; this stores both approved shift options.`,
+        `They still occupy only one hotel at a time; this stores both approved shift options and syncs the matching hotel roles.` +
+        roleSyncNote,
       ephemeral: true
     });
   } catch (e) {
