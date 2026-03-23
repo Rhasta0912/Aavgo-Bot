@@ -53,6 +53,7 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added a shared update-log workflow so Alpha and Astra can see plain-English change notes even when one person is offline. The new `npm run log:update -- --title ... --summary ... --files ...` helper appends the same note to `HISTORY.md`, the desktop `History.md`, and Discord update log channel `1485584578927132863`.
 - Fixed standby setup regression: hotel dropdown (`handleHotelSelectMenu`) no longer blocks standby-linked users with “Hotel Already Linked.” Standby agents can now re-pick hotel during setup as intended.
 - Updated standby wording from “Standby Training” to **Standby Agent**.
 - Updated standby flow behavior so agents in standby can still use setup selection (team/hotel picking) while live hotel login remains blocked until `/db-agent-ready`.
@@ -153,9 +154,11 @@ Working rules:
 
 - Removed the public PIN field from /add-agent so management only passes the user now. The command generates its own internal temporary PIN, grants Agents plus Unverified for normal agent promotions, and keeps the new self-service PIN setup rule consistent.
 
-- Updated /add-agent agent promotions so they DM the same security-setup embed used by the newcomer Agent button: welcome message plus the 1-2-3 egister-set-pin tutorial, instead of a separate PIN-centric prompt.
+- Updated /add-agent agent promotions so they DM the same security-setup embed used by the newcomer Agent button: welcome message plus the 1-2-3 
+egister-set-pin tutorial, instead of a separate PIN-centric prompt.
 
-- Fixed a server startup crash caused by a malformed duplicate eturn member; block left behind in pplyAgentPromotion. The extra lines made src/auth.js invalid JavaScript and prevented the bot from booting until the duplicate was removed.
+- Fixed a server startup crash caused by a malformed duplicate 
+eturn member; block left behind in pplyAgentPromotion. The extra lines made src/auth.js invalid JavaScript and prevented the bot from booting until the duplicate was removed.
 
 - Removed /generate-rac and /rac-send from the live command surface and routing, and deleted the unused RAC handler code. Recruitment access is now intended to stay manual through the new agent promotion and security setup flow.
 

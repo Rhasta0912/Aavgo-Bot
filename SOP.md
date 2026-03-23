@@ -104,6 +104,20 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
   - why it changed
   - behavior impact
 
+## Update Log SOP
+- Every meaningful GitHub push must also be summarized in plain English in the Discord update log channel:
+  - `1485584578927132863`
+- Use the same wording across:
+  - the Discord update log channel
+  - `HISTORY.md`
+  - `C:\Users\chugc\Desktop\Aavgo Bot\History.md`
+- Keep the note short and readable for the other developer:
+  - what was updated
+  - why it was updated
+  - any risk or follow-up they should know
+- Recommended command for future updates:
+  - `npm run log:update -- --title "Short title" --summary "Plain English summary" --files "file1,file2"`
+
 ## Incident SOP
 1. Capture error/log evidence.
 2. Reproduce issue.
