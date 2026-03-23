@@ -488,19 +488,36 @@ async function sendAgentPinDM(member, pin, roleLabel = 'Agent', includePin = tru
     ? `Your secure PIN is: \`${pin}\`\n\n`
     : 'Your secure PIN has been set by management.\nFor security, it is not shown in this DM.\n\n';
   const embed = new EmbedBuilder()
-    .setTitle(`🎉 Welcome to Aavgo, ${member.user.username}`)
+    .setTitle(`Welcome to Aavgo, ${member.user.username}`)
     .setDescription(
       `You have been promoted to **${roleLabel}**.\n\n` +
       pinBlock +
       `Please keep this private and use it only for your Aavgo login flow.`
     )
     .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations · Promotion' })
+    .setFooter({ text: 'Aavgo Operations � Promotion' })
     .setTimestamp();
 
   await member.send({ embeds: [embed] });
 }
 
+async function sendNewcomerAgentSetupDM(member) {
+  const embed = new EmbedBuilder()
+    .setTitle(`Welcome to Aavgo, ${member.user.username}`)
+    .setDescription(
+      `You have been promoted to **Agent**.\n\n` +
+      `Please complete your setup in order:\n` +
+      `**1.** Open <#1482255690054762646> (**register-set-pin**).\n` +
+      `**2.** Click the **Setup Security** button.\n` +
+      `**3.** Create your PIN, re-enter the same PIN, then submit your PH phone number (\`63\` or \`09\`).\n\n` +
+      `After this, your account security setup is complete.`
+    )
+    .setColor(0xF1C40F)
+    .setFooter({ text: 'Aavgo Operations � Security Setup' })
+    .setTimestamp();
+
+  await member.send({ embeds: [embed] });
+}
 async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent', sourceLabel = 'ADD-AGENT') {
   const member = await interaction.guild.members.fetch(targetUser.id);
   const normalizedRole = normalizeAgentRole(role);
@@ -542,7 +559,7 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
 async function handleNewcomerPromotion(interaction) {
   try {
     if (!interactionHasRoleAtLeast(interaction, 'sme')) {
-      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+      return interaction.reply({ content: 'ERROR: Management or Developer access required.', ephemeral: true });
     }
 
     const [action, targetUserId, announcementMessageId] = interaction.customId.split(':');
@@ -552,13 +569,13 @@ async function handleNewcomerPromotion(interaction) {
     const isAgentAction = action === 'newcomer_promote_agent';
 
     if (!isTraineeAction && !isAgentAction) {
-      return interaction.reply({ content: '❌ Unknown newcomer action.', ephemeral: true });
+      return interaction.reply({ content: 'ERROR: Unknown newcomer action.', ephemeral: true });
     }
 
     if (isTraineeAction) {
       const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
       if (traineeRole && member.roles.cache.has(traineeRole.id)) {
-        return interaction.reply({ content: `⚠️ **${member.user.username}** already has the Trainees role.`, ephemeral: true });
+        return interaction.reply({ content: `WARNING: **${member.user.username}** already has the Trainees role.`, ephemeral: true });
       }
 
       const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
@@ -568,7 +585,7 @@ async function handleNewcomerPromotion(interaction) {
       if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
       if (traineeRole) await member.roles.add(traineeRole);
       sendAuditLog(interaction.client, {
-        title: '👋 Newcomer Promoted to Trainee',
+        title: 'Newcomer Promoted to Trainee',
         description: `**User:** ${member.user.username} (<@${member.id}>)\n**Action:** Trainee\n**Handled By:** {{AGENT_NAME}}`,
         color: 0x3498DB,
         userId: interaction.user.id,
@@ -576,23 +593,64 @@ async function handleNewcomerPromotion(interaction) {
       });
 
       await interaction.message.edit({ components: [] }).catch(() => {});
-      return interaction.reply({ content: `✅ **${member.user.username}** has been promoted to **Trainee**.`, ephemeral: true });
+      return interaction.reply({ content: `SUCCESS: **${member.user.username}** has been promoted to **Trainee**.`, ephemeral: true });
     }
 
     const agentsRole = interaction.guild.roles.cache.get('1482227287159078964') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'agents');
-    if (agentsRole && member.roles.cache.has(agentsRole.id)) {
-      return interaction.reply({ content: `⚠️ **${member.user.username}** already has the Agents role.`, ephemeral: true });
+    const unverifiedRole = interaction.guild.roles.cache.get('1485275671797436620');
+    const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
+    const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
+    const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+
+    if (agentsRole && member.roles.cache.has(agentsRole.id) && (!unverifiedRole || member.roles.cache.has(unverifiedRole.id))) {
+      return interaction.reply({ content: `WARNING: **${member.user.username}** is already promoted as Agent.`, ephemeral: true });
     }
 
-    return interaction.showModal(buildNewcomerAgentPinModal(targetUserId, announcementMessageId));
+    const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.user.id);
+    if (existing) {
+      db.prepare("UPDATE agents SET username = ?, role = 'agent', agent_status = 'ready' WHERE discord_id = ?")
+        .run(member.user.username, member.user.id);
+    } else {
+      const tempPin = String(Math.floor(100000 + Math.random() * 900000));
+      db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, 'agent', 'ready')")
+        .run(member.user.id, member.user.username, tempPin);
+    }
+
+    const rolesToRemove = [applicantsRole, traineeRole, loggedOutRole].filter(roleObj => roleObj && member.roles.cache.has(roleObj.id));
+    const rolesToAdd = [agentsRole, unverifiedRole].filter(Boolean);
+    if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
+    if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+
+    await sendNewcomerAgentSetupDM(member).catch(error => {
+      console.warn('[NEWCOMER] Could not DM setup tutorial:', error.message);
+    });
+
+    sendAuditLog(interaction.client, {
+      title: 'Newcomer Promoted to Agent',
+      description: `**User:** ${member.user.username} (<@${member.id}>)\n**Action:** Agent + Unverified (no PIN set)\n**Handled By:** {{AGENT_NAME}}`,
+      color: 0x57F287,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+
+    if (announcementMessageId) {
+      const channel = await interaction.guild.channels.fetch(NEWCOMER_CHANNEL_ID).catch(() => null);
+      if (channel && channel.isTextBased()) {
+        await channel.messages.fetch(announcementMessageId).then(msg => msg.edit({ components: [] })).catch(() => {});
+      }
+    }
+
+    return interaction.reply({
+      content: `SUCCESS: **${member.user.username}** has been promoted to **Agent** with **Unverified** role. Setup tutorial was sent by DM.`,
+      ephemeral: true
+    });
   } catch (error) {
     console.error('Error in handleNewcomerPromotion:', error);
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Failed to update the newcomer role.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'ERROR: Failed to update the newcomer role.', ephemeral: true }).catch(() => {});
     }
   }
 }
-
 function buildNewcomerAgentPinModal(targetUserId, announcementMessageId) {
   const modal = new ModalBuilder()
     .setCustomId(`newcomer_agent_pin_modal:${targetUserId}:${announcementMessageId}`)
@@ -5117,4 +5175,8 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
+
+
+
+
 
