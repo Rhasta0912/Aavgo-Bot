@@ -349,7 +349,8 @@ async function showPinModal(interaction, hotelId, isTakeover = false, allowMulti
   const row = new ActionRowBuilder().addComponents(pinInput);
   modal.addComponents(row);
 
-  if (interaction.isButton()) {
+  if ((typeof interaction.isButton === 'function' && interaction.isButton()) ||
+      (typeof interaction.isStringSelectMenu === 'function' && interaction.isStringSelectMenu())) {
     await interaction.showModal(modal);
   } else {
     // If interaction is not show-modal compatible (like a slash command already deferred)

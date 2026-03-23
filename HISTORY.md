@@ -170,3 +170,4 @@ Working rules:
 - Updated /set-hotel-shifts role sync rule to grey-only hotel roles: it now assigns only the selected offline/ghost roles and removes green hotel roles from that command sync path.
 - Fixed /db-remove-user FOREIGN KEY purge failure by deleting hotel_shift_assignments rows before deleting the agent record, matching the new paired-hotel assignment table dependencies.
 - Added multi-assigned hotel login picker: when an agent has multiple grey hotel roles, Initialize Shift now prompts them to choose which assigned hotel to handle for this shift before PIN verification.
+- Fixed multi-hotel shift picker interaction failure: PIN modal handler now accepts select-menu interactions (not only buttons), so choosing a hotel from the picker opens PIN verification correctly.
