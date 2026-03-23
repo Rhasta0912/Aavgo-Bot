@@ -1524,8 +1524,18 @@ async function handleSecuritySetupSubmit(interaction) {
       return interaction.editReply({ content: '❌ You are not a registered agent. Ask Operations Manager or Developer to run `/add-agent` first.' });
     }
 
-    db.prepare("UPDATE agents SET pin = ?, phone = ?, username = ? WHERE discord_id = ?")
+        db.prepare("UPDATE agents SET pin = ?, phone = ?, username = ? WHERE discord_id = ?")
       .run(pin, phone, interaction.user.username, interaction.user.id);
+
+    try {
+      const member = await interaction.guild.members.fetch(interaction.user.id);
+      const unverifiedRole = interaction.guild.roles.cache.get('1485275671797436620') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'unverified');
+      if (member && unverifiedRole && member.roles.cache.has(unverifiedRole.id)) {
+        await member.roles.remove(unverifiedRole);
+      }
+    } catch (roleError) {
+      console.warn('[SECURITY] Could not remove Unverified role after PIN setup:', roleError.message);
+    }
 
     await interaction.editReply({ content: '✅ Security profile updated. Your PIN and phone number are now saved.' });
 
@@ -5175,6 +5185,7 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
+
 
 
 

@@ -148,3 +148,5 @@ Working rules:
 - Updated newcomer **Promote to Agent** flow to skip PIN modal and assign only Agents (1482227287159078964) + Unverified (1485275671797436620). The button now removes applicant/trainee/logged-out roles, promotes directly, and DMs a 3-step setup tutorial for #register-set-pin (1482255690054762646) so the user creates their own PIN in Security Setup.
 
 - Reworked join/rejoin onboarding DM tutorial to use the 3-step nickname guide images in ordered embeds (Step 1, Step 2, Step 3) inside one DM message, so instructions stay visual while avoiding loose attachment spam in applicant DMs.
+
+- Updated security setup submission so when an agent saves a new PIN, the bot now removes the Unverified role (1485275671797436620) automatically after the PIN/phone update succeeds.
