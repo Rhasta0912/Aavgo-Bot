@@ -167,3 +167,4 @@ Working rules:
 
 - Renamed /add-hotel-shifts to /set-hotel-shifts across slash registration, routing, and staff help so the command appears under the final name in Discord command options.
 - Updated /set-hotel-shifts so it now also syncs hotel assignment roles for both selected hotels, removing old hotel roles not in the selected pair and adding the new pair roles automatically.
+- Updated /set-hotel-shifts role sync rule to grey-only hotel roles: it now assigns only the selected offline/ghost roles and removes green hotel roles from that command sync path.

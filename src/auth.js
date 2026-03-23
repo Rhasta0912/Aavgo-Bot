@@ -4756,9 +4756,7 @@ async function handleAddHotelShifts(interaction) {
         const allHotelRoleIds = [...Object.values(ROLE_NAMES.GREY), ...Object.values(ROLE_NAMES.GREEN)];
         const selectedRoleIds = [
           ROLE_NAMES.GREY[hotelOne],
-          ROLE_NAMES.GREEN[hotelOne],
-          ROLE_NAMES.GREY[hotelTwo],
-          ROLE_NAMES.GREEN[hotelTwo]
+          ROLE_NAMES.GREY[hotelTwo]
         ].filter(Boolean);
         const uniqueSelectedRoleIds = [...new Set(selectedRoleIds)];
 
@@ -4782,7 +4780,7 @@ async function handleAddHotelShifts(interaction) {
         `✅ Saved paired hotel shifts for **${target.username}**.\n` +
         `Primary: **${HOTEL_NAMES[hotelOne] || hotelOne}**\n` +
         `Secondary: **${HOTEL_NAMES[hotelTwo] || hotelTwo}**\n\n` +
-        `They still occupy only one hotel at a time; this stores both approved shift options and syncs the matching hotel roles.` +
+        `They still occupy only one hotel at a time; this stores both approved shift options and syncs only the matching grey hotel roles.` +
         roleSyncNote,
       ephemeral: true
     });
