@@ -539,8 +539,11 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
     const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
     const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
     const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
+    const unverifiedRole = normalizedRole === 'agent'
+      ? (interaction.guild.roles.cache.get('1485275671797436620') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'unverified'))
+      : null;
 
-    const rolesToAdd = [agentsRole, loggedOutRole].filter(Boolean);
+    const rolesToAdd = [agentsRole, loggedOutRole, unverifiedRole].filter(Boolean);
     const rolesToRemove = [traineeRole, applicantsRole].filter(roleObj => roleObj && member.roles.cache.has(roleObj.id));
 
     if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
@@ -3189,29 +3192,29 @@ async function handleRemoveAgent(interaction) {
   }
 }
 
-// ─── /add-agent (Admin) ──────────────────────────────
+// ─── /add-agent (Admin) ───
 async function handleAddAgent(interaction) {
   try {
     await interaction.deferReply({ ephemeral: true });
     const targetUser = interaction.options.getUser('user');
-    const pin = interaction.options.getString('pin');
     const role = normalizeAgentRole(interaction.options.getString('role') || 'agent');
+    const tempPin = String(Math.floor(100000 + Math.random() * 900000));
 
     const isDev = isDeveloper(interaction);
 
     if (role !== 'agent' && !isDev) {
-      return interaction.reply({ content: '❌ **Access Denied.** Only Developers can assign **SME**, **Team Leader**, or **Operations Manager** roles.', ephemeral: true });
+      return interaction.editReply({ content: '❌ **Access Denied.** Only Developers can assign **SME**, **Team Leader**, or **Operations Manager** roles.' });
     }
 
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
     if (existing) {
-      const member = await applyAgentPromotion(interaction, targetUser, pin, role, 'ADD-AGENT');
-      return interaction.reply({ content: `✅ **${targetUser.username}** role updated to **${role}** and PIN refreshed.`, ephemeral: true });
+      await applyAgentPromotion(interaction, targetUser, tempPin, role, 'ADD-AGENT');
+      return interaction.editReply({ content: `✅ **${targetUser.username}** role updated to **${role}**.` });
     }
 
-    await applyAgentPromotion(interaction, targetUser, pin, role, 'ADD-AGENT');
+    await applyAgentPromotion(interaction, targetUser, tempPin, role, 'ADD-AGENT');
 
-    await interaction.reply({ content: `✅ **${targetUser.username}** has been added as **${role}**.`, ephemeral: true });
+    await interaction.editReply({ content: `✅ **${targetUser.username}** has been added as **${role}**.` });
 
     sendAuditLog(interaction.client, {
       title: 'Agent Added',
@@ -3222,13 +3225,14 @@ async function handleAddAgent(interaction) {
     });
   } catch (error) {
     console.error('Error in handleAddAgent:', error);
-    if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: 'Something went wrong.', ephemeral: true });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'Something went wrong.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'Something went wrong.', ephemeral: true }).catch(() => {});
     }
   }
 }
 
-// ─── /remove-agent (Admin) ───────────────────────────
 async function handleRemoveAgentCommand(interaction) {
   try {
     const targetUser = interaction.options.getUser('user');
@@ -5055,45 +5059,6 @@ async function handleDbRemoveUser(interaction) {
   }
 }
 
-// Override: stable add-agent flow that always uses deferred interaction responses.
-async function handleAddAgent(interaction) {
-  try {
-    await interaction.deferReply({ ephemeral: true });
-    const targetUser = interaction.options.getUser('user');
-    const pin = interaction.options.getString('pin');
-    const role = normalizeAgentRole(interaction.options.getString('role') || 'agent');
-
-    const isDev = isDeveloper(interaction);
-    if (role !== 'agent' && !isDev) {
-      return interaction.editReply({ content: '❌ **Access Denied.** Only Developers can assign **SME**, **Team Leader**, or **Operations Manager** roles.' });
-    }
-
-    const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
-    if (existing) {
-      await applyAgentPromotion(interaction, targetUser, pin, role, 'ADD-AGENT');
-      return interaction.editReply({ content: `✅ **${targetUser.username}** role updated to **${role}** and PIN refreshed.` });
-    }
-
-    await applyAgentPromotion(interaction, targetUser, pin, role, 'ADD-AGENT');
-
-    await interaction.editReply({ content: `✅ **${targetUser.username}** has been added as **${role}**.` });
-
-    sendAuditLog(interaction.client, {
-      title: 'Agent Added',
-      description: `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n**Role:** ${role}\n**Added by:** {{AGENT_NAME}}`,
-      color: 0x57F287,
-      userId: interaction.user.id,
-      guild: interaction.guild
-    });
-  } catch (error) {
-    console.error('Error in handleAddAgent:', error);
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: 'Something went wrong.' }).catch(() => {});
-    } else {
-      await interaction.reply({ content: 'Something went wrong.', ephemeral: true }).catch(() => {});
-    }
-  }
-}
 
 module.exports = { 
   HOTEL_NAMES,
@@ -5185,6 +5150,7 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
+
 
 
 

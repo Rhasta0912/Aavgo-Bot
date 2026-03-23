@@ -150,3 +150,5 @@ Working rules:
 - Reworked join/rejoin onboarding DM tutorial to use the 3-step nickname guide images in ordered embeds (Step 1, Step 2, Step 3) inside one DM message, so instructions stay visual while avoiding loose attachment spam in applicant DMs.
 
 - Updated security setup submission so when an agent saves a new PIN, the bot now removes the Unverified role (1485275671797436620) automatically after the PIN/phone update succeeds.
+
+- Removed the public PIN field from /add-agent so management only passes the user now. The command generates its own internal temporary PIN, grants Agents plus Unverified for normal agent promotions, and keeps the new self-service PIN setup rule consistent.

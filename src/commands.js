@@ -27,7 +27,6 @@ const commandData = [
     .setName('add-agent')
     .setDescription('(Admin) Add a user as an agent instantly')
     .addUserOption(option => option.setName('user').setDescription('The user to add').setRequired(true))
-    .addStringOption(option => option.setName('pin').setDescription('Set their PIN (4-6 digits)').setRequired(true))
     .addStringOption(option => option.setName('role').setDescription('Role (agent, sme, team_leader, operations_manager)').setRequired(false)
       .addChoices(
         { name: 'Agent', value: 'agent' },
@@ -240,3 +239,4 @@ const commandData = [
 ].map(command => command.toJSON());
 
 module.exports = { commandData };
+
