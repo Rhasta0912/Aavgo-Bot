@@ -552,10 +552,18 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
     console.warn(`[${sourceLabel}] Role sync warning:`, roleErr.message);
   }
 
-  await sendAgentPinDM(member, pin, getRoleLabel(normalizedRole), sourceLabel !== 'ADD-AGENT').catch(error => {
-    console.warn(`[${sourceLabel}] Could not DM PIN:`, error.message);
-  });
+  if (normalizedRole === 'agent' && (sourceLabel === 'ADD-AGENT' || sourceLabel === 'NEWCOMER')) {
+    await sendNewcomerAgentSetupDM(member).catch(error => {
+      console.warn(`[${sourceLabel}] Could not DM setup tutorial:`, error.message);
+    });
+  } else {
+    await sendAgentPinDM(member, pin, getRoleLabel(normalizedRole), sourceLabel !== 'ADD-AGENT').catch(error => {
+      console.warn(`[${sourceLabel}] Could not DM PIN:`, error.message);
+    });
+  }
 
+  return member;
+}
   return member;
 }
 
@@ -5150,6 +5158,10 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
+
+
+
+
 
 
 

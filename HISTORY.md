@@ -152,3 +152,5 @@ Working rules:
 - Updated security setup submission so when an agent saves a new PIN, the bot now removes the Unverified role (1485275671797436620) automatically after the PIN/phone update succeeds.
 
 - Removed the public PIN field from /add-agent so management only passes the user now. The command generates its own internal temporary PIN, grants Agents plus Unverified for normal agent promotions, and keeps the new self-service PIN setup rule consistent.
+
+- Updated /add-agent agent promotions so they DM the same security-setup embed used by the newcomer Agent button: welcome message plus the 1-2-3 egister-set-pin tutorial, instead of a separate PIN-centric prompt.
