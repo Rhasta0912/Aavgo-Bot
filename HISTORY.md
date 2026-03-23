@@ -158,3 +158,7 @@ Working rules:
 - Fixed a server startup crash caused by a malformed duplicate eturn member; block left behind in pplyAgentPromotion. The extra lines made src/auth.js invalid JavaScript and prevented the bot from booting until the duplicate was removed.
 
 - Removed /generate-rac and /rac-send from the live command surface and routing, and deleted the unused RAC handler code. Recruitment access is now intended to stay manual through the new agent promotion and security setup flow.
+
+- Renamed /help-dev to /help-staff, removed the old RAC references from the staff guide, and kept the staff help surface available to both Developers and Operations Manager. Added a workflow rule to keep help commands updated whenever command surfaces change.
+
+- Renamed /help-dev to /help-staff, removed RAC references from the live staff guide, and kept the staff help surface available to both Developers and Operations Manager. Added the rule that when a command changes, the affected help commands must be updated in the same change set.

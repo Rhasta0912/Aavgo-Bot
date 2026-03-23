@@ -130,8 +130,8 @@ const commandData = [
     .setDescription('(Developer Only) COMPLETELY remove a user from DB and roles')
     .addUserOption(option => option.setName('user').setDescription('The user to purge').setRequired(true)),
   new SlashCommandBuilder()
-    .setName('help-dev')
-    .setDescription('(Developer Only) Show a comprehensive guide of all developer and administrative tools'),
+    .setName('help-staff')
+    .setDescription('(Developer/Operations Manager) Show a comprehensive guide of staff tools'),
   new SlashCommandBuilder()
     .setName('help-agent')
     .setDescription('Show a quick guide for core agent commands and daily workflow'),

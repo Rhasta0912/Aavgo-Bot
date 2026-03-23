@@ -46,8 +46,9 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
   - slash command registration (`src/commands.js`)
   - command routing (`src/index.js`)
   - command handler + permission checks (`src/auth.js` or `src/tools.js`)
-  - `/help-dev` or matching role help command
+  - `/help-staff` or matching role help command
   - `HISTORY.md` and desktop `History.md`
+- When a command changes, update every affected help command in the same change set so help text stays aligned with the live command surface.
 
 ## Deployment SOP
 1. Implement and verify changes locally.

@@ -4344,14 +4344,14 @@ async function handleMaintenanceList(interaction) {
   }
 }
 
-async function handleHelpDev(interaction) {
+async function handleHelpStaff(interaction) {
   try {
     if (!isDeveloper(interaction)) {
-      return interaction.reply({ content: '❌ **Developer Access Required.** Unauthorized action logged.', ephemeral: true });
+      return interaction.reply({ content: '❌ **Developer or Operations Manager Access Required.** Unauthorized action logged.', ephemeral: true });
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('🛠️ Developer Technical Reference')
+      .setTitle('🛠️ Staff Technical Reference')
       .setDescription(
         '### 🏗️ Core Setup & Portals\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
@@ -4380,7 +4380,7 @@ async function handleHelpDev(interaction) {
         '> `/db-remove-all`: Consensus-based wipe of non-developer data.\n\n' +
         '### 🔐 Security & Recruitment\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-        '> `/help-dev`: Open this technical reference.\n' +
+        '> `/help-staff`: Open this technical reference.\n' +
         '> `/help-team-leader`: Show the TL / SME operational guide.\n\n' +
         '### 📊 Operations, Search & Scheduling\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
@@ -4408,7 +4408,7 @@ async function handleHelpDev(interaction) {
 
     await interaction.reply({ embeds: [embed], ephemeral: true });
   } catch (e) {
-    console.error('Error in handleHelpDev:', e);
+    console.error('Error in handleHelpStaff:', e);
   }
 }
 
@@ -5035,7 +5035,7 @@ module.exports = {
   handleDemote,
   handleDbRemoveUser,
   handleMemberLeave,
-  handleHelpDev,
+  handleHelpStaff,
   handleHelpAgent,
   handleSelectTrainee,
   handleNewcomerPromotion,
@@ -5074,6 +5074,8 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
+
+
 
 
 

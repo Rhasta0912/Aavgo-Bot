@@ -370,8 +370,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDbInfo(interaction);
     } else if (commandName === 'db-set-pin') {
       await auth.handleDbSetPin(interaction);
-    } else if (commandName === 'help-dev') {
-      await auth.handleHelpDev(interaction);
+    } else if (commandName === 'help-staff') {
+      await auth.handleHelpStaff(interaction);
     } else if (commandName === 'help-agent') {
       await auth.handleHelpAgent(interaction);
     } else if (commandName === 'select-trainee') {
@@ -560,4 +560,5 @@ process.on('uncaughtException', (err, origin) => {
   // Force exit on uncaught exception to allow guardian to restart
   process.exit(1);
 });
+
 
