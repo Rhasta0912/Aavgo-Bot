@@ -2,6 +2,7 @@ require('dotenv').config();
 
 const fs = require('fs');
 const path = require('path');
+const { EmbedBuilder } = require('discord.js');
 
 const UPDATE_LOG_CHANNEL_ID = '1485584578927132863';
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -35,6 +36,13 @@ function splitCsv(value) {
     .filter(Boolean);
 }
 
+function fitFieldValue(lines, fallback) {
+  const text = (lines.length > 0 ? lines : [fallback]).join('\n');
+  if (text.length <= 1024) return text;
+
+  return `${text.slice(0, 1000)}\n• …trimmed`;
+}
+
 function readHistoryTail(filePath) {
   if (!fs.existsSync(filePath)) return '';
   return fs.readFileSync(filePath, 'utf8');
@@ -55,25 +63,26 @@ function buildHistoryEntry({ title, summary, files, notes }) {
 }
 
 function buildDiscordMessage({ title, summary, files, notes }) {
-  const lines = [
-    `Aavgo update: ${title}`,
-    '',
-    `Summary: ${summary}`
-  ];
-
-  if (files.length > 0) {
-    lines.push('', `Files: ${files.join(', ')}`);
-  }
-
-  if (notes.length > 0) {
-    lines.push('', `Notes: ${notes.join(' | ')}`);
-  }
-
-  lines.push('', `This update was also logged to HISTORY.md and the desktop history file.`);
-  return lines.join('\n');
+  return new EmbedBuilder()
+    .setTitle(`Aavgo Update Log`)
+    .setDescription(`**${title}**\n\n${summary}`)
+    .addFields(
+      {
+        name: 'Files Touched',
+        value: fitFieldValue(files.map(file => `• ${file}`), '• Not specified')
+      },
+      {
+        name: 'Notes',
+        value: fitFieldValue(notes.map(note => `• ${note}`), '• None')
+      }
+    )
+    .setColor(0xF1C40F)
+    .setFooter({ text: 'Aavgo Operations • Update Log' })
+    .setTimestamp()
+    .toJSON();
 }
 
-async function postToDiscord(message) {
+async function postToDiscord(embed) {
   const token = process.env.DISCORD_TOKEN;
   if (!token) {
     return { posted: false, reason: 'DISCORD_TOKEN missing' };
@@ -85,7 +94,7 @@ async function postToDiscord(message) {
       Authorization: `Bot ${token}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ content: message })
+    body: JSON.stringify({ embeds: [embed] })
   });
 
   if (!response.ok) {
@@ -130,10 +139,10 @@ async function main() {
     appendHistory(DESKTOP_HISTORY_PATH, entry);
   }
 
-  const message = buildDiscordMessage({ title, summary, files, notes });
+  const embed = buildDiscordMessage({ title, summary, files, notes });
 
   try {
-    const result = await postToDiscord(message);
+    const result = await postToDiscord(embed);
     if (result.posted) {
       console.log(`[UPDATE-LOG] Posted to Discord channel ${UPDATE_LOG_CHANNEL_ID}.`);
     } else {

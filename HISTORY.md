@@ -53,6 +53,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Polish update log presentation
+  - Summary: Changed the update-log helper so Discord posts use a cleaner embed card with a title, summary, file list, notes, and footer instead of plain text.
+  - Files touched:
+    - scripts/log-update.js
+  - Notes:
+    - None
 - Restore missing developer routes
   - Summary: Added routing for /db-add-developer and /db-set-phone in the interaction router, and updated the staff help text so the documented command surface matches the handlers.
   - Files touched:
