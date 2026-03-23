@@ -156,3 +156,5 @@ Working rules:
 - Updated /add-agent agent promotions so they DM the same security-setup embed used by the newcomer Agent button: welcome message plus the 1-2-3 egister-set-pin tutorial, instead of a separate PIN-centric prompt.
 
 - Fixed a server startup crash caused by a malformed duplicate eturn member; block left behind in pplyAgentPromotion. The extra lines made src/auth.js invalid JavaScript and prevented the bot from booting until the duplicate was removed.
+
+- Removed /generate-rac and /rac-send from the live command surface and routing, and deleted the unused RAC handler code. Recruitment access is now intended to stay manual through the new agent promotion and security setup flow.

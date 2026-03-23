@@ -4380,8 +4380,6 @@ async function handleHelpDev(interaction) {
         '> `/db-remove-all`: Consensus-based wipe of non-developer data.\n\n' +
         '### 🔐 Security & Recruitment\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-        '> `/generate-rac`: Create a one-time Recruitment Access Code.\n' +
-        '> `/rac-send`: Generate a 24-hour one-time Recruitment Access Code and DM it directly.\n' +
         '> `/help-dev`: Open this technical reference.\n' +
         '> `/help-team-leader`: Show the TL / SME operational guide.\n\n' +
         '### 📊 Operations, Search & Scheduling\n' +
@@ -4693,84 +4691,6 @@ async function handleDbAssignHotel(interaction) {
   }
 }
 
-async function handleGenerateRAC(interaction) {
-  try {
-    if (!isDeveloper(interaction)) return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
-    
-    // Generate a random 8-character alphanumeric code
-    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-    
-    db.prepare("INSERT INTO rac_codes (code, created_by, expires_at) VALUES (?, ?, datetime('now', '+1 day'))").run(code, interaction.user.id);
-    
-    const embed = new EmbedBuilder()
-      .setTitle('🔑 New Recruitment Access Code')
-      .setDescription(
-        `A one-time registration code has been generated.\n\n` +
-        `**CODE:** \`${code}\`\n\n` +
-        `*Give this code to the applicant. It will expire after 24 hours or immediately after one successful registration submit.*`
-      )
-      .setColor(0x57F287)
-      .setTimestamp();
-      
-    await interaction.reply({ embeds: [embed], ephemeral: true });
-    
-    sendAuditLog(interaction.client, {
-      title: '🔑 RAC Generated',
-      description: `**Admin:** {{AGENT_NAME}}\n**Target:** New Applicant Registration`,
-      color: 0x57F287,
-      userId: interaction.user.id,
-      guild: interaction.guild
-    });
-  } catch (e) {
-    console.error('Error in handleGenerateRAC:', e);
-    await interaction.reply({ content: '❌ Error generating code.', ephemeral: true });
-  }
-}
-
-async function handleRacSend(interaction) {
-  try {
-    if (!isDeveloper(interaction)) return interaction.reply({ content: '❌ Developer access required.', ephemeral: true });
-
-    const targetUser = interaction.options.getUser('user');
-    const code = Math.random().toString(36).substring(2, 10).toUpperCase();
-
-    db.prepare("INSERT INTO rac_codes (code, created_by, expires_at) VALUES (?, ?, datetime('now', '+1 day'))").run(code, interaction.user.id);
-
-    const dmEmbed = new EmbedBuilder()
-      .setTitle('🎉 Aavgo Recruitment Access Granted')
-      .setDescription(
-        `Congrats! By receiving this **Recruitment Code**, you are in.\n\n` +
-        `**Recruitment Code:** \`${code}\`\n\n` +
-        `### How to Register (Tutorial)\n` +
-        `1. Click the **Register / Apply to Join** button.\n` +
-        `2. In the form, paste this code into **Recruitment Access Code**.\n` +
-        `3. Fill your real details (PIN, email, PH number starting with 63 or 09).\n` +
-        `4. Submit and wait for admin approval.\n\n` +
-        `This code is **one-time use only** and expires in **24 hours**. Do not share it with anyone else.`
-      )
-      .setColor(0xF1C40F)
-      .setFooter({ text: 'Aavgo Operations · One-Time Access' })
-      .setTimestamp();
-
-    await targetUser.send({ embeds: [dmEmbed] });
-
-    await interaction.reply({
-      content: `✅ Recruitment code generated and sent to **${targetUser.username}** by DM.`,
-      ephemeral: true
-    });
-
-    sendAuditLog(interaction.client, {
-      title: '📨 RAC Sent by DM',
-      description: `**Admin:** {{AGENT_NAME}}\n**Recipient:** ${targetUser.username} (<@${targetUser.id}>)\n**Action:** One-time recruitment code delivered by DM`,
-      color: 0xF1C40F,
-      userId: interaction.user.id,
-      guild: interaction.guild
-    });
-  } catch (e) {
-    console.error('Error in handleRacSend:', e);
-    await interaction.reply({ content: '❌ Could not send the recruitment code DM. The user may have DMs disabled.', ephemeral: true });
-  }
-}
 
 async function handleSetSchedule(interaction) {
   try {
@@ -5126,8 +5046,6 @@ module.exports = {
   handleSecuritySetupStart,
   handleSecuritySetupSubmit,
   handleDbAssignHotel,
-  handleGenerateRAC,
-  handleRacSend,
   handleFindGuest,
   handleActivityClick,
   handleActivityModalSubmit,

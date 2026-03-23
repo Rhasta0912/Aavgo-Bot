@@ -384,10 +384,6 @@ client.on('interactionCreate', async interaction => {
       await auth.handleHotelStatusRefresh(interaction);
     } else if (commandName === 'db-assign-hotel') {
       await auth.handleDbAssignHotel(interaction);
-    } else if (commandName === 'generate-rac') {
-      await auth.handleGenerateRAC(interaction);
-    } else if (commandName === 'rac-send') {
-      await auth.handleRacSend(interaction);
     } else if (commandName === 'find-guest') {
       await auth.handleFindGuest(interaction);
     } else if (commandName === 'guide') {
