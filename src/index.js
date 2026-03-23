@@ -43,41 +43,54 @@ function startBotStatusHeartbeat() {
 }
 
 async function sendRealNameTutorial(member) {
-  const tutorialFiles = ['1.png', '2.png', '3.png']
-    .map(fileName => path.join(REAL_NAME_TUTORIAL_DIR, fileName))
-    .map(filePath => new AttachmentBuilder(filePath));
+  const tutorialFiles = [
+    new AttachmentBuilder(path.join(REAL_NAME_TUTORIAL_DIR, '1.png'), { name: 'step-1.png' }),
+    new AttachmentBuilder(path.join(REAL_NAME_TUTORIAL_DIR, '2.png'), { name: 'step-2.png' }),
+    new AttachmentBuilder(path.join(REAL_NAME_TUTORIAL_DIR, '3.png'), { name: 'step-3.png' })
+  ];
 
-  const embed = new EmbedBuilder()
-    .setTitle('Aavgo Onboarding · Real Name Required')
+  const introEmbed = new EmbedBuilder()
+    .setTitle('Aavgo Onboarding - Real Name Required')
     .setDescription(
       `Welcome to Aavgo, <@${member.id}>.\n\n` +
       `Before doing anything else, please update your **server nickname** to your **real name** or **surname**.\n\n` +
       `Do not keep usernames such as \`xxSmithyxx\`, gamer tags, aliases, or joke names. ` +
       `Management needs to recognize you immediately inside the server.\n\n` +
-      `After that, head to <#1482258940879306753> to continue the onboarding flow.\n\n` +
-      `Use the tutorial image below if you are not sure where to change it.`
+      `Follow these steps in order:\n` +
+      `**1.** Open your profile and click **Edit Profile**.\n` +
+      `**2.** Select **Edit Per-server Profile**.\n` +
+      `**3.** Set your server nickname to your real name and save changes.\n\n` +
+      `After that, head to <#1482258940879306753> to continue onboarding.`
     )
-    .addFields(
-      {
-        name: 'What To Do',
-        value:
-          '1. Change your server nickname to your real name or surname.\n' +
-          '2. Make sure the new name is clean and professional.\n' +
-          '3. Go to <#1482258940879306753> once it is done.'
-      },
-      {
-        name: 'Important',
-        value: 'If your nickname is not your real name, onboarding may be delayed.'
-      }
-    )
+    .addFields({
+      name: 'Important',
+      value: 'If your nickname is not your real name, onboarding may be delayed.'
+    })
     .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations · Onboarding' })
-    .setTimestamp()
-    .setImage('attachment://1.png');
+    .setFooter({ text: 'Aavgo Operations - Onboarding' })
+    .setTimestamp();
+
+  const step1Embed = new EmbedBuilder()
+    .setTitle('Step 1')
+    .setDescription('Open your profile and click **Edit Profile**.')
+    .setColor(0xF1C40F)
+    .setImage('attachment://step-1.png');
+
+  const step2Embed = new EmbedBuilder()
+    .setTitle('Step 2')
+    .setDescription('Select **Edit Per-server Profile**.')
+    .setColor(0xF1C40F)
+    .setImage('attachment://step-2.png');
+
+  const step3Embed = new EmbedBuilder()
+    .setTitle('Step 3')
+    .setDescription('Set your server nickname to your real name, then click **Save Changes**.')
+    .setColor(0xF1C40F)
+    .setImage('attachment://step-3.png');
 
   try {
     await member.send({
-      embeds: [embed],
+      embeds: [introEmbed, step1Embed, step2Embed, step3Embed],
       files: tutorialFiles
     });
     console.log(`[ONBOARDING] Sent real-name tutorial DM to ${member.user.tag}`);
@@ -96,7 +109,6 @@ async function sendRealNameTutorial(member) {
     }
   }
 }
-
 function buildNewcomerActionRow(targetUserId, announcementMessageId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -552,3 +564,4 @@ process.on('uncaughtException', (err, origin) => {
   // Force exit on uncaught exception to allow guardian to restart
   process.exit(1);
 });
+
