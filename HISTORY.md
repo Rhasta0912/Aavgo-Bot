@@ -214,6 +214,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Simplify profiles panel layout
+  - Summary: Reduced clutter in the profiles panel by keeping the team browser separate from the profile card, shrinking roster previews, and moving advanced actions like kick, ban, and admin utilities behind a single More menu. The profile view now shows only the core actions plus a Back to Team button, making the workflow easier to read and easier to revert as one change set if needed.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
+  - Notes:
+    - Profile card is now less crowded
+    - More actions are hidden behind a single menu
+    - Back to Team returns to the roster view
 - Harden interaction reliability and bot-status retries
   - Summary: Removed PIN data from registration approval component IDs, hardened hotel-link confirmations with early component acknowledgement and safe update replies, suppressed noisy 10062 fallback replies in the global interaction handler, and made bot-status upserts resilient with retry/backoff plus cached message patching for transient Discord 503 failures.
   - Files touched:

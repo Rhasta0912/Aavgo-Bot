@@ -139,7 +139,7 @@ function buildTeamRosterEmbed(teamName, members) {
     return acc;
   }, {});
 
-  const preview = members.slice(0, 20).map(formatMemberLine);
+  const preview = members.slice(0, 12).map(formatMemberLine);
   const extraCount = members.length - preview.length;
   const rosterText = preview.length > 0 ? preview.join('\n') : 'No members found for this team.';
   const withExtra = extraCount > 0 ? `${rosterText}\n... and ${extraCount} more.` : rosterText;
@@ -148,8 +148,7 @@ function buildTeamRosterEmbed(teamName, members) {
     .setTitle(`🧾 ${teamName} - Member Profiles`)
     .setDescription(
       `### Team Roster\n${withExtra}\n\n` +
-      '──────────────────────────────\n' +
-      'Use the menu below to open any profile card.'
+      'Open a profile below.'
     )
     .addFields(
       { name: '👥 Total', value: String(members.length), inline: true },
@@ -408,25 +407,27 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
   return embed;
 }
 
-function buildMiscRow(targetDiscordId) {
+function buildMoreActionsRow(targetDiscordId) {
   const menu = new StringSelectMenuBuilder()
-    .setCustomId(`profiles_misc:${targetDiscordId}`)
-    .setPlaceholder('Misc developer actions')
+    .setCustomId(`profiles_more:${targetDiscordId}`)
+    .setPlaceholder('More actions')
     .addOptions(
-      new StringSelectMenuOptionBuilder().setLabel('Refresh Profile').setDescription('Reload profile from DB and Discord').setValue('refresh'),
-      new StringSelectMenuOptionBuilder().setLabel('Assign Team 1').setDescription('Set team assignment to Team 1').setValue('assign_team_1'),
-      new StringSelectMenuOptionBuilder().setLabel('Assign Team 2').setDescription('Set team assignment to Team 2').setValue('assign_team_2'),
+      new StringSelectMenuOptionBuilder().setLabel('Refresh Profile').setDescription('Reload the profile card').setValue('refresh'),
+      new StringSelectMenuOptionBuilder().setLabel('Kick Agent').setDescription('Open kick confirmation').setValue('kick'),
+      new StringSelectMenuOptionBuilder().setLabel('Ban Agent').setDescription('Open ban confirmation').setValue('ban'),
+      new StringSelectMenuOptionBuilder().setLabel('Assign Team 1').setDescription('Move the agent to Team 1').setValue('assign_team_1'),
+      new StringSelectMenuOptionBuilder().setLabel('Assign Team 2').setDescription('Move the agent to Team 2').setValue('assign_team_2'),
       new StringSelectMenuOptionBuilder().setLabel('Clear Team Assignment').setDescription('Remove explicit team assignment').setValue('clear_team'),
-      new StringSelectMenuOptionBuilder().setLabel('Clear Primary Hotel Link').setDescription('Unset permanent primary hotel').setValue('clear_hotel'),
-      new StringSelectMenuOptionBuilder().setLabel('Unlink Paired Hotels').setDescription('Remove multi-hotel pair assignment').setValue('clear_pair'),
-      new StringSelectMenuOptionBuilder().setLabel('End Active Sessions').setDescription('Force-close all active sessions for this agent').setValue('end_sessions'),
-      new StringSelectMenuOptionBuilder().setLabel('Remove Agent Record').setDescription('Delete agent from DB records (no kick/ban)').setValue('remove_agent_record')
+      new StringSelectMenuOptionBuilder().setLabel('Clear Primary Hotel').setDescription('Unset the linked hotel').setValue('clear_hotel'),
+      new StringSelectMenuOptionBuilder().setLabel('Unlink Paired Hotels').setDescription('Remove paired hotel assignment').setValue('clear_pair'),
+      new StringSelectMenuOptionBuilder().setLabel('End Active Sessions').setDescription('Close open sessions for this agent').setValue('end_sessions'),
+      new StringSelectMenuOptionBuilder().setLabel('Remove Agent Record').setDescription('Delete database records only').setValue('remove_agent_record')
     );
 
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildActionButtonRow(targetDiscordId, currentRole) {
+function buildActionButtonRow(targetDiscordId, currentRole, teamName) {
   const normalizedRole = String(currentRole || '').toLowerCase();
   const index = ROLE_STEPS.indexOf(normalizedRole);
   const promoteDisabled = index >= ROLE_STEPS.length - 1;
@@ -444,13 +445,9 @@ function buildActionButtonRow(targetDiscordId, currentRole) {
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(demoteDisabled),
     new ButtonBuilder()
-      .setCustomId(`profiles_kick:${targetDiscordId}`)
-      .setLabel('Kick')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId(`profiles_ban:${targetDiscordId}`)
-      .setLabel('Ban')
-      .setStyle(ButtonStyle.Danger)
+      .setCustomId(`profiles_back_team:${teamName}`)
+      .setLabel('Back to Team')
+      .setStyle(ButtonStyle.Primary)
   );
 }
 
@@ -480,19 +477,11 @@ function buildConfirmRow(action, discordId) {
   );
 }
 
-function buildProfileRows(profile, teamName, teamMembers) {
-  const rows = [
-    buildActionButtonRow(profile.agent.discord_id, profile.agent.role),
-    buildMiscRow(profile.agent.discord_id),
-    buildTeamPickerRow('profiles_team_pick_local', teamName)
+function buildProfileRows(profile, teamName) {
+  return [
+    buildActionButtonRow(profile.agent.discord_id, profile.agent.role, teamName),
+    buildMoreActionsRow(profile.agent.discord_id)
   ];
-
-  if (Array.isArray(teamMembers) && teamMembers.length > 0) {
-    rows.push(buildMemberPickerRow(teamName, teamMembers));
-  }
-
-  rows.push(buildTeamRefreshRow(teamName));
-  return rows.slice(0, 5);
 }
 
 async function showProfileCard(interaction, discordId, options = {}) {
@@ -509,10 +498,9 @@ async function showProfileCard(interaction, discordId, options = {}) {
     });
   }
 
-  const preferredTeam = normalizeTeamName(options.teamName) || normalizeTeamName(profile.agent.effective_team) || TEAM_1;
-  const members = await fetchTeamMembers(interaction.guild, preferredTeam);
+  const teamName = normalizeTeamName(options.teamName) || normalizeTeamName(profile.agent.effective_team) || TEAM_1;
   const embed = buildProfileEmbed(profile, interaction.user.tag, options.notice || null);
-  const rows = buildProfileRows(profile, preferredTeam, members);
+  const rows = buildProfileRows(profile, teamName);
 
   return sendComponentUpdate(interaction, {
     embeds: [embed],
@@ -589,6 +577,12 @@ async function handleTeamPick(interaction) {
   }
 
   return sendComponentUpdate(interaction, payload);
+}
+
+async function handleBackToTeam(interaction, discordId) {
+  const teamName = normalizeTeamName(interaction.customId.split(':')[1]) || TEAM_1;
+  const members = await fetchTeamMembers(interaction.guild, teamName);
+  return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
 }
 
 async function handleAgentPick(interaction) {
@@ -770,6 +764,12 @@ async function handleButton(interaction) {
     return handleDemote(interaction, discordId);
   }
 
+  if (customId.startsWith('profiles_back_team:')) {
+    const teamName = normalizeTeamName(customId.split(':')[1]) || TEAM_1;
+    const members = await fetchTeamMembers(interaction.guild, teamName);
+    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
+  }
+
   if (customId.startsWith('profiles_kick:')) {
     const discordId = customId.split(':')[1];
     return sendComponentUpdate(interaction, {
@@ -820,11 +820,24 @@ async function handleSelectMenu(interaction) {
     return handleAgentPick(interaction);
   }
 
-  if (interaction.customId.startsWith('profiles_misc:')) {
+  if (interaction.customId.startsWith('profiles_more:')) {
     if (!canUsePanel(interaction)) {
       return sendComponentUpdate(interaction, { content: 'Developer access required.', embeds: [], components: [] });
     }
     const discordId = interaction.customId.split(':')[1];
+    const action = interaction.values?.[0];
+    if (action === 'kick') {
+      return sendComponentUpdate(interaction, {
+        embeds: [buildConfirmEmbed('kick', discordId)],
+        components: [buildConfirmRow('kick', discordId)]
+      });
+    }
+    if (action === 'ban') {
+      return sendComponentUpdate(interaction, {
+        embeds: [buildConfirmEmbed('ban', discordId)],
+        components: [buildConfirmRow('ban', discordId)]
+      });
+    }
     return handleMisc(interaction, discordId);
   }
 
