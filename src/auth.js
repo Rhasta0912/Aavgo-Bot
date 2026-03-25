@@ -27,6 +27,25 @@ async function getAgentDisplayName(guild, discordId) {
   }
 }
 
+async function safeDeferComponentUpdate(interaction) {
+  if (!interaction || interaction.deferred || interaction.replied) return;
+  await interaction.deferUpdate().catch(() => {});
+}
+
+function sendComponentUpdate(interaction, payload) {
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(payload);
+  }
+  return interaction.update(payload);
+}
+
+function sendComponentReply(interaction, payload) {
+  if (interaction.deferred || interaction.replied) {
+    return interaction.followUp(payload);
+  }
+  return interaction.reply(payload);
+}
+
 // ─── Constants ───────────────────────────────────────
 const ROLE_NAMES = {
   ON_SHIFT: 'On-Shift',
@@ -181,7 +200,7 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
   }
 }
 
-async function sendShiftActivityLog(client, { title, color, description, fields = [] }) {
+async function sendShiftActivityLogLegacy(client, { title, color, description, fields = [] }) {
   try {
     const channel = await client.channels.fetch(SHIFT_ACTIVITY_LOG_CHANNEL_ID);
     if (!channel) return console.warn('[SHIFT-ACTIVITY] Log channel not found.');
@@ -1799,7 +1818,7 @@ async function handleRegisterSubmit(interaction) {
       .setTimestamp();
 
     const approveBtn = new ButtonBuilder()
-      .setCustomId(`approve_reg_${user.id}_${pin}`)
+      .setCustomId(`approve_reg_${user.id}`)
       .setLabel('✅ Approve Agent')
       .setStyle(ButtonStyle.Success);
 
@@ -1847,12 +1866,6 @@ async function handleApproveReg(interaction) {
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(userId);
     if (existing) {
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(userId);
-      try {
-        await removeTraineeRoleFromMember(member, guild, 'APPROVE');
-        await removeApplicantsRoleFromMember(member, guild, 'APPROVE');
-      } catch (roleErr) {
-        console.warn('[REGISTER] Could not clear Trainees role:', roleErr.message);
-      }
       return interaction.reply({ content: '⚠️ This agent is already registered.', ephemeral: true });
     }
 
@@ -2109,6 +2122,10 @@ async function handleStartShiftClick(interaction) {
 
   } catch (error) {
     console.error('Error in handleStartShiftClick:', error);
+    if (error?.code === 10062) {
+      console.warn('[START-SHIFT] Interaction expired before response (10062).');
+      return;
+    }
     try {
       const response = { content: '❌ Something went wrong while initializing your shift.', ephemeral: true };
       if (interaction.deferred || interaction.replied) {
@@ -2191,6 +2208,10 @@ async function handleShiftHotelPickMenu(interaction) {
     await showPinModal(interaction, hotelId, false, allowMultiHotel);
   } catch (error) {
     console.error('Error in handleShiftHotelPickMenu:', error);
+    if (error?.code === 10062) {
+      console.warn('[SHIFT-PICKER] Interaction expired before response (10062).');
+      return;
+    }
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({ content: '❌ Failed to select hotel for shift.', embeds: [], components: [] }).catch(() => {});
     } else {
@@ -2367,17 +2388,19 @@ async function handleHotelSelectMenu(interaction) {
 // ─── Final Hotel Confirmation & Lock-in ──────────────
 async function handleConfirmHotelLink(interaction) {
   try {
+    await safeDeferComponentUpdate(interaction);
+
     const hotelId = interaction.customId.replace('confirm_hotel_', '');
     const discordId = interaction.user.id;
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
 
     if (!agent) {
-      return interaction.editReply({ content: '❌ Account error. Please contact a developer.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'Account error. Please contact a developer.', ephemeral: true });
     }
 
     // [Safety] Check if locked during the confirmation delay
     if (agent.hotel_id && agent.hotel_id !== hotelId) {
-       return interaction.update({ content: '❌ **Access Denied.** Your account is already linked to another hotel.', embeds: [], components: [] });
+       return sendComponentUpdate(interaction, { content: 'Access denied. Your account is already linked to another hotel.', embeds: [], components: [] });
     }
 
     // Check if another agent is already logged into this hotel
@@ -2401,7 +2424,7 @@ async function handleConfirmHotelLink(interaction) {
          .setStyle(ButtonStyle.Secondary);
          
        const promptRow = new ActionRowBuilder().addComponents(takeOverBtn, cancelBtn);
-       return interaction.update({ embeds: [promptEmbed], components: [promptRow] });
+       return sendComponentUpdate(interaction, { embeds: [promptEmbed], components: [promptRow] });
     }
 
     // Permanent Linkage: Save selection to agent profile and assign Grey role
@@ -2427,10 +2450,16 @@ async function handleConfirmHotelLink(interaction) {
                       `━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
       .setColor(0x57F287);
 
-    await interaction.update({ embeds: [linkedEmbed], components: [] });
+    await sendComponentUpdate(interaction, { embeds: [linkedEmbed], components: [] });
 
   } catch (error) {
     console.error('Error in handleConfirmHotelLink:', error);
+    if (error?.code === 10062) return;
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'Failed to confirm hotel link.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'Failed to confirm hotel link.', ephemeral: true }).catch(() => {});
+    }
   }
 }
 
@@ -4026,7 +4055,7 @@ async function handleDemote(interaction) {
   }
 }
 
-async function handleDbRemoveUser(interaction) {
+async function handleDbRemoveUserLegacy(interaction) {
   if (!isDeveloper(interaction)) return interaction.reply({ content: '❌ Access Denied: Developer Only.', ephemeral: true });
   try {
     const targetUser = interaction.options.getUser('user');

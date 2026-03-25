@@ -515,6 +515,10 @@ client.on('interactionCreate', async interaction => {
   }
   } catch (error) {
     console.error('[INTERACTION] Handler failure:', error);
+    if (error?.code === 10062) {
+      console.warn('[INTERACTION] Skipping fallback response for expired interaction (10062).');
+      return;
+    }
     try {
       if (interaction.deferred || interaction.replied) {
         await interaction.editReply({ content: '❌ Command failed while processing. Please try again.' });

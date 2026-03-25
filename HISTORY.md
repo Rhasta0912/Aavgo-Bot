@@ -212,3 +212,14 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added multi-assigned hotel login picker: when an agent has multiple grey hotel roles, Initialize Shift now prompts them to choose which assigned hotel to handle for this shift before PIN verification.
 - Fixed multi-hotel shift picker interaction failure: PIN modal handler now accepts select-menu interactions (not only buttons), so choosing a hotel from the picker opens PIN verification correctly.
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
+
+## Latest Changes
+- Harden interaction reliability and bot-status retries
+  - Summary: Removed PIN data from registration approval component IDs, hardened hotel-link confirmations with early component acknowledgement and safe update replies, suppressed noisy 10062 fallback replies in the global interaction handler, and made bot-status upserts resilient with retry/backoff plus cached message patching for transient Discord 503 failures.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - src/botStatus.js
+  - Notes:
+    - Fixes Unknown interaction spikes in confirm_hotel flow
+    - Reduces bot-status 503 spam and retries transient network errors
