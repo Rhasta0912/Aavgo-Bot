@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Add a fast role-sync watcher so Discord role changes can backfill the database within about half a second.
+  - Summary: The bot now warms the guild member cache on startup and scans cached members every 500ms, syncing role changes into the agents table when it notices a difference. This gives near-instant DB updates even when someone changes SME, Team Leader, Agent, or Trainee roles directly in Discord.
+  - Files touched:
+    - src/index.js
+    - HISTORY.md
 - Sync Discord roles back into the database automatically when members are promoted or backfilled at startup.
   - Summary: The bot now watches role changes and startup membership data so staff roles like SME, Team Leader, and Trainee can be reflected in the agents table even when people are changed manually in Discord.
   - Files touched:

@@ -24,6 +24,52 @@ const client = new Client({
 client.commands = new Collection();
 let shutdownInProgress = false;
 let botStatusHeartbeat = null;
+let roleSyncWatcher = null;
+let roleSyncWatcherBusy = false;
+const roleSyncSnapshotCache = new Map();
+const ROLE_SYNC_INTERVAL_MS = 500;
+
+function getRoleSyncSnapshot(member) {
+  const roleIds = [...member.roles.cache.keys()].sort().join(',');
+  const displayName = member.displayName || member.user?.username || '';
+  return `${displayName}|${roleIds}`;
+}
+
+async function runRoleSyncWatcher(clientInstance) {
+  if (roleSyncWatcherBusy) return;
+  roleSyncWatcherBusy = true;
+
+  try {
+    for (const guild of clientInstance.guilds.cache.values()) {
+      const members = guild.members.cache;
+      for (const member of members.values()) {
+        const currentSnapshot = getRoleSyncSnapshot(member);
+        const cacheKey = `${guild.id}:${member.id}`;
+        const previousSnapshot = roleSyncSnapshotCache.get(cacheKey);
+
+        if (previousSnapshot === currentSnapshot) continue;
+        roleSyncSnapshotCache.set(cacheKey, currentSnapshot);
+        await auth.syncAgentRecordFromDiscordMember(member, guild, 'ROLE SYNC WATCH');
+      }
+    }
+  } catch (error) {
+    console.warn('[ROLE SYNC] Watcher tick failed:', error.message);
+  } finally {
+    roleSyncWatcherBusy = false;
+  }
+}
+
+function startRoleSyncWatcher(clientInstance) {
+  if (roleSyncWatcher) return;
+
+  roleSyncWatcher = setInterval(() => {
+    runRoleSyncWatcher(clientInstance).catch(error => {
+      console.warn('[ROLE SYNC] Watcher crashed:', error.message);
+    });
+  }, ROLE_SYNC_INTERVAL_MS);
+
+  roleSyncWatcher.unref?.();
+}
 
 function startBotStatusHeartbeat() {
   if (botStatusHeartbeat) return;
@@ -165,6 +211,10 @@ async function handleBotShutdown(signal) {
     clearInterval(botStatusHeartbeat);
     botStatusHeartbeat = null;
   }
+  if (roleSyncWatcher) {
+    clearInterval(roleSyncWatcher);
+    roleSyncWatcher = null;
+  }
 
   console.log(`[DISCORD] Received ${signal}. Marking bot offline before exit...`);
   await upsertBotStatusCard({
@@ -211,6 +261,15 @@ client.once('ready', async () => {
     });
     auth.refreshOperationalBoards(client).catch(error => {
       console.warn('[STATUS] Boot refresh failed:', error.message);
+    });
+    client.guilds.cache.forEach(guild => {
+      guild.members.fetch().catch(error => {
+        console.warn(`[ROLE SYNC] Failed to warm member cache for ${guild.name}:`, error.message);
+      });
+    });
+    startRoleSyncWatcher(client);
+    runRoleSyncWatcher(client).catch(error => {
+      console.warn('[ROLE SYNC] Initial watcher pass failed:', error.message);
     });
 
     // Startup Audit Log
