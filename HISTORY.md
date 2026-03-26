@@ -214,6 +214,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Reverted unintended Profiles Kiosk visual changes and restored the original kiosk layout style.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
+  - Notes:
+    - Restored original Profiles Kiosk embed wording/layout
+    - This rollback is UI-only and does not change profile actions/permissions
 - Fixed stale kiosk layout refresh and tightened status board wording.
   - Files touched:
     - src/auth.js
