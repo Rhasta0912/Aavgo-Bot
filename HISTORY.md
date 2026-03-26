@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Make role sync recognize singular and plural staff role names and log each sync decision.
+  - Summary: The bot now treats role names like `Agent` and `Agents` as the same staff role during database sync, so manually assigned Discord roles are less likely to be missed. It also logs what role snapshot it saw, whether a DB row already existed, and when it skips a member with no recognized staff role.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Add a fast role-sync watcher so Discord role changes can backfill the database within about half a second.
   - Summary: The bot now warms the guild member cache on startup and scans cached members every 500ms, syncing role changes into the agents table when it notices a difference. This gives near-instant DB updates even when someone changes SME, Team Leader, Agent, or Trainee roles directly in Discord.
   - Files touched:

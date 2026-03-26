@@ -1627,21 +1627,48 @@ async function refreshOperationalBoards(client) {
 }
 
 function isTraineeMember(interaction) {
-  return interaction?.member?.roles?.cache?.some(role => role?.name?.toLowerCase() === 'trainees');
+  return interaction?.member?.roles?.cache?.some(role => {
+    const roleName = normalizeDiscordRoleName(role?.name);
+    return roleName === 'trainee' || roleName === 'trainees';
+  });
+}
+
+function normalizeDiscordRoleName(roleName) {
+  return String(roleName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function hasDiscordRoleName(roleNames, candidates) {
+  return candidates.some(candidate => roleNames.includes(normalizeDiscordRoleName(candidate)));
 }
 
 function getDiscordRoleSyncSnapshot(member) {
   const roleNames = [...(member?.roles?.cache?.values?.() || [])]
-    .map(role => role?.name?.toLowerCase())
+    .map(role => normalizeDiscordRoleName(role?.name))
     .filter(Boolean);
 
-  if (roleNames.includes('operations manager')) return { role: 'operations_manager', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
-  if (roleNames.includes('subject matter expert') || roleNames.includes('sme')) return { role: 'sme', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
-  if (roleNames.includes('team leader') || roleNames.includes('team_leader')) return { role: 'team_leader', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
-  if (roleNames.includes('agents')) return { role: 'agent', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
-  if (roleNames.includes('trainees')) return { role: 'trainee', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
+  const teamName = normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null;
 
-  return { role: null, team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
+  if (hasDiscordRoleName(roleNames, ['operations manager', 'operations_manager', 'operation manager'])) {
+    return { role: 'operations_manager', team: teamName };
+  }
+  if (hasDiscordRoleName(roleNames, ['subject matter expert', 'subject_matter_expert', 'sme'])) {
+    return { role: 'sme', team: teamName };
+  }
+  if (hasDiscordRoleName(roleNames, ['team leader', 'team_leader'])) {
+    return { role: 'team_leader', team: teamName };
+  }
+  if (hasDiscordRoleName(roleNames, ['agent', 'agents'])) {
+    return { role: 'agent', team: teamName };
+  }
+  if (hasDiscordRoleName(roleNames, ['trainee', 'trainees'])) {
+    return { role: 'trainee', team: teamName };
+  }
+
+  return { role: null, team: teamName };
 }
 
 async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, contextLabel = 'ROLE SYNC') {
@@ -1652,6 +1679,7 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
 
     const displayName = member.displayName || member.user?.username || member.user?.tag || 'Unknown';
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
+    console.log(`[${contextLabel}] Snapshot for ${displayName}: role=${snapshot.role || 'none'} team=${snapshot.team || 'none'} existing=${existing ? 'yes' : 'no'}`);
 
     if (existing) {
       const updates = [];
@@ -1676,12 +1704,17 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
         params.push(member.id);
         db.prepare(`UPDATE agents SET ${updates.join(', ')} WHERE discord_id = ?`).run(...params);
         console.log(`[${contextLabel}] Synced agent row for ${displayName}: ${updates.join(', ')}`);
+      } else {
+        console.log(`[${contextLabel}] No DB change needed for ${displayName}`);
       }
 
       return { action: 'updated', role: snapshot.role || normalizeAgentRole(existing.role), team: snapshot.team || existing.team || null };
     }
 
-    if (!snapshot.role) return null;
+    if (!snapshot.role) {
+      console.log(`[${contextLabel}] Skipped ${displayName}: no recognized staff role found.`);
+      return null;
+    }
 
     const bootstrapRole = snapshot.role || 'trainee';
     const bootstrapStatus = bootstrapRole === 'trainee' ? 'standby' : 'ready';
