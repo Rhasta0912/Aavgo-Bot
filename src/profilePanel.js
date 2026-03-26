@@ -13,9 +13,11 @@ const PROFILES_CHANNEL_ID = '1485256962617643098';
 const PROFILE_PANEL_KEY_PREFIX = 'profiles_dashboard_msg_';
 const TEAM_1 = 'Team 1';
 const TEAM_2 = 'Team 2';
+const TEAM_AGENTS = 'Agents';
 const TEAM_TRAINEES = 'Trainees';
 const TRAINEE_ROLE_ID = '1484705126026449029';
-const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_TRAINEES];
+const AGENT_ROLE_ID = '1482227287159078964';
+const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_AGENTS, TEAM_TRAINEES];
 const ROLE_STEPS = ['agent', 'sme', 'team_leader', 'operations_manager'];
 const ROLE_LABELS = {
   trainee: 'Trainee',
@@ -24,11 +26,16 @@ const ROLE_LABELS = {
   team_leader: 'Team Leader',
   operations_manager: 'Operations Manager'
 };
+const TEAM_ROLE_LOOKUPS = {
+  [TEAM_1]: { names: ['team 1', 'team one'] },
+  [TEAM_2]: { names: ['team 2', 'team two'] }
+};
 
 function normalizeTeamName(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'team 1' || raw === 'team1' || raw === '1') return TEAM_1;
   if (raw === 'team 2' || raw === 'team2' || raw === '2') return TEAM_2;
+  if (raw === 'agents' || raw === 'agent') return TEAM_AGENTS;
   if (raw === 'trainees' || raw === 'trainee') return TEAM_TRAINEES;
   return null;
 }
@@ -80,6 +87,9 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   const team2Description = normalizedSelected === TEAM_2
     ? 'Browse Team 2 members (current)'
     : 'Browse Team 2 members';
+  const agentsDescription = normalizedSelected === TEAM_AGENTS
+    ? 'Browse agents only (current)'
+    : 'Browse agents only';
   const traineesDescription = normalizedSelected === TEAM_TRAINEES
     ? 'Browse trainees only (current)'
     : 'Browse trainees only';
@@ -96,6 +106,10 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
         .setLabel(TEAM_2)
         .setDescription(team2Description)
         .setValue(TEAM_2),
+      new StringSelectMenuOptionBuilder()
+        .setLabel(TEAM_AGENTS)
+        .setDescription(agentsDescription)
+        .setValue(TEAM_AGENTS),
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_TRAINEES)
         .setDescription(traineesDescription)
@@ -130,6 +144,7 @@ function buildDashboardEmbed(activeTeam = null) {
       '4. Refresh team data if needed\n\n' +
       '──────────────────────────────\n' +
       `🏨 **Current Team:** ${selected || 'Not selected'}\n` +
+      `👤 **Agents View:** Available in the team picker\n` +
       `🎓 **Trainees View:** Available in the team picker`
     )
     .setColor(0x5865F2)
@@ -151,15 +166,17 @@ function buildTeamRosterEmbed(teamName, members) {
     return acc;
   }, {});
 
-  const preview = members.slice(0, 12).map(formatMemberLine);
-  const extraCount = members.length - preview.length;
-  const rosterText = preview.length > 0 ? preview.join('\n') : 'No members found for this team.';
-  const withExtra = extraCount > 0 ? `${rosterText}\n... and ${extraCount} more.` : rosterText;
+  const allRows = members.map(formatMemberLine);
+  let rosterText = allRows.length > 0 ? allRows.join('\n') : 'No members found for this view.';
+  const maxRosterChars = 3200;
+  if (rosterText.length > maxRosterChars) {
+    rosterText = `${rosterText.slice(0, maxRosterChars).trimEnd()}\n[Roster trimmed to fit Discord embed limit.]`;
+  }
 
   return new EmbedBuilder()
     .setTitle(`🧾 ${teamName} - Member Profiles`)
     .setDescription(
-      `### Team Roster\n${withExtra}\n\n` +
+      `### Team Roster\n${rosterText}\n\n` +
       'Open a profile below.'
     )
     .addFields(
@@ -169,6 +186,7 @@ function buildTeamRosterEmbed(teamName, members) {
     )
     .setColor(
       teamName === TEAM_1 ? 0x2ECC71 :
+      teamName === TEAM_AGENTS ? 0x3498DB :
       teamName === TEAM_TRAINEES ? 0xF1C40F :
       0x5865F2
     )
@@ -277,42 +295,27 @@ async function resolveDisplayName(guild, discordId, fallback) {
   return fallback || 'Unknown';
 }
 
-async function fetchTeamMembers(guild, teamName) {
-  const normalizedTeam = normalizeTeamName(teamName);
-  if (!normalizedTeam) return [];
+function resolveRoleByNames(guild, names = []) {
+  const lowered = names.map(name => String(name || '').toLowerCase()).filter(Boolean);
+  if (lowered.length === 0) return null;
+  return guild.roles.cache.find(role => lowered.includes(String(role.name || '').toLowerCase())) || null;
+}
 
-  if (normalizedTeam === TEAM_TRAINEES) {
-    await guild.members.fetch().catch(() => null);
-    const traineeRole = guild.roles.cache.get(TRAINEE_ROLE_ID);
-    const traineeIds = traineeRole ? [...traineeRole.members.keys()] : [];
-    if (traineeIds.length === 0) return [];
+async function getRoleMemberIds(guild, { roleId = null, roleNames = [] } = {}) {
+  await guild.members.fetch().catch(() => null);
 
-    const placeholders = traineeIds.map(() => '?').join(',');
-    const rows = db.prepare(`
-      SELECT
-        a.id,
-        a.discord_id,
-        a.username,
-        a.role,
-        a.agent_status,
-        a.team,
-        COALESCE(NULLIF(a.team, ''), h_agent.team, h_primary.team, h_secondary.team, 'Team 1') AS effective_team
-      FROM agents a
-      LEFT JOIN hotels h_agent ON h_agent.id = a.hotel_id
-      LEFT JOIN hotel_shift_assignments hsa ON hsa.agent_id = a.id
-      LEFT JOIN hotels h_primary ON h_primary.id = hsa.primary_hotel_id
-      LEFT JOIN hotels h_secondary ON h_secondary.id = hsa.secondary_hotel_id
-      WHERE a.discord_id IN (${placeholders})
-      ORDER BY a.username COLLATE NOCASE ASC
-    `).all(...traineeIds);
+  const role =
+    (roleId ? guild.roles.cache.get(roleId) : null) ||
+    resolveRoleByNames(guild, roleNames);
 
-    return Promise.all(rows.map(async row => ({
-      ...row,
-      role: 'trainee',
-      display_name: await resolveDisplayName(guild, row.discord_id, row.username)
-    })));
-  }
+  if (!role) return [];
+  return [...role.members.keys()];
+}
 
+async function fetchAgentsByDiscordIds(guild, discordIds, forcedRole = null) {
+  if (!Array.isArray(discordIds) || discordIds.length === 0) return [];
+
+  const placeholders = discordIds.map(() => '?').join(',');
   const rows = db.prepare(`
     SELECT
       a.id,
@@ -327,14 +330,45 @@ async function fetchTeamMembers(guild, teamName) {
     LEFT JOIN hotel_shift_assignments hsa ON hsa.agent_id = a.id
     LEFT JOIN hotels h_primary ON h_primary.id = hsa.primary_hotel_id
     LEFT JOIN hotels h_secondary ON h_secondary.id = hsa.secondary_hotel_id
-    WHERE lower(COALESCE(NULLIF(a.team, ''), h_agent.team, h_primary.team, h_secondary.team, 'Team 1')) = lower(?)
+    WHERE a.discord_id IN (${placeholders})
     ORDER BY a.username COLLATE NOCASE ASC
-  `).all(normalizedTeam);
+  `).all(...discordIds);
 
   return Promise.all(rows.map(async row => ({
     ...row,
+    role: forcedRole || row.role,
     display_name: await resolveDisplayName(guild, row.discord_id, row.username)
   })));
+}
+
+async function fetchTeamMembers(guild, teamName) {
+  const normalizedTeam = normalizeTeamName(teamName);
+  if (!normalizedTeam || !VALID_TEAMS.includes(normalizedTeam)) return [];
+
+  if (normalizedTeam === TEAM_1 || normalizedTeam === TEAM_2) {
+    const teamRoleIds = await getRoleMemberIds(guild, {
+      roleNames: TEAM_ROLE_LOOKUPS[normalizedTeam]?.names || [normalizedTeam]
+    });
+    return fetchAgentsByDiscordIds(guild, teamRoleIds);
+  }
+
+  if (normalizedTeam === TEAM_AGENTS) {
+    const agentRoleIds = await getRoleMemberIds(guild, {
+      roleId: AGENT_ROLE_ID,
+      roleNames: ['agents', 'agent']
+    });
+    return fetchAgentsByDiscordIds(guild, agentRoleIds);
+  }
+
+  if (normalizedTeam === TEAM_TRAINEES) {
+    const traineeRoleIds = await getRoleMemberIds(guild, {
+      roleId: TRAINEE_ROLE_ID,
+      roleNames: ['trainees', 'trainee']
+    });
+    return fetchAgentsByDiscordIds(guild, traineeRoleIds, 'trainee');
+  }
+
+  return [];
 }
 
 function hotelName(hotelId) {
