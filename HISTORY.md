@@ -214,6 +214,14 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Polished Team Leader and Training status board UI for readability and consistency with the bot's cleaner embed style.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+  - Notes:
+    - Kept the `Team Leader Login Status` headline while redesigning the body layout
+    - Added clearer summary lines and cleaner team/training group sections
+    - Reduced clutter by simplifying per-user status lines
 - Added a boot refresh pass so restarting the host now immediately redraws hotel, Team Leader, and training status boards without requiring a slash command. This prevents stale status cards from lingering until the next interaction.
   - Files touched:
     - src/auth.js

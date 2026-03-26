@@ -1490,29 +1490,45 @@ async function updateTeamStatusEmbed(client, teamName) {
       const loggedInIds = new Set(loggedIn.map(row => row.discord_id));
       const offline = roster.filter(row => !loggedInIds.has(row.discord_id));
 
-      const teamLabel = name === 'Team 1'
-        ? `${name}\n**Hotels:** ${getTeam1HotelSummary().join(', ')}`
-        : `${name}\n**Hotels:** Placeholder for future`;
+      const teamLabel = name === 'Team 1' ? 'Team 1' : 'Team 2';
+      const hotelLabel = name === 'Team 1'
+        ? getTeam1HotelSummary().map(h => `\`${h}\``).join(', ')
+        : '`Placeholder for future`';
 
       const liveLines = loggedIn.length > 0
-        ? loggedIn.map(row => `• **${row.username}** (<@${row.discord_id}>) \`${getRoleLabel(row.role)}\` ${formatLoginTimeLabel(row.login_time)}`).join('\n')
-        : '• None';
+        ? loggedIn
+          .map(row => `- <@${row.discord_id}> | ${getRoleLabel(row.role)} | active ${formatLoginTimeLabel(row.login_time)}`)
+          .join('\n')
+        : '- No one is currently logged in';
 
       const offlineLines = offline.length > 0
-        ? offline.map(row => `• **${row.username}** (<@${row.discord_id}>)`).join('\n')
-        : '• None';
+        ? offline.map(row => `- <@${row.discord_id}>`).join('\n')
+        : '- Everyone in roster is online';
 
       return {
-        name: teamLabel,
-        value: `**Logged In**\n${liveLines}\n\n**Logged Out**\n${offlineLines}`,
+        name: `${teamLabel} Oversight`,
+        value:
+          `**Service Hotels**\n${hotelLabel}\n\n` +
+          `**Logged In Now**\n${liveLines}\n\n` +
+          `**Logged Out**\n${offlineLines}`,
         inline: false
       };
     });
 
+    const teamOneLoggedIn = activeTLs.filter(row => row.team === 'Team 1').length;
+    const teamTwoLoggedIn = activeTLs.filter(row => row.team === 'Team 2').length;
+
     const embed = new EmbedBuilder()
-      .setTitle('🛡️ Team Leader Login Status')
-      .setDescription('Live oversight presence for each team. Team 2 remains a placeholder for future expansion.')
+      .setTitle('Team Leader Login Status')
+      .setDescription(
+        '**Operations Oversight Board**\n' +
+        'Live management coverage and team leader presence.\n\n' +
+        `**Team 1 Online:** ${teamOneLoggedIn}\n` +
+        `**Team 2 Online:** ${teamTwoLoggedIn}\n` +
+        `**Total Active Oversight:** ${activeTLs.length}`
+      )
       .setColor(activeTLs.length > 0 ? 0x57F287 : 0x2B2D31)
+      .setFooter({ text: 'Aavgo Operations - Team Leader Presence' })
       .addFields(teamRows)
       .setTimestamp();
 
@@ -1534,7 +1550,6 @@ async function updateTeamStatusEmbed(client, teamName) {
     console.warn('[TL-STATUS] Failed to update team status embed:', e.message);
   }
 }
-
 async function updateTrainingStatusEmbed(client) {
   try {
     const channel = await client.channels.fetch(TRAINING_STATUS_CHANNEL_ID);
@@ -1551,8 +1566,10 @@ async function updateTrainingStatusEmbed(client) {
     const groupRows = TRAINING_HOTEL_GROUPS.map(group => {
       const matching = trainingSessions.filter(session => group.hotelIds.includes(session.hotel_id));
       const value = matching.length > 0
-        ? matching.map(session => `• **${session.username}** (<@${session.discord_id}>) ${formatLoginTimeLabel(session.login_time)}`).join('\n')
-        : '• None';
+        ? matching
+          .map(session => `- <@${session.discord_id}> | active ${formatLoginTimeLabel(session.login_time)}`)
+          .join('\n')
+        : '- No active trainee';
 
       return {
         name: group.label,
@@ -1562,11 +1579,16 @@ async function updateTrainingStatusEmbed(client) {
     });
 
     const embed = new EmbedBuilder()
-      .setTitle('🧭 Training Status')
-      .setDescription('Current agents in training and the location they are training for.')
+      .setTitle('Training Status')
+      .setDescription(
+        '**Training Oversight Board**\n' +
+        'Live visibility of active trainees by hotel group.\n\n' +
+        `**Agents in Training Now:** ${trainingSessions.length}\n` +
+        '**Scope:** Team 1 training groups'
+      )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
+      .setFooter({ text: 'Aavgo Operations - Training Presence' })
       .addFields(groupRows)
-      .setFooter({ text: 'Team 2 is reserved as a future placeholder.' })
       .setTimestamp();
 
     const key = 'training_status_msg';
@@ -1587,7 +1609,6 @@ async function updateTrainingStatusEmbed(client) {
     console.warn('[TRAINING-STATUS] Failed to update training status embed:', e.message);
   }
 }
-
 async function refreshOperationalBoards(client) {
   try {
     const hotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT'").all();
