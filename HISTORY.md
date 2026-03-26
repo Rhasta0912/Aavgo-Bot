@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fix the shift role prompt title so the initialize flow opens without a missing-variable crash.
+  - Summary: The shift role picker now uses a stable title instead of referencing an undefined variable, so clicking Initialize Shift should open the role chooser again instead of failing.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Improve the agent login route and takeover conflict prompts to match the cleaner operational card style.
   - Summary: The login route panels now use stronger status-led embeds, clearer labels, and a proper structured takeover conflict card instead of a plain text warning. Training remains multi-person friendly because the training board lists every active trainee in each group.
   - Files touched:

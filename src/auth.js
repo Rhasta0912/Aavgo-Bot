@@ -2892,7 +2892,7 @@ async function handleShiftRolePrompt(interaction) {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle(`🛡️ Aavgo Operations · ${roleLabel} Route`)
+      .setTitle('🛡️ Aavgo Operations · Initialize Shift')
       .setDescription(
         '### ✅ ACCESS ROUTE READY\n' +
         '────────────────────────\n' +
