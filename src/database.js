@@ -14,6 +14,7 @@ db.exec(`
     username TEXT NOT NULL,
     hotel_id TEXT,
     pin TEXT NOT NULL,
+    pin_is_set INTEGER DEFAULT 1,
     role TEXT DEFAULT 'agent',
     agent_status TEXT DEFAULT 'standby',
     team TEXT,
@@ -212,6 +213,10 @@ db.pragma('foreign_keys = ON');
     if (!tableInfo.find(col => col.name === 'agent_status')) {
       db.prepare("ALTER TABLE agents ADD COLUMN agent_status TEXT DEFAULT 'standby'").run();
     }
+    if (!tableInfo.find(col => col.name === 'pin_is_set')) {
+      db.prepare("ALTER TABLE agents ADD COLUMN pin_is_set INTEGER DEFAULT 1").run();
+    }
+    db.prepare("UPDATE agents SET pin_is_set = 1 WHERE pin_is_set IS NULL").run();
     const sessionTableInfo = db.prepare("PRAGMA table_info(sessions)").all();
     if (!sessionTableInfo.find(col => col.name === 'session_kind')) {
       db.prepare("ALTER TABLE sessions ADD COLUMN session_kind TEXT DEFAULT 'shift'").run();

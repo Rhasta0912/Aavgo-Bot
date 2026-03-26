@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Track whether a PIN was actually set, and prompt for security setup before any PIN-gated shift flow.
+  - Summary: The bot now keeps a simple PIN-set flag in the agents table, marks bot-generated PINs as not yet confirmed, and shows a clear security setup prompt if someone tries to start a shift before their PIN has been properly set. This keeps manual role grants from slipping through with an unfinished security setup.
+  - Files touched:
+    - src/auth.js
+    - src/database.js
+    - HISTORY.md
 - Make role sync recognize singular and plural staff role names and log each sync decision.
   - Summary: The bot now treats role names like `Agent` and `Agents` as the same staff role during database sync, so manually assigned Discord roles are less likely to be missed. It also logs what role snapshot it saw, whether a DB row already existed, and when it skips a member with no recognized staff role.
   - Files touched:

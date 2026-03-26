@@ -434,6 +434,12 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
 async function showPinModal(interaction, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
   const isTeamShiftOverride = typeof hotelId === 'string' && hotelId.startsWith('TEAM_SHIFT_team_');
   const hotelName = (hotelId === 'TEAM_SHIFT' || isTeamShiftOverride) ? 'Management Shift' : getCombinedHotelLabel(hotelId);
+  const agent = db.prepare('SELECT pin_is_set FROM agents WHERE discord_id = ?').get(interaction.user.id);
+
+  if (agent && !hasConfiguredPin(agent)) {
+    return promptForPinSetup(interaction, hotelName, sessionMode);
+  }
+
   const modal = new ModalBuilder()
     .setCustomId(`loginmodal_${sessionMode}_${hotelId}${isTakeover ? '_takeover' : ''}${allowMultiHotel ? '_multi' : ''}`)
     .setTitle(`🔑 Verify PIN — ${hotelName}`.substring(0, 45));
@@ -620,9 +626,9 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
 
   const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
   if (existing) {
-    db.prepare("UPDATE agents SET username = ?, pin = ?, role = ?, agent_status = 'ready' WHERE discord_id = ?").run(targetUser.username, pin, normalizedRole, targetUser.id);
+    db.prepare("UPDATE agents SET username = ?, pin = ?, pin_is_set = 0, role = ?, agent_status = 'ready' WHERE discord_id = ?").run(targetUser.username, pin, normalizedRole, targetUser.id);
   } else {
-    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, ?, 'ready')").run(targetUser.id, targetUser.username, pin, normalizedRole);
+    db.prepare("INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status) VALUES (?, ?, ?, 0, ?, 'ready')").run(targetUser.id, targetUser.username, pin, normalizedRole);
   }
 
   try {
@@ -1626,6 +1632,34 @@ async function refreshOperationalBoards(client) {
   }
 }
 
+function hasConfiguredPin(agent) {
+  return Number(agent?.pin_is_set ?? 1) === 1;
+}
+
+async function promptForPinSetup(interaction, hotelName = 'Shift', sessionMode = 'shift') {
+  const setupEmbed = new EmbedBuilder()
+    .setTitle('🔐 PIN Needed')
+    .setDescription(
+      `Oh no, you have not set your PIN yet.\n\n` +
+      `To continue with **${hotelName}**, please set your security PIN first.\n\n` +
+      `Click the button below to open the security setup form.`
+    )
+    .setColor(0xFEE75C)
+    .setFooter({ text: sessionMode === 'training' ? 'Training access requires a security PIN' : 'Shift access requires a security PIN' })
+    .setTimestamp();
+
+  const setupBtn = new ButtonBuilder()
+    .setCustomId('security_setup_btn')
+    .setLabel('Set Security PIN')
+    .setStyle(ButtonStyle.Primary);
+
+  const row = new ActionRowBuilder().addComponents(setupBtn);
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply({ embeds: [setupEmbed], components: [row] });
+  }
+  return interaction.reply({ embeds: [setupEmbed], components: [row], ephemeral: true });
+}
+
 function isTraineeMember(interaction) {
   return interaction?.member?.roles?.cache?.some(role => {
     const roleName = normalizeDiscordRoleName(role?.name);
@@ -1720,7 +1754,7 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
     const bootstrapStatus = bootstrapRole === 'trainee' ? 'standby' : 'ready';
     const bootstrapPin = String(Math.floor(100000 + Math.random() * 900000));
     db.prepare(
-      "INSERT INTO agents (discord_id, username, pin, role, agent_status, team) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, team) VALUES (?, ?, ?, 0, ?, ?, ?)"
     ).run(member.id, displayName, bootstrapPin, bootstrapRole, bootstrapStatus, snapshot.team || null);
 
     console.log(`[${contextLabel}] Created missing agent row for ${displayName} with role ${bootstrapRole}`);
@@ -1978,7 +2012,7 @@ async function handleSecuritySetupSubmit(interaction) {
       return interaction.editReply({ content: '❌ You are not a registered agent. Ask Operations Manager or Developer to run `/add-agent` first.' });
     }
 
-        db.prepare("UPDATE agents SET pin = ?, phone = ?, username = ? WHERE discord_id = ?")
+        db.prepare("UPDATE agents SET pin = ?, phone = ?, username = ?, pin_is_set = 1 WHERE discord_id = ?")
       .run(pin, phone, interaction.user.username, interaction.user.id);
 
     try {
@@ -2249,7 +2283,7 @@ async function handleApproveReg(interaction) {
     const member = await guild.members.fetch(userId);
 
     // Insert into DB
-    db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status, approval_message_id, phone, email) VALUES (?, ?, ?, 'agent', 'ready', ?, ?, ?)").run(userId, member.user.username, pin, interaction.message.id, phone, email);
+    db.prepare("INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, approval_message_id, phone, email) VALUES (?, ?, ?, 0, 'agent', 'ready', ?, ?, ?)").run(userId, member.user.username, pin, interaction.message.id, phone, email);
 
     // Grant base roles (non-blocking)
     try {
@@ -2374,7 +2408,11 @@ async function handleStartShiftClick(interaction) {
     const isTLButton = interaction.customId === 'tl_start_shift_btn';
     const allowMultiHotel = interaction.customId === 'start_shift_multi_confirm_btn' || interaction.customId === 'tl_start_shift_multi_confirm_btn';
     const discordId = interaction.user.id;
-    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'SHIFT START FALLBACK');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
+    }
     if (!agent) {
       return interaction.reply({ 
         content: '❌ **Access Denied.** You must be a registered agent. Please use the **Register** button to apply.',
@@ -3324,8 +3362,8 @@ async function handleModalSubmit(interaction) {
     if (!agent && sessionMode === 'training') {
       const username = interaction.member?.displayName || interaction.user.username;
       db.prepare(`
-        INSERT INTO agents (discord_id, username, pin, role, agent_status, team, hotel_id)
-        VALUES (?, ?, ?, ?, ?, NULL, NULL)
+        INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, team, hotel_id)
+        VALUES (?, ?, ?, 1, ?, ?, NULL, NULL)
       `).run(interaction.user.id, username, pin, 'agent', 'standby');
       agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     }
@@ -4659,7 +4697,7 @@ async function handleSetOperationManager(interaction) {
 
     if (!existingAgent) {
       const generatedPin = String(Math.floor(100000 + Math.random() * 900000));
-      db.prepare("INSERT INTO agents (discord_id, username, pin, role, agent_status) VALUES (?, ?, ?, 'operations_manager', 'ready')").run(
+      db.prepare("INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status) VALUES (?, ?, ?, 0, 'operations_manager', 'ready')").run(
         targetUser.id,
         targetUser.username,
         generatedPin
@@ -4805,7 +4843,7 @@ async function handleDbSetPin(interaction) {
       return interaction.reply({ content: '❌ That user is not a registered agent.', ephemeral: true });
     }
 
-    db.prepare("UPDATE agents SET pin = ? WHERE discord_id = ?").run(newPin, targetUser.id);
+    db.prepare("UPDATE agents SET pin = ?, pin_is_set = 1 WHERE discord_id = ?").run(newPin, targetUser.id);
     
     await interaction.reply({ content: `✅ **PIN Updated!** ${targetUser.username}'s PIN was updated successfully.`, ephemeral: true });
     
@@ -4847,7 +4885,7 @@ async function handleResetPin(interaction) {
       return interaction.editReply({ content: '❌ Current PIN is incorrect.' });
     }
 
-    db.prepare("UPDATE agents SET pin = ? WHERE discord_id = ?").run(newPin, interaction.user.id);
+    db.prepare("UPDATE agents SET pin = ?, pin_is_set = 1 WHERE discord_id = ?").run(newPin, interaction.user.id);
 
     await interaction.editReply({ content: '✅ Your security PIN has been updated.' });
 
