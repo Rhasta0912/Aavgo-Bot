@@ -88,12 +88,11 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 - Keep IDs stable for logic and database joins.
 - Update only display placeholders/labels when branding changes.
 - Current display set:
-  - `BW_TO`: Indianhead IronWood
-  - `BRNT`: Magnuson
-  - `QI_RV`: Value Suites
-  - `SUP8`: Super8
+  - `BW_TO`: Indianhead/Magnuson
+  - `GICP`: The Garden Inn At Campsite
+  - `SUP8`: Super 8
   - `RMDA`: Ramada
-  - `AD1`: AD1 (EST)
+  - `AD1`: AD1
 
 ## Logging SOP
 - Every meaningful feature/fix must be appended to:

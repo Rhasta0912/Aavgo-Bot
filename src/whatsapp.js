@@ -23,15 +23,13 @@ let discordClient;
 const HOTEL_CHANNELS = {
     'BW_SF': '1482525707870408878',  // Springfield
     'BW_TO': '1482553974635888670',  // Thousands Oaks
-    'ECL_GF': '1482554071008280709', // Grand Folks
-    'QI_RV': '1482554019007172749'   // Russellville
+    'ECL_GF': '1482554071008280709'  // Grand Folks
 };
 
 const HOTEL_INVITES = {
     'BW_SF': 'J5ZYINxLucuBMQu7vJetum',
     'BW_TO': 'DD5oF7KeSJS61gNjRqAkLA',
-    'ECL_GF': 'D6ogScrxZmq3H2U5zFZrcC', // Fixed: Grand Folks
-    'QI_RV': 'DNbYe2hbYoH0RW50EEskPr'   // Fixed: Russellville
+    'ECL_GF': 'D6ogScrxZmq3H2U5zFZrcC'   // Fixed: Grand Folks
 };
 
 const MGMT_PORTAL_CHANNEL_ID = '1482525707870408878';
@@ -320,7 +318,7 @@ async function notifyDiscordAuthNeeded(qrString) {
             
             const embed = new EmbedBuilder()
                 .setTitle(`🟡 WhatsApp MASTER Auth Needed`)
-                .setDescription(`Scan this QR code with your WhatsApp app.\n\n**Note**: This 1 account will handle ALL hotels (Springfield, Russellville, etc.) automatically.`)
+                .setDescription(`Scan this QR code with your WhatsApp app.\n\n**Note**: This 1 account will handle ALL hotels automatically.`)
                 .setImage(qrImageUrl)
                 .setColor(0xFEE75C);
 

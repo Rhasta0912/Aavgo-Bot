@@ -163,13 +163,9 @@ db.exec(`
   -- Seed new hotels with teams
   INSERT INTO hotels (id, name, team) VALUES ('BW_TO', 'Indianhead/Magnuson', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('VALS', 'Value Suites', 'Team 1')
-    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('GICP', 'The Garden Inn At Campsite', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'Russelville', 'Team 1')
-    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('SUP8', 'Super8', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('SUP8', 'Super 8', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('RMDA', 'Ramada', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
@@ -180,9 +176,7 @@ db.exec(`
 
   -- Seed hotel_status
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('BW_TO');
-  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('VALS');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('GICP');
-  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('QI_RV');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('SUP8');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('RMDA');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('AD1');
@@ -224,13 +218,30 @@ db.pragma('foreign_keys = ON');
       db.prepare("UPDATE sessions SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
       db.prepare("UPDATE maintenance_logs SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
       db.prepare("UPDATE handover_notes SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
-    db.prepare("UPDATE schedules SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
-    db.prepare("UPDATE sop_guides SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE schedules SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
+      db.prepare("UPDATE sop_guides SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();
       db.prepare("UPDATE hotel_shift_assignments SET primary_hotel_id = 'BW_TO' WHERE primary_hotel_id = 'BRNT'").run();
       db.prepare("UPDATE hotel_shift_assignments SET secondary_hotel_id = 'BW_TO' WHERE secondary_hotel_id = 'BRNT'").run();
       db.prepare("DELETE FROM hotel_status WHERE hotel_id = 'BRNT'").run();
       db.prepare("DELETE FROM hotels WHERE id = 'BRNT'").run();
       db.prepare("UPDATE hotels SET name = 'Indianhead/Magnuson' WHERE id = 'BW_TO'").run();
+    })();
+    db.transaction(() => {
+      const retiredHotelIds = ['VALS', 'QI_RV'];
+      for (const hotelId of retiredHotelIds) {
+        db.prepare("UPDATE agents SET hotel_id = 'BW_TO' WHERE hotel_id = ?").run(hotelId);
+        db.prepare("UPDATE sessions SET hotel_id = 'BW_TO' WHERE hotel_id = ?").run(hotelId);
+        db.prepare("UPDATE maintenance_logs SET hotel_id = 'BW_TO' WHERE hotel_id = ?").run(hotelId);
+        db.prepare("UPDATE handover_notes SET hotel_id = 'BW_TO' WHERE hotel_id = ?").run(hotelId);
+        db.prepare("UPDATE schedules SET hotel_id = 'BW_TO' WHERE hotel_id = ?").run(hotelId);
+        db.prepare("UPDATE sop_guides SET hotel_id = 'BW_TO' WHERE hotel_id = ?").run(hotelId);
+        db.prepare("UPDATE hotel_shift_assignments SET primary_hotel_id = 'BW_TO' WHERE primary_hotel_id = ?").run(hotelId);
+        db.prepare("UPDATE hotel_shift_assignments SET secondary_hotel_id = 'BW_TO' WHERE secondary_hotel_id = ?").run(hotelId);
+        db.prepare("DELETE FROM hotel_status WHERE hotel_id = ?").run(hotelId);
+        db.prepare("DELETE FROM hotels WHERE id = ?").run(hotelId);
+      }
+      db.prepare("UPDATE hotels SET name = 'Super 8' WHERE id = 'SUP8'").run();
+      db.prepare("UPDATE hotels SET name = 'Ramada' WHERE id = 'RMDA'").run();
     })();
     const pendingTableInfo = db.prepare("PRAGMA table_info(pending_registrations)").all();
     if (!pendingTableInfo.find(col => col.name === 'pin')) {

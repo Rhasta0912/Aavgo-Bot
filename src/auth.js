@@ -55,9 +55,7 @@ const ROLE_NAMES = {
   // Green (On-Shift / Permission) Roles
   GREEN: {
     'BW_TO': '1482227783232000070',
-    'VALS': '1484858995150684170',
     'GICP': '1484531060699168778',
-    'QI_RV': '1482227230343041115',
     'SUP8': '1482227848440971408',
     'RMDA': '1483418491464843345',
     'AD1': '1483418531180843049'
@@ -65,9 +63,7 @@ const ROLE_NAMES = {
   // Grey (Permanent / Assignment) Roles
   GREY: {
     'BW_TO': '1483429969807020032',
-    'VALS': '1484859243671847114',
     'GICP': '1484531611549831189',
-    'QI_RV': '1483430045153362012',
     'SUP8': '1483430096013623427',
     'RMDA': '1483430118016684135',
     'AD1': '1483430144449187923'
@@ -77,20 +73,16 @@ const ROLE_NAMES = {
 // Map hotel IDs to display names
 const HOTEL_NAMES = {
   'BW_TO': 'Indianhead/Magnuson',
-  'VALS': 'Value Suites',
   'GICP': 'The Garden Inn At Campsite',
-  'QI_RV': 'Russelville',
-  'SUP8': 'Super8',
+  'SUP8': 'Super 8',
   'RMDA': 'Ramada',
   'AD1': 'AD1'
 };
 // Map hotel IDs to log-in channel IDs
 const HOTEL_LOGIN_CHANNELS = {
   'BW_TO': '1482303551614095441',
-  'VALS': '1484857862588203148',
   'GICP': '1484531330308903005',
-  'QI_RV': '1482303818904637563',
-  'SUP8': '1482303747706191962',
+  'SUP8': '1483417977859870881',
   'RMDA': '1483417977859870881',
   'AD1': '1483418055538376735'
 };
@@ -102,7 +94,7 @@ const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 
-const TEAM_1_HOTELS = ['BW_TO', 'VALS', 'GICP', 'QI_RV', 'SUP8', 'RMDA', 'AD1'];
+const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -454,18 +446,10 @@ function normalizeHotelInput(input) {
     BRENTWOOD: 'BRNT',
     BRENTWOODINNSUITES: 'BRNT',
     MAGNUSON: 'BRNT',
-    VALS: 'VALS',
-    VALUESUITES: 'VALS',
-    THEVALUESUITES: 'VALS',
     GICP: 'GICP',
     GARDENINN: 'GICP',
     GARDENINNCAMPSITE: 'GICP',
     THEGARDENINNATCAMPSITE: 'GICP',
-    QIRV: 'QI_RV',
-    RUSSELLVILLE: 'QI_RV',
-    RUSSELVILLE: 'QI_RV',
-    RUESSELVILLE: 'QI_RV',
-    QIRUSSELLVILLEKY: 'QI_RV',
     SUP8: 'SUP8',
     SUPER8: 'SUP8',
     RMDA: 'RMDA',
@@ -802,7 +786,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Value Suites, Garden Inn, Russelville, Super8, Ramada, AD1)');
+    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Super 8, Ramada, AD1)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -1233,7 +1217,7 @@ function buildAgentKioskPayload() {
       '> **4.** Verify your **Secure PIN**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `Value Suites`, `The Garden Inn At Campsite`, `Russelville`, `Super8`, `Ramada`, `AD1`'
+      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Super 8`, `Ramada`, `AD1`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -1317,7 +1301,7 @@ async function handleSetupLogin(interaction) {
         '> **4.** Verify your **Secure PIN**\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `Value Suites`, `The Garden Inn At Campsite`, `Russelville`, `Super8`, `Ramada`, `AD1`'
+      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Super 8`, `Ramada`, `AD1`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -2561,7 +2545,7 @@ async function handleShiftInitModalSubmit(interaction) {
     const normalizedHotel = normalizeHotelInput(hotelInput);
 
     if (!normalizedHotel || !HOTEL_NAMES[normalizedHotel]) {
-      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, Value Suites, The Garden Inn At Campsite, Russelville, Super8, Ramada, AD1**.' });
+      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, The Garden Inn At Campsite, Super 8, Ramada, AD1**.' });
     }
 
     const hotelRecord = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotel);

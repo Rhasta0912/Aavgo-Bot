@@ -214,6 +214,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Removed retired `Value Suites` and `Russelville` hotel placeholders from the live hotel map, unified `Ramada` and `Super 8` to the shared login channel `1483417977859870881`, and updated the hotel seeds/migration so old hotel references are redirected into `Indianhead/Magnuson` instead of lingering in the active roster.
+  - Files touched:
+    - src/auth.js
+    - src/commands.js
+    - src/database.js
+    - src/whatsapp.js
+    - SOP.md
+  - Notes:
+    - Live hotel selections now only show current hotels
+    - Ramada and Super 8 now share the combined channel
+    - Legacy WhatsApp bridge references no longer mention Russellville
 - Simplify profiles panel layout
   - Summary: Reduced clutter in the profiles panel by keeping the team browser separate from the profile card, shrinking roster previews, and moving advanced actions like kick, ban, and admin utilities behind a single More menu. The profile view now shows only the core actions plus a Back to Team button, making the workflow easier to read and easier to revert as one change set if needed.
   - Files touched:
