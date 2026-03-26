@@ -214,6 +214,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Fixed the shift start flow and cleaned up the profiles UI.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - src/profilePanel.js
+    - HISTORY.md
+  - Notes:
+    - Fixed `handleTrainingStartClick is not a function` by exporting missing training handlers
+    - `Initialize Shift` now opens a choice prompt: `Hotel Shift` or `Training`
+    - Removed training as a separate kiosk button and simplified profiles embed layout
 - Fixed the Discord update log so it posts in plain English and is easier to read.
   - Files touched:
     - src/auth.js

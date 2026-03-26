@@ -435,7 +435,9 @@ client.on('interactionCreate', async interaction => {
   } else if (interaction.isButton()) {
     if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleButton(interaction);
-    } else if (interaction.customId === 'start_shift_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
+    } else if (interaction.customId === 'start_shift_btn') {
+      await auth.handleShiftModePrompt(interaction);
+    } else if (interaction.customId === 'shift_mode_hotel_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'training_start_btn') {
       await auth.handleTrainingStartClick(interaction);

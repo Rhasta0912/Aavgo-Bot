@@ -1258,10 +1258,10 @@ function buildAgentKioskPayload() {
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 📋 Protocol\n' +
       '> **1.** Click **Initialize Shift** below\n' +
-      '> **2.** Select your **Team** (First time only)\n' +
-      '> **3.** Choose your **Hotel Assignment**\n' +
-      '> **4.** Verify your **Secure PIN**\n' +
-      '> **5.** Use **Training** when you are learning a hotel\n\n' +
+      '> **2.** Choose **Hotel Shift** or **Training**\n' +
+      '> **3.** Select your **Team** (First time only)\n' +
+      '> **4.** Choose your **Hotel Assignment**\n' +
+      '> **5.** Verify your **Secure PIN**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
       '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Super 8`, `Ramada`, `AD1`'
@@ -1283,7 +1283,7 @@ function buildAgentKioskPayload() {
   return {
     embeds: [embed],
     components: [
-      new ActionRowBuilder().addComponents(startBtn, trainingBtn)
+      new ActionRowBuilder().addComponents(startBtn)
     ]
   };
 }
@@ -1310,11 +1310,7 @@ async function ensureAgentKioskMessage(client, channelId) {
     const hasStartButton = message.components.some(row =>
       row.components.some(component => component.customId === 'start_shift_btn')
     );
-    const hasTrainingButton = message.components.some(row =>
-      row.components.some(component => component.customId === 'training_start_btn')
-    );
-
-    if (!hasStartButton || !hasTrainingButton) {
+    if (!hasStartButton) {
       await message.edit(buildAgentKioskPayload());
       console.log(`[KIOSK] Restored Initialize Shift button in channel ${channelId}: ${message.id}`);
     }
@@ -2543,6 +2539,47 @@ async function showTrainingHotelSelection(interaction, isUpdate = false) {
     await interaction.update(payload);
   } else {
     await interaction.reply(payload);
+  }
+}
+
+async function handleShiftModePrompt(interaction) {
+  try {
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return interaction.reply({ content: 'âŒ You are not registered as an agent.', ephemeral: true });
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle('Initialize Shift')
+      .setDescription(
+        'Choose how you want to start:\n\n' +
+        '- **Hotel Shift**: normal live operations\n' +
+        '- **Training**: training flow'
+      )
+      .setColor(0x5865F2);
+
+    const hotelBtn = new ButtonBuilder()
+      .setCustomId('shift_mode_hotel_btn')
+      .setLabel('Hotel Shift')
+      .setStyle(ButtonStyle.Primary);
+
+    const trainingBtn = new ButtonBuilder()
+      .setCustomId('training_start_btn')
+      .setLabel('Training')
+      .setStyle(ButtonStyle.Secondary);
+
+    await interaction.reply({
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(hotelBtn, trainingBtn)],
+      ephemeral: true
+    });
+  } catch (error) {
+    console.error('Error in handleShiftModePrompt:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'âŒ Failed to open shift mode picker.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'âŒ Failed to open shift mode picker.', ephemeral: true }).catch(() => {});
+    }
   }
 }
 
@@ -5558,6 +5595,7 @@ module.exports = {
   handleSetupLogin, 
   handleSetupRegister,
   handleSetupSecurity,
+  handleShiftModePrompt,
   handleStartShiftClick, 
   handleHotelSelect, 
   handleLogin, 
@@ -5636,6 +5674,8 @@ module.exports = {
   handleConfirmHotelLink,
   handleCancelHotelLink,
   handleHotelSelectMenu,
+  handleTrainingStartClick,
+  handleTrainingHotelSelectMenu,
   handleDbRemoveAll,
   handlePurgeConfirm,
   handlePurgeDeny

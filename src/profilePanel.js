@@ -106,22 +106,18 @@ function buildTeamRefreshRow(teamName) {
 function buildDashboardEmbed(activeTeam = null) {
   const selected = normalizeTeamName(activeTeam);
   return new EmbedBuilder()
-    .setTitle('🛡️ Aavgo Operations - Profiles Kiosk')
+    .setTitle('Aavgo Operations - Profiles Kiosk')
     .setDescription(
-      '## Welcome to the Profiles Portal\n' +
-      '### Secure Agent Management System\n' +
-      'This portal is built for fast team browsing, profile review, and developer actions.\n\n' +
-      '──────────────────────────────\n' +
-      '📋 **Protocol**\n' +
-      '1. Select a team below\n' +
+      '**Profiles Command Board**\n' +
+      'Clean team browsing and agent management in one place.\n\n' +
+      '**Protocol**\n' +
+      '1. Select a team\n' +
       '2. Pick an agent profile\n' +
-      '3. Run an approved action\n' +
-      '4. Refresh team data if needed\n\n' +
-      '──────────────────────────────\n' +
-      `🏨 **Current Team:** ${selected || 'Not selected'}`
+      '3. Run the approved action\n\n' +
+      `**Current Team:** ${selected || 'Not selected'}`
     )
-    .setColor(0x5865F2)
-    .setFooter({ text: 'Aavgo Operations - Automated Access Control' })
+    .setColor(0x57F287)
+    .setFooter({ text: 'Aavgo Operations - Profiles Control' })
     .setTimestamp();
 }
 
@@ -145,15 +141,15 @@ function buildTeamRosterEmbed(teamName, members) {
   const withExtra = extraCount > 0 ? `${rosterText}\n... and ${extraCount} more.` : rosterText;
 
   return new EmbedBuilder()
-    .setTitle(`🧾 ${teamName} - Member Profiles`)
+    .setTitle(`${teamName} - Member Profiles`)
     .setDescription(
-      `### Team Roster\n${withExtra}\n\n` +
-      'Open a profile below.'
+      `**Team Roster**\n${withExtra}\n\n` +
+      'Select a member below to open their profile.'
     )
     .addFields(
-      { name: '👥 Total', value: String(members.length), inline: true },
-      { name: '🧭 Leads', value: String((roleCount.team_leader || 0) + (roleCount.operations_manager || 0)), inline: true },
-      { name: '🎯 SME', value: String(roleCount.sme || 0), inline: true }
+      { name: 'Total Members', value: String(members.length), inline: true },
+      { name: 'Leads', value: String((roleCount.team_leader || 0) + (roleCount.operations_manager || 0)), inline: true },
+      { name: 'SME', value: String(roleCount.sme || 0), inline: true }
     )
     .setColor(teamName === TEAM_1 ? 0x2ECC71 : 0x5865F2)
     .setFooter({ text: 'Aavgo Operations - Team Browser' })
