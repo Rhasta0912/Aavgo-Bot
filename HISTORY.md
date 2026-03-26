@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Keep training sessions out of live hotel status cards and add an End-training button to the training board.
+  - Summary: Live hotel boards now ignore training sessions completely, so trainees only appear in the training status channel. The training board also gets a red End-training button that ends the trainee's session through the normal logout flow.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Fix the shift role prompt title so the initialize flow opens without a missing-variable crash.
   - Summary: The shift role picker now uses a stable title instead of referencing an undefined variable, so clicking Initialize Shift should open the role chooser again instead of failing.
   - Files touched:

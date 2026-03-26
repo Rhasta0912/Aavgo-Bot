@@ -515,6 +515,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'training_start_btn') {
       await auth.handleTrainingStartClick(interaction);
+    } else if (interaction.customId === 'training_end_btn') {
+      await auth.handleLogout(interaction);
     } else if (interaction.customId === 'security_setup_btn') {
       await auth.handleSecuritySetupStart(interaction);
     } else if (interaction.customId === 'register_start_btn') {

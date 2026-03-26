@@ -1038,6 +1038,7 @@ async function updateHotelStatusEmbed(client, hotelId) {
       FROM sessions s1
       JOIN agents ON s1.agent_id = agents.id 
       WHERE s1.hotel_id IN (${placeholders}) AND s1.status = 'active'
+      AND COALESCE(s1.session_kind, 'shift') != 'training'
       AND s1.id = (SELECT MAX(s2.id) FROM sessions s2 WHERE s2.agent_id = s1.agent_id AND s2.status = 'active')
       ORDER BY s1.login_time DESC
     `).all(...hotelGroup.hotelIds);
@@ -1621,19 +1622,28 @@ async function updateTrainingStatusEmbed(client) {
       .setFooter({ text: 'Aavgo Operations • Training Presence' })
       .setTimestamp();
 
+    const components = [];
+    if (trainingSessions.length > 0) {
+      const endTrainingBtn = new ButtonBuilder()
+        .setCustomId('training_end_btn')
+        .setLabel('🔴 End-training')
+        .setStyle(ButtonStyle.Danger);
+      components.push(new ActionRowBuilder().addComponents(endTrainingBtn));
+    }
+
     const key = 'training_status_msg';
     const stored = db.prepare("SELECT value FROM config WHERE key = ?").get(key);
     if (stored?.value) {
       try {
         const msg = await channel.messages.fetch(stored.value);
-        await msg.edit({ embeds: [embed] });
+        await msg.edit({ embeds: [embed], components });
         return;
       } catch (e) {
         db.prepare("DELETE FROM config WHERE key = ?").run(key);
       }
     }
 
-    const newMsg = await channel.send({ embeds: [embed] });
+    const newMsg = await channel.send({ embeds: [embed], components });
     db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, newMsg.id);
   } catch (e) {
     console.warn('[TRAINING-STATUS] Failed to update training status embed:', e.message);
@@ -3617,7 +3627,7 @@ async function handleLogout(interaction) {
     }
 
     // Fetch ALL active sessions for this agent
-    const activeSessions = db.prepare("SELECT id, hotel_id, login_time FROM sessions WHERE agent_id = ? AND status = 'active'").all(agent.id);
+    const activeSessions = db.prepare("SELECT id, hotel_id, login_time, session_kind FROM sessions WHERE agent_id = ? AND status = 'active'").all(agent.id);
     if (activeSessions.length === 0) {
       return interaction.editReply({ content: 'You are not currently on any shift.' });
     }
@@ -3646,6 +3656,7 @@ async function handleLogout(interaction) {
     }
     const logoutTimeDisplay = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const isOvertime = durationStr.includes('h') && parseInt(durationStr.split('h')[0]) >= 8;
+    const hasTrainingSession = activeSessions.some(session => session.session_kind === 'training');
 
     // Fetch activities for the summary before closing sessions
     const activities = db.prepare("SELECT type, guest_name FROM activities WHERE session_id = ?").all(primarySession.id);
@@ -3657,7 +3668,11 @@ async function handleLogout(interaction) {
     const hotelIdsToSync = await closeAllActiveSessionsForAgent(agent.id, interaction.client);
     
     // Reply early to avoid timeout
-    await interaction.editReply({ content: '✅ **Shift ended.** You have been logged out successfully.' });
+    await interaction.editReply({
+      content: hasTrainingSession
+        ? '✅ **Training ended.** You have been logged out successfully.'
+        : '✅ **Shift ended.** You have been logged out successfully.'
+    });
 
     // Disconnect from VC if present
     try {
