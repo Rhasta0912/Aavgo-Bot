@@ -436,7 +436,17 @@ client.on('interactionCreate', async interaction => {
     if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleButton(interaction);
     } else if (interaction.customId === 'start_shift_btn') {
-      await auth.handleShiftModePrompt(interaction);
+      await auth.handleShiftRolePrompt(interaction);
+    } else if (interaction.customId === 'shift_role_agent_btn') {
+      await auth.handleAgentRoutePick(interaction);
+    } else if (interaction.customId === 'shift_role_team_leader_btn') {
+      await auth.handleManagementRoutePick(interaction, 'Team Leader');
+    } else if (interaction.customId === 'shift_role_sme_btn') {
+      await auth.handleManagementRoutePick(interaction, 'SME');
+    } else if (interaction.customId === 'shift_mgmt_team_1_btn') {
+      await auth.handleManagementTeamStart(interaction, 'Team 1');
+    } else if (interaction.customId === 'shift_mgmt_team_2_btn') {
+      await auth.handleManagementTeamStart(interaction, 'Team 2');
     } else if (interaction.customId === 'shift_mode_hotel_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'training_start_btn') {

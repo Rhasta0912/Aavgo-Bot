@@ -214,6 +214,18 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Merged role-based login into one portal flow and removed dependence on separate TL/SME portal setup.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - src/commands.js
+    - HISTORY.md
+  - Notes:
+    - Initialize Shift now prompts role first: Agent, Team Leader, or SME
+    - Agent route then asks Hotel Shift or Training
+    - Team Leader/SME route now asks Team 1 Shift or Team 2 Shift before PIN
+    - Existing kiosk message now force-refreshes on restart so stale button layouts get replaced automatically
+    - `/setup-login-team` is now a legacy refresh alias that points to the unified portal flow
 - Reverted unintended Profiles Kiosk visual changes and restored the original kiosk layout style.
   - Files touched:
     - src/profilePanel.js
