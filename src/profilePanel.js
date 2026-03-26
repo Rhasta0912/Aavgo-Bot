@@ -13,9 +13,12 @@ const PROFILES_CHANNEL_ID = '1485256962617643098';
 const PROFILE_PANEL_KEY_PREFIX = 'profiles_dashboard_msg_';
 const TEAM_1 = 'Team 1';
 const TEAM_2 = 'Team 2';
-const VALID_TEAMS = [TEAM_1, TEAM_2];
+const TEAM_TRAINEES = 'Trainees';
+const TRAINEE_ROLE_ID = '1484705126026449029';
+const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_TRAINEES];
 const ROLE_STEPS = ['agent', 'sme', 'team_leader', 'operations_manager'];
 const ROLE_LABELS = {
+  trainee: 'Trainee',
   agent: 'Agent',
   sme: 'Subject Matter Expert (SME)',
   team_leader: 'Team Leader',
@@ -26,6 +29,7 @@ function normalizeTeamName(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'team 1' || raw === 'team1' || raw === '1') return TEAM_1;
   if (raw === 'team 2' || raw === 'team2' || raw === '2') return TEAM_2;
+  if (raw === 'trainees' || raw === 'trainee') return TEAM_TRAINEES;
   return null;
 }
 
@@ -76,6 +80,9 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   const team2Description = normalizedSelected === TEAM_2
     ? 'Browse Team 2 members (current)'
     : 'Browse Team 2 members';
+  const traineesDescription = normalizedSelected === TEAM_TRAINEES
+    ? 'Browse trainees only (current)'
+    : 'Browse trainees only';
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(customId)
@@ -88,7 +95,11 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_2)
         .setDescription(team2Description)
-        .setValue(TEAM_2)
+        .setValue(TEAM_2),
+      new StringSelectMenuOptionBuilder()
+        .setLabel(TEAM_TRAINEES)
+        .setDescription(traineesDescription)
+        .setValue(TEAM_TRAINEES)
     );
 
   return new ActionRowBuilder().addComponents(menu);
@@ -118,7 +129,8 @@ function buildDashboardEmbed(activeTeam = null) {
       '3. Run an approved action\n' +
       '4. Refresh team data if needed\n\n' +
       '──────────────────────────────\n' +
-      `🏨 **Current Team:** ${selected || 'Not selected'}`
+      `🏨 **Current Team:** ${selected || 'Not selected'}\n` +
+      `🎓 **Trainees View:** Available in the team picker`
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations - Automated Access Control' })
@@ -155,7 +167,11 @@ function buildTeamRosterEmbed(teamName, members) {
       { name: '🧭 Leads', value: String((roleCount.team_leader || 0) + (roleCount.operations_manager || 0)), inline: true },
       { name: '🎯 SME', value: String(roleCount.sme || 0), inline: true }
     )
-    .setColor(teamName === TEAM_1 ? 0x2ECC71 : 0x5865F2)
+    .setColor(
+      teamName === TEAM_1 ? 0x2ECC71 :
+      teamName === TEAM_TRAINEES ? 0xF1C40F :
+      0x5865F2
+    )
     .setFooter({ text: 'Aavgo Operations - Team Browser' })
     .setTimestamp();
 }
@@ -264,6 +280,38 @@ async function resolveDisplayName(guild, discordId, fallback) {
 async function fetchTeamMembers(guild, teamName) {
   const normalizedTeam = normalizeTeamName(teamName);
   if (!normalizedTeam) return [];
+
+  if (normalizedTeam === TEAM_TRAINEES) {
+    await guild.members.fetch().catch(() => null);
+    const traineeRole = guild.roles.cache.get(TRAINEE_ROLE_ID);
+    const traineeIds = traineeRole ? [...traineeRole.members.keys()] : [];
+    if (traineeIds.length === 0) return [];
+
+    const placeholders = traineeIds.map(() => '?').join(',');
+    const rows = db.prepare(`
+      SELECT
+        a.id,
+        a.discord_id,
+        a.username,
+        a.role,
+        a.agent_status,
+        a.team,
+        COALESCE(NULLIF(a.team, ''), h_agent.team, h_primary.team, h_secondary.team, 'Team 1') AS effective_team
+      FROM agents a
+      LEFT JOIN hotels h_agent ON h_agent.id = a.hotel_id
+      LEFT JOIN hotel_shift_assignments hsa ON hsa.agent_id = a.id
+      LEFT JOIN hotels h_primary ON h_primary.id = hsa.primary_hotel_id
+      LEFT JOIN hotels h_secondary ON h_secondary.id = hsa.secondary_hotel_id
+      WHERE a.discord_id IN (${placeholders})
+      ORDER BY a.username COLLATE NOCASE ASC
+    `).all(...traineeIds);
+
+    return Promise.all(rows.map(async row => ({
+      ...row,
+      role: 'trainee',
+      display_name: await resolveDisplayName(guild, row.discord_id, row.username)
+    })));
+  }
 
   const rows = db.prepare(`
     SELECT

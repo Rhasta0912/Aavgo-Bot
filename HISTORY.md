@@ -390,3 +390,4 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Fixes Unknown interaction spikes in confirm_hotel flow
     - Reduces bot-status 503 spam and retries transient network errors
 - Relocated End Shift from hotel status cards to the main login kiosk: hotel status embeds now keep activity buttons only (check-in/out, call, maintenance, handover), while the kiosk includes a shared End Shift button that works for agents and trainees.
+- Updated /db-promote-sme to sync SME Discord role by exact ID 1482382342621233153 (with name fallback), fixing cases where SME promotion changed DB role but missed Discord role assignment. Added a Trainees filter option in the Profiles panel (channel 1485256962617643098) that shows only members who currently have Trainees role 1484705126026449029.

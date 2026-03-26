@@ -4762,7 +4762,11 @@ async function handlePromoteSME(interaction) {
     // Role Sync
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
-      const smeRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'subject matter expert');
+      const smeRole = interaction.guild.roles.cache.get('1482382342621233153') ||
+        interaction.guild.roles.cache.find(r => {
+          const name = r.name.toLowerCase();
+          return name === 'subject matter expert' || name === 'sme';
+        });
       if (smeRole) await member.roles.add(smeRole);
     } catch (e) { console.warn('[PROMOTE] Role sync failed:', e.message); }
 
