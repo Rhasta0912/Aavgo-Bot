@@ -6045,7 +6045,89 @@ async function handleDbRemoveUser(interaction) {
 }
 
 
-function readLatestHistorySummaryForUpdateLog() {
+function trimUpdateLogLine(value, maxLength = 180) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}...`;
+}
+
+function uniqueNonEmptyLines(values) {
+  const seen = new Set();
+  const output = [];
+  for (const raw of values || []) {
+    const text = trimUpdateLogLine(raw, 320);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(text);
+  }
+  return output;
+}
+
+function toUpdateLogField(lines, fallback = 'Not specified', limit = 1024) {
+  const normalized = uniqueNonEmptyLines(lines).map(line => `- ${line}`);
+  let text = normalized.length > 0 ? normalized.join('\n') : `- ${fallback}`;
+  if (text.length <= limit) return text;
+  text = text.slice(0, limit - 12).trimEnd();
+  return `${text}\n- ...trimmed`;
+}
+
+function extractUniqueMatches(text, pattern) {
+  const source = String(text || '');
+  if (!source) return [];
+
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  const regex = new RegExp(pattern.source, flags);
+  const seen = new Set();
+  const output = [];
+  let match;
+  while ((match = regex.exec(source)) !== null) {
+    const value = String(match[0] || '').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(value);
+  }
+  return output;
+}
+
+function extractIdsByContext(text, keywords = []) {
+  const source = String(text || '');
+  if (!source) return [];
+  const keys = keywords.map(key => String(key || '').toLowerCase()).filter(Boolean);
+  if (keys.length === 0) return [];
+
+  const ids = new Set();
+  const regex = /\b\d{17,20}\b/g;
+  let match;
+
+  while ((match = regex.exec(source)) !== null) {
+    const id = match[0];
+    const start = Math.max(0, match.index - 48);
+    const end = Math.min(source.length, match.index + id.length + 48);
+    const context = source.slice(start, end).toLowerCase();
+    if (keys.some(key => context.includes(key))) {
+      ids.add(id);
+    }
+  }
+
+  return [...ids];
+}
+
+function extractImpactLines(lines, keywords = [], limit = 8) {
+  const keys = keywords.map(key => String(key || '').toLowerCase()).filter(Boolean);
+  if (keys.length === 0) return [];
+
+  const candidates = uniqueNonEmptyLines(lines);
+  return candidates
+    .filter(line => keys.some(key => line.toLowerCase().includes(key)))
+    .slice(0, limit);
+}
+
+function readLatestHistoryEntryForUpdateLog() {
   try {
     const historyPath = 'HISTORY.md';
     if (!fs.existsSync(historyPath)) return null;
@@ -6055,27 +6137,115 @@ function readLatestHistorySummaryForUpdateLog() {
     if (latestHeaderIndex === -1) return null;
 
     for (let i = latestHeaderIndex + 1; i < lines.length; i += 1) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      if (line.startsWith('## ')) break;
-      if (line.startsWith('- ')) {
-        const title = line.slice(2).trim();
-        for (let j = i + 1; j < lines.length; j += 1) {
-          const detailLine = lines[j].trim();
-          if (!detailLine) continue;
-          if (detailLine.startsWith('## ') || detailLine.startsWith('- ')) break;
-          if (detailLine.toLowerCase().startsWith('summary:')) {
-            const summary = detailLine.slice('Summary:'.length).trim();
-            return summary || title;
-          }
+      const raw = lines[i] || '';
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      if (trimmed.startsWith('## ')) break;
+      if (!raw.startsWith('- ')) continue;
+
+      const title = raw.slice(2).trim();
+      const detailLines = [];
+      const files = [];
+      const notes = [];
+      let summary = '';
+      let section = '';
+
+      for (let j = i + 1; j < lines.length; j += 1) {
+        const innerRaw = lines[j] || '';
+        const innerTrimmed = innerRaw.trim();
+        if (!innerTrimmed) continue;
+        if (innerTrimmed.startsWith('## ')) break;
+        if (innerRaw.startsWith('- ')) break;
+
+        const withoutBullet = innerTrimmed.replace(/^-+\s*/, '').trim();
+        if (!withoutBullet) continue;
+
+        const lower = withoutBullet.toLowerCase();
+        if (lower.startsWith('summary:')) {
+          summary = withoutBullet.slice('summary:'.length).trim();
+          section = '';
+          detailLines.push(summary);
+          continue;
         }
-        return title;
+        if (lower.startsWith('files touched:')) {
+          section = 'files';
+          continue;
+        }
+        if (lower.startsWith('notes:')) {
+          section = 'notes';
+          continue;
+        }
+
+        if (section === 'files') {
+          files.push(withoutBullet);
+        } else if (section === 'notes') {
+          notes.push(withoutBullet);
+        } else {
+          detailLines.push(withoutBullet);
+        }
       }
+
+      const resolvedSummary = summary || detailLines[0] || title;
+      return {
+        title,
+        summary: resolvedSummary,
+        files: uniqueNonEmptyLines(files),
+        notes: uniqueNonEmptyLines(notes),
+        detailLines: uniqueNonEmptyLines(detailLines)
+      };
     }
   } catch (error) {
-    console.warn('[UPDATE-LOG] Could not read HISTORY.md summary:', error.message);
+    console.warn('[UPDATE-LOG] Could not parse HISTORY.md entry:', error.message);
   }
   return null;
+}
+
+function buildDetailedHistoryUpdateData(entry) {
+  if (!entry) return null;
+
+  const detailPool = uniqueNonEmptyLines([
+    entry.title,
+    entry.summary,
+    ...(entry.detailLines || []),
+    ...(entry.notes || [])
+  ]);
+  const combined = detailPool.join('\n');
+
+  const featureKeywords = [
+    'added', 'updated', 'fixed', 'removed', 'renamed', 'expanded',
+    'refined', 'implemented', 'moved', 'hardened', 'restored',
+    'merged', 'reworked', 'improved'
+  ];
+  const permissionLogicKeywords = [
+    'permission', 'access', 'authority', 'developer', 'operations manager',
+    'team leader', 'role-only', 'gate', 'blocked', 'allow', 'deny',
+    'logic', 'flow', 'route', 'handler', 'sync', 'filter', 'function'
+  ];
+
+  const features = extractImpactLines([entry.title, entry.summary, ...(entry.detailLines || []), ...(entry.notes || [])], featureKeywords, 8);
+  const permissionLogic = extractImpactLines([entry.summary, ...(entry.detailLines || []), ...(entry.notes || [])], permissionLogicKeywords, 8);
+  const commands = extractUniqueMatches(combined, /\/[a-z0-9-]+/gi)
+    .slice(0, 12)
+    .map(command => `\`${command}\``);
+
+  const channelIds = extractIdsByContext(combined, ['channel', 'channels', 'kiosk', 'portal', 'board', 'log']);
+  const roleIds = extractIdsByContext(combined, ['role', 'roles', 'agent', 'sme', 'team leader', 'operations manager', 'developer', 'trainee', 'applicant', 'unverified']);
+
+  const channelSet = new Set(channelIds);
+  const channelLines = channelIds.map(id => `<#${id}> (\`${id}\`)`);
+  const roleLines = roleIds.filter(id => !channelSet.has(id)).map(id => `\`${id}\``);
+
+  return {
+    title: entry.title,
+    summary: entry.summary,
+    features: features.length > 0 ? features : [entry.summary],
+    commands,
+    channels: channelLines,
+    roles: roleLines,
+    permissionLogic,
+    files: entry.files || [],
+    notes: entry.notes || []
+  };
 }
 
 function simplifyCommitSubjectForUpdateLog(subject) {
@@ -6118,22 +6288,47 @@ async function broadcastUpdateLog(client) {
       commitSubjects = fallback ? [fallback] : [];
     }
 
-    const historySummary = readLatestHistorySummaryForUpdateLog();
-    const plainEnglishLines = historySummary
-      ? [`- ${historySummary}`]
-      : commitSubjects.slice(0, 3).map(subject => `- ${simplifyCommitSubjectForUpdateLog(subject)}`);
+    const historyEntry = readLatestHistoryEntryForUpdateLog();
+    const detailed = buildDetailedHistoryUpdateData(historyEntry);
 
-    const embed = new EmbedBuilder()
-      .setTitle('Aavgo Bot Update Log')
-      .setDescription(
-        'A new update is now live.\n\n' +
-        'What changed:\n' +
-        (plainEnglishLines.length ? plainEnglishLines.join('\n') : '- General stability updates were applied.')
-      )
-      .addFields({ name: 'Build', value: `\`${currentCommitShort || 'unknown'}\``, inline: true })
-      .setColor(0xF1C40F)
-      .setFooter({ text: 'Aavgo Operations - Plain English Update Log' })
-      .setTimestamp();
+    let embed;
+    if (detailed) {
+      const fields = [
+        { name: 'Features / Functions', value: toUpdateLogField(detailed.features, detailed.summary) },
+        { name: 'Commands', value: toUpdateLogField(detailed.commands, 'No command surface changes detected') },
+        { name: 'Channels', value: toUpdateLogField(detailed.channels, 'No specific channels detected') },
+        { name: 'Roles', value: toUpdateLogField(detailed.roles, 'No specific role IDs detected') },
+        { name: 'Permissions & Logic', value: toUpdateLogField(detailed.permissionLogic, 'No explicit permission/logic changes noted') },
+        { name: 'Files Touched', value: toUpdateLogField(detailed.files, 'Not specified') },
+        { name: 'Notes', value: toUpdateLogField(detailed.notes, 'None') },
+        { name: 'Build', value: `\`${currentCommitShort || 'unknown'}\``, inline: true }
+      ];
+
+      embed = new EmbedBuilder()
+        .setTitle('Aavgo Bot Update Log')
+        .setDescription(
+          'A new update is now live.\n\n' +
+          `**Change:** ${trimUpdateLogLine(detailed.title, 180)}\n` +
+          `**Summary:** ${trimUpdateLogLine(detailed.summary, 280)}`
+        )
+        .addFields(fields)
+        .setColor(0xF1C40F)
+        .setFooter({ text: 'Aavgo Operations - Detailed Update Log' })
+        .setTimestamp();
+    } else {
+      const plainEnglishLines = commitSubjects.slice(0, 3).map(subject => `- ${simplifyCommitSubjectForUpdateLog(subject)}`);
+      embed = new EmbedBuilder()
+        .setTitle('Aavgo Bot Update Log')
+        .setDescription(
+          'A new update is now live.\n\n' +
+          'What changed:\n' +
+          (plainEnglishLines.length ? plainEnglishLines.join('\n') : '- General stability updates were applied.')
+        )
+        .addFields({ name: 'Build', value: `\`${currentCommitShort || 'unknown'}\``, inline: true })
+        .setColor(0xF1C40F)
+        .setFooter({ text: 'Aavgo Operations - Update Log' })
+        .setTimestamp();
+    }
 
     await channel.send({ embeds: [embed] });
     db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run('update_log_last_commit', currentCommitFull);

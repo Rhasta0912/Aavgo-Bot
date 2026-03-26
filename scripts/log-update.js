@@ -36,11 +36,83 @@ function splitCsv(value) {
     .filter(Boolean);
 }
 
-function fitFieldValue(lines, fallback) {
-  const text = (lines.length > 0 ? lines : [fallback]).join('\n');
-  if (text.length <= 1024) return text;
+function trimLine(value, maxLength = 180) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}...`;
+}
 
-  return `${text.slice(0, 1000)}\n• …trimmed`;
+function uniqueNonEmpty(values) {
+  const seen = new Set();
+  const output = [];
+  for (const raw of values || []) {
+    const text = trimLine(raw, 320);
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(text);
+  }
+  return output;
+}
+
+function extractUniqueMatches(text, pattern) {
+  const source = String(text || '');
+  if (!source) return [];
+
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  const regex = new RegExp(pattern.source, flags);
+  const seen = new Set();
+  const output = [];
+  let match;
+  while ((match = regex.exec(source)) !== null) {
+    const value = String(match[0] || '').trim();
+    if (!value) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(value);
+  }
+  return output;
+}
+
+function extractIdsByContext(text, keywords = []) {
+  const source = String(text || '');
+  if (!source) return [];
+  const keys = keywords.map(key => String(key || '').toLowerCase()).filter(Boolean);
+  if (keys.length === 0) return [];
+
+  const ids = new Set();
+  const regex = /\b\d{17,20}\b/g;
+  let match;
+
+  while ((match = regex.exec(source)) !== null) {
+    const id = match[0];
+    const start = Math.max(0, match.index - 48);
+    const end = Math.min(source.length, match.index + id.length + 48);
+    const context = source.slice(start, end).toLowerCase();
+    if (keys.some(key => context.includes(key))) {
+      ids.add(id);
+    }
+  }
+
+  return [...ids];
+}
+
+function extractImpactLines(lines, keywords = [], limit = 8) {
+  const keys = keywords.map(key => String(key || '').toLowerCase()).filter(Boolean);
+  if (keys.length === 0) return [];
+  return uniqueNonEmpty(lines)
+    .filter(line => keys.some(key => line.toLowerCase().includes(key)))
+    .slice(0, limit);
+}
+
+function fitFieldValue(lines, fallback) {
+  const normalized = uniqueNonEmpty(lines);
+  const text = (normalized.length > 0 ? normalized : [fallback]).join('\n');
+  if (text.length <= 1024) return text;
+  return `${text.slice(0, 1000)}\n- ...trimmed`;
 }
 
 function readHistoryTail(filePath) {
@@ -55,29 +127,80 @@ function buildHistoryEntry({ title, summary, files, notes }) {
   return [
     `- ${title}`,
     `  - Summary: ${summary}`,
-    `  - Files touched:`,
+    '  - Files touched:',
     fileList.split('\n').map(line => `    ${line}`).join('\n'),
-    `  - Notes:`,
+    '  - Notes:',
     noteList.split('\n').map(line => `    ${line}`).join('\n')
   ].join('\n');
 }
 
 function buildDiscordMessage({ title, summary, files, notes }) {
+  const detailSource = uniqueNonEmpty([title, summary, ...files, ...notes]).join('\n');
+  const featureKeywords = [
+    'added', 'updated', 'fixed', 'removed', 'renamed', 'expanded',
+    'refined', 'implemented', 'moved', 'hardened', 'restored',
+    'merged', 'reworked', 'improved'
+  ];
+  const permissionLogicKeywords = [
+    'permission', 'access', 'authority', 'developer', 'operations manager',
+    'team leader', 'role-only', 'gate', 'blocked', 'allow', 'deny',
+    'logic', 'flow', 'route', 'handler', 'sync', 'filter', 'function'
+  ];
+
+  const featureLines = extractImpactLines([title, summary, ...notes], featureKeywords, 8)
+    .map(line => `- ${line}`);
+  if (featureLines.length === 0) {
+    featureLines.push(`- ${trimLine(summary, 220)}`);
+  }
+
+  const commandLines = extractUniqueMatches(detailSource, /\/[a-z0-9-]+/gi)
+    .slice(0, 12)
+    .map(command => `- \`${command}\``);
+
+  const channelIds = extractIdsByContext(detailSource, ['channel', 'channels', 'kiosk', 'portal', 'board', 'log']);
+  const roleIds = extractIdsByContext(detailSource, ['role', 'roles', 'agent', 'sme', 'team leader', 'operations manager', 'developer', 'trainee', 'applicant', 'unverified']);
+  const channelSet = new Set(channelIds);
+  const channelLines = channelIds.map(id => `- <#${id}> (\`${id}\`)`);
+  const roleLines = roleIds.filter(id => !channelSet.has(id)).map(id => `- \`${id}\``);
+
+  const permissionLogicLines = extractImpactLines([summary, ...notes], permissionLogicKeywords, 8)
+    .map(line => `- ${line}`);
+
   return new EmbedBuilder()
-    .setTitle(`Aavgo Update Log`)
-    .setDescription(`**${title}**\n\n${summary}`)
+    .setTitle('Aavgo Update Log')
+    .setDescription(`**${trimLine(title, 180)}**\n\n${trimLine(summary, 320)}`)
     .addFields(
       {
+        name: 'Features / Functions',
+        value: fitFieldValue(featureLines, `- ${trimLine(summary, 220)}`)
+      },
+      {
+        name: 'Commands',
+        value: fitFieldValue(commandLines, '- No command surface changes detected')
+      },
+      {
+        name: 'Channels',
+        value: fitFieldValue(channelLines, '- No specific channels detected')
+      },
+      {
+        name: 'Roles',
+        value: fitFieldValue(roleLines, '- No specific role IDs detected')
+      },
+      {
+        name: 'Permissions & Logic',
+        value: fitFieldValue(permissionLogicLines, '- No explicit permission/logic changes noted')
+      },
+      {
         name: 'Files Touched',
-        value: fitFieldValue(files.map(file => `• ${file}`), '• Not specified')
+        value: fitFieldValue(files.map(file => `- ${file}`), '- Not specified')
       },
       {
         name: 'Notes',
-        value: fitFieldValue(notes.map(note => `• ${note}`), '• None')
+        value: fitFieldValue(notes.map(note => `- ${note}`), '- None')
       }
     )
     .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations • Update Log' })
+    .setFooter({ text: 'Aavgo Operations - Detailed Update Log' })
     .setTimestamp()
     .toJSON();
 }
