@@ -204,6 +204,9 @@ client.once('ready', async () => {
     auth.broadcastUpdateLog(client).catch(error => {
       console.warn('[UPDATE-LOG] Startup broadcast failed:', error.message);
     });
+    auth.refreshOperationalBoards(client).catch(error => {
+      console.warn('[STATUS] Boot refresh failed:', error.message);
+    });
 
     // Startup Audit Log
     upsertBotStatusCard({

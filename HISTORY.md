@@ -214,6 +214,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Added a boot refresh pass so restarting the host now immediately redraws hotel, Team Leader, and training status boards without requiring a slash command. This prevents stale status cards from lingering until the next interaction.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+  - Notes:
+    - Boot now refreshes all visible status boards
+    - Restart should repaint the live boards automatically
 - Added a training path to `/setup-login` with a new Training button, tracked training sessions separately in the database, and posted a dedicated training status board in channel `1486623221225750660` so management can see which hotel each agent is training for.
   - Files touched:
     - src/auth.js

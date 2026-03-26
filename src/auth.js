@@ -1588,6 +1588,19 @@ async function updateTrainingStatusEmbed(client) {
   }
 }
 
+async function refreshOperationalBoards(client) {
+  try {
+    const hotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT'").all();
+    for (const hotel of hotels) {
+      await updateHotelStatusEmbed(client, hotel.id);
+    }
+    await updateTeamStatusEmbed(client, 'Team 1');
+    await updateTrainingStatusEmbed(client);
+  } catch (error) {
+    console.warn('[STATUS] Boot refresh failed:', error.message);
+  }
+}
+
 // ─── /setup-register ─────────────────────────────────
 async function handleSetupRegister(interaction) {
   try {
@@ -5494,6 +5507,7 @@ module.exports = {
   handleActivityClick,
   handleActivityModalSubmit,
   handleShiftInitModalSubmit,
+  refreshOperationalBoards,
   handleGuide,
   handleAddGuide,
   handleMaintenanceList,
