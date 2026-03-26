@@ -76,6 +76,13 @@ const HOTEL_NAMES = {
   'RMDA': 'Ramada',
   'AD1': 'AD1'
 };
+const HOTEL_SELECT_EMOJIS = {
+  BW_TO: '🏙️',
+  GICP: '🏨',
+  SUP8: '✴️',
+  RMDA: '🛖',
+  AD1: '📞'
+};
 // Map hotel IDs to log-in channel IDs
 const HOTEL_LOGIN_CHANNELS = {
   'BW_TO': '1482303551614095441',
@@ -424,7 +431,7 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
 // ─── PIN Verification Modal ─────────────────────────
 async function showPinModal(interaction, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
   const isTeamShiftOverride = typeof hotelId === 'string' && hotelId.startsWith('TEAM_SHIFT_team_');
-  const hotelName = HOTEL_NAMES[hotelId] || ((hotelId === 'TEAM_SHIFT' || isTeamShiftOverride) ? 'Management Shift' : hotelId);
+  const hotelName = (hotelId === 'TEAM_SHIFT' || isTeamShiftOverride) ? 'Management Shift' : getCombinedHotelLabel(hotelId);
   const modal = new ModalBuilder()
     .setCustomId(`loginmodal_${sessionMode}_${hotelId}${isTakeover ? '_takeover' : ''}${allowMultiHotel ? '_multi' : ''}`)
     .setTitle(`🔑 Verify PIN — ${hotelName}`.substring(0, 45));
@@ -814,7 +821,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Super 8, Ramada, AD1)');
+    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Ramada / Super 8, AD1)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -853,7 +860,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
     if (conflictingSession && !isTakeover) {
       return interaction.editReply({
-        content: `Another agent is already active in **${HOTEL_NAMES[hotelId] || hotelId}**. Please use the takeover flow instead.`,
+        content: `Another agent is already active in **${getCombinedHotelLabel(hotelId)}**. Please use the takeover flow instead.`,
         embeds: [],
         components: []
       });
@@ -916,7 +923,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     try {
       const noteEmbed = new EmbedBuilder()
         .setTitle('📝 Pending Handover Notes')
-        .setDescription(`You have **${unreadNotes.length}** new handover note(s) for **${HOTEL_NAMES[hotelId]}**:`)
+        .setDescription(`You have **${unreadNotes.length}** new handover note(s) for **${getCombinedHotelLabel(hotelId)}**:`)
         .setColor(0xFEE75C)
         .setTimestamp();
 
@@ -943,7 +950,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     noteAlert += '\n✅ **Attendance Recorded:** Your shift assignment has been marked as attended.';
   }
 
-  const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+  const hotelName = getCombinedHotelLabel(hotelId);
   const sessionLabel = sessionMode === 'training' ? 'training session' : 'shift';
   await interaction.editReply({
     content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}`,
@@ -1265,7 +1272,7 @@ function buildAgentKioskPayload() {
       '> **5.** Verify your **Secure PIN**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Super 8`, `Ramada`, `AD1`'
+      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `AD1`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -1350,7 +1357,7 @@ async function handleSetupLogin(interaction) {
         '> **4.** Verify your **Secure PIN**\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Super 8`, `Ramada`, `AD1`'
+      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `AD1`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -1615,6 +1622,85 @@ async function refreshOperationalBoards(client) {
   } catch (error) {
     console.warn('[STATUS] Boot refresh failed:', error.message);
   }
+}
+
+function isTraineeMember(interaction) {
+  return interaction?.member?.roles?.cache?.some(role => role?.name?.toLowerCase() === 'trainees');
+}
+
+function normalizeCombinedHotelId(hotelId) {
+  return hotelId === 'SUP8' ? 'RMDA' : hotelId;
+}
+
+function getCombinedHotelLabel(hotelId) {
+  const normalizedHotelId = normalizeCombinedHotelId(hotelId);
+  if (normalizedHotelId === 'RMDA') {
+    return 'Ramada / Super 8';
+  }
+  return HOTEL_NAMES[normalizedHotelId] || normalizedHotelId;
+}
+
+function buildHotelSelectionOptions(teamName) {
+  const hotels = db.prepare('SELECT * FROM hotels WHERE team = ?').all(teamName);
+  const options = [];
+  let combinedHotelAdded = false;
+
+  for (const hotel of hotels) {
+    const hotelId = normalizeCombinedHotelId(hotel.id);
+
+    if (teamName === 'Team 1' && hotelId === 'RMDA') {
+      if (combinedHotelAdded) continue;
+      combinedHotelAdded = true;
+      options.push({
+        id: 'RMDA',
+        name: 'Ramada / Super 8',
+        emoji: HOTEL_SELECT_EMOJIS.RMDA,
+        description: 'Select to permanently link your account to Ramada / Super 8'
+      });
+      continue;
+    }
+
+    if (options.some(option => option.id === hotelId)) continue;
+
+    options.push({
+      id: hotelId,
+      name: HOTEL_NAMES[hotelId] || hotel.name || hotelId,
+      emoji: HOTEL_SELECT_EMOJIS[hotelId] || '🏨',
+      description: `Select to permanently link your account to ${HOTEL_NAMES[hotelId] || hotel.name || hotelId}`
+    });
+  }
+
+  return options;
+}
+
+function buildAssignedHotelSelectionOptions(hotelIds) {
+  const options = [];
+  let combinedHotelAdded = false;
+
+  for (const rawHotelId of hotelIds) {
+    const hotelId = normalizeCombinedHotelId(rawHotelId);
+
+    if (hotelId === 'RMDA') {
+      if (combinedHotelAdded) continue;
+      combinedHotelAdded = true;
+      options.push({
+        id: 'RMDA',
+        label: 'Ramada / Super 8',
+        description: 'Start shift on this assigned hotel'
+      });
+      continue;
+    }
+
+    if (options.some(option => option.id === hotelId)) continue;
+
+    options.push({
+      id: hotelId,
+      label: HOTEL_NAMES[hotelId] || hotelId,
+      description: 'Start shift on this assigned hotel'
+    });
+  }
+
+  return options;
 }
 
 // ─── /setup-register ─────────────────────────────────
@@ -2177,12 +2263,17 @@ async function handleStartShiftClick(interaction) {
 
     const role = normalizeAgentRole(agent.role);
     const isTLOrSME = interactionHasRoleAtLeast(interaction, 'sme');
+    const isTraineeOnly = isTraineeMember(interaction);
 
     if (isTLButton && !isTLOrSME) {
       return interaction.reply({ 
         content: `❌ **Access Denied.** This portal is reserved for **Team Leaders** and **Subject Matter Experts**. \n\n*Your current role is:* **${role.charAt(0).toUpperCase() + role.slice(1).replace('_', ' ')}**` ,
         ephemeral: true
       });
+    }
+
+    if (isTraineeOnly) {
+      return await showTrainingHotelSelection(interaction, true);
     }
 
     // Check if agent is already on shift
@@ -2227,7 +2318,7 @@ async function handleStartShiftClick(interaction) {
     // If the agent has multiple assigned grey hotel roles, let them pick the hotel for this shift.
     const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
       .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && interaction.member.roles.cache.has(roleId))
-      .map(([hotelId]) => hotelId);
+      .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
     const uniqueAssignedHotelIds = [...new Set(assignedHotelIds)];
     if (uniqueAssignedHotelIds.length > 1) {
       return await showAssignedHotelShiftPicker(interaction, uniqueAssignedHotelIds, allowMultiHotel);
@@ -2236,6 +2327,12 @@ async function handleStartShiftClick(interaction) {
 
     // Standard Agent route:
     if (agent.hotel_id) {
+       const normalizedHotelId = normalizeCombinedHotelId(agent.hotel_id);
+       if (normalizedHotelId !== agent.hotel_id) {
+          db.prepare("UPDATE agents SET hotel_id = ? WHERE discord_id = ?").run(normalizedHotelId, interaction.user.id);
+          agent.hotel_id = normalizedHotelId;
+       }
+
        if (HOTEL_NAMES[agent.hotel_id]) {
           const hotelSession = db.prepare(
             "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
@@ -2310,15 +2407,16 @@ async function handleStartShiftClick(interaction) {
 }
 
 async function showAssignedHotelShiftPicker(interaction, hotelIds, allowMultiHotel = false) {
+  const hotelOptions = buildAssignedHotelSelectionOptions(hotelIds);
   const pickMenu = new StringSelectMenuBuilder()
     .setCustomId(allowMultiHotel ? 'shift_hotel_pick_menu_multi' : 'shift_hotel_pick_menu')
     .setPlaceholder('Pick your hotel for this shift')
     .addOptions(
-      hotelIds.map(hotelId =>
+      hotelOptions.map(hotel =>
         new StringSelectMenuOptionBuilder()
-          .setLabel(HOTEL_NAMES[hotelId] || hotelId)
-          .setValue(hotelId)
-          .setDescription('Start shift on this assigned hotel')
+          .setLabel(hotel.label)
+          .setValue(hotel.id)
+          .setDescription(hotel.description)
       )
     );
 
@@ -2339,7 +2437,7 @@ async function showAssignedHotelShiftPicker(interaction, hotelIds, allowMultiHot
 
 async function handleShiftHotelPickMenu(interaction) {
   try {
-    const hotelId = interaction.values[0];
+    const hotelId = normalizeCombinedHotelId(interaction.values[0]);
     const allowMultiHotel = interaction.customId === 'shift_hotel_pick_menu_multi';
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
@@ -2355,7 +2453,7 @@ async function handleShiftHotelPickMenu(interaction) {
       const promptEmbed = new EmbedBuilder()
         .setTitle('⚠️ Overlapping Shift Detected')
         .setDescription(
-          `Agent **${otherAgent?.username || 'Unknown Agent'}** is currently logged into **${HOTEL_NAMES[hotelId] || hotelId}**.\n\n` +
+          `Agent **${otherAgent?.username || 'Unknown Agent'}** is currently logged into **${getCombinedHotelLabel(hotelId)}**.\n\n` +
           'Are you sure you want to take over this shift?'
         )
         .setColor(0xFEE75C);
@@ -2429,9 +2527,7 @@ async function handleTeamSelect(interaction) {
 
 // ─── Hotel Selection View (Premium Select Menu) ──────────────────────────
 async function showHotelSelection(interaction, teamName, isUpdate = false) {
-  const hotels = db.prepare('SELECT * FROM hotels WHERE team = ?').all(teamName);
-
-  const HOTEL_EMOJIS = { 'TO': '🏡', 'BW': '🏙️', 'RV': '🌵', 'S8': '✴️', 'RM': '🛖', 'AD1': '📞' };
+  const hotels = buildHotelSelectionOptions(teamName);
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId('hotel_select_menu')
@@ -2441,8 +2537,8 @@ async function showHotelSelection(interaction, teamName, isUpdate = false) {
         new StringSelectMenuOptionBuilder()
           .setLabel(hotel.name)
           .setValue(hotel.id)
-          .setDescription(`Select to permanently link your account to ${hotel.name}`)
-          .setEmoji(HOTEL_EMOJIS[hotel.id] || '🏨')
+          .setDescription(hotel.description)
+          .setEmoji(hotel.emoji || '🏨')
       )
     );
 
@@ -2478,7 +2574,7 @@ async function handleHotelSelect(interaction) {
       return interaction.reply({ content: '❌ You are not registered as an agent. Use `/register` to apply.', ephemeral: true });
     }
 
-    const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+    const hotelName = getCombinedHotelLabel(hotelId);
 
     const confirmEmbed = new EmbedBuilder()
       .setTitle('🏨 Permanent Hotel Selection')
@@ -2547,6 +2643,10 @@ async function handleShiftModePrompt(interaction) {
       return interaction.reply({ content: 'âŒ You are not registered as an agent.', ephemeral: true });
     }
 
+    if (isTraineeMember(interaction)) {
+      return await showTrainingHotelSelection(interaction);
+    }
+
     const embed = new EmbedBuilder()
       .setTitle('Initialize Shift')
       .setDescription(
@@ -2586,6 +2686,10 @@ async function handleShiftRolePrompt(interaction) {
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
+    }
+
+    if (isTraineeMember(interaction)) {
+      return await showTrainingHotelSelection(interaction);
     }
 
     const embed = new EmbedBuilder()
@@ -2636,6 +2740,10 @@ async function handleAgentRoutePick(interaction) {
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
+    }
+
+    if (isTraineeMember(interaction)) {
+      return await showTrainingHotelSelection(interaction, true);
     }
 
     const embed = new EmbedBuilder()
@@ -2776,7 +2884,7 @@ async function handleTrainingStartClick(interaction) {
 
 async function handleTrainingHotelSelectMenu(interaction) {
   try {
-    const hotelId = interaction.values[0];
+    const hotelId = normalizeCombinedHotelId(interaction.values[0]);
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
@@ -2810,7 +2918,7 @@ async function handleHotelSelectMenu(interaction) {
       });
     }
 
-    const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+    const hotelName = getCombinedHotelLabel(hotelId);
 
     const confirmEmbed = new EmbedBuilder()
       .setTitle('🏨 Confirm Your Hotel Assignment')
@@ -2848,7 +2956,7 @@ async function handleConfirmHotelLink(interaction) {
   try {
     await safeDeferComponentUpdate(interaction);
 
-    const hotelId = interaction.customId.replace('confirm_hotel_', '');
+    const hotelId = normalizeCombinedHotelId(interaction.customId.replace('confirm_hotel_', ''));
     const discordId = interaction.user.id;
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
 
@@ -2868,7 +2976,7 @@ async function handleConfirmHotelLink(interaction) {
        
        const promptEmbed = new EmbedBuilder()
          .setTitle('⚠️ Overlapping Shift Detected')
-         .setDescription(`Agent **${otherAgent.username}** is currently logged into **${HOTEL_NAMES[hotelId]}**.\n\nAre you sure you want to take over this shift?`)
+         .setDescription(`Agent **${otherAgent.username}** is currently logged into **${getCombinedHotelLabel(hotelId)}**.\n\nAre you sure you want to take over this shift?`)
          .setColor(0xFEE75C);
 
        const takeOverBtn = new ButtonBuilder()
@@ -2903,7 +3011,7 @@ async function handleConfirmHotelLink(interaction) {
       .setTitle('✅ Hotel Successfully Linked')
       .setDescription(`### 🏨 ASSIGNMENT COMPLETE\n` +
                       `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-                      `You have been permanently linked to **${HOTEL_NAMES[hotelId]}**.\n\n` +
+                      `You have been permanently linked to **${getCombinedHotelLabel(hotelId)}**.\n\n` +
                       `> **NEXT STEP:** You are NOT in a shift yet. To check-in, please go to the hotel channel and click **Start Shift** to initialize your login.\n` +
                       `━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
       .setColor(0x57F287);
@@ -3019,7 +3127,7 @@ async function handleShiftInitModalSubmit(interaction) {
     const normalizedHotel = normalizeHotelInput(hotelInput);
 
     if (!normalizedHotel || !HOTEL_NAMES[normalizedHotel]) {
-      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, The Garden Inn At Campsite, Super 8, Ramada, AD1**.' });
+      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, The Garden Inn At Campsite, Ramada / Super 8, AD1**.' });
     }
 
     const hotelRecord = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotel);
@@ -3216,7 +3324,7 @@ async function handleModalSubmit(interaction) {
     }
 
     // Send to interaction purely as confirmation
-    const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+  const hotelName = getCombinedHotelLabel(hotelId);
     await interaction.editReply({ 
         content: `✅ **Success!** You are now logged into **${hotelName}**. ${noteAlert}`,
         embeds: [], 
@@ -3606,7 +3714,7 @@ async function handleActivityModalSubmit(interaction) {
         hotelId, agent.id, room, cat, desc
       );
 
-      const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+      const hotelName = getCombinedHotelLabel(hotelId);
       const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
 
       await sendShiftActivityLog(interaction.client, {
@@ -3644,7 +3752,7 @@ async function handleActivityModalSubmit(interaction) {
         hotelId, agent.id, content
       );
 
-      const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+      const hotelName = getCombinedHotelLabel(hotelId);
       const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
 
       await sendShiftActivityLog(interaction.client, {
@@ -3676,7 +3784,7 @@ async function handleActivityModalSubmit(interaction) {
       session.id, type, guest_name, JSON.stringify(details)
     );
 
-    const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+    const hotelName = getCombinedHotelLabel(hotelId);
     const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
     const activityTitleMap = {
       checkin: 'Check-In Logged',
@@ -5269,13 +5377,13 @@ async function handleDbAssignHotel(interaction) {
     db.prepare("UPDATE agents SET hotel_id = ? WHERE discord_id = ?").run(hotelId, target.id);
     
     await interaction.reply({ 
-      content: `✅ Successfully linked **${target.username}** permanently to **${HOTEL_NAMES[hotelId]}**.\nRole sync mode: **${syncMode}**.`, 
+      content: `✅ Successfully linked **${target.username}** permanently to **${getCombinedHotelLabel(hotelId)}**.\nRole sync mode: **${syncMode}**.`, 
       ephemeral: true 
     });
 
     sendAuditLog(interaction.client, {
       title: '🔗 Permanent Hotel Linkage',
-      description: `**Agent:** ${target.username} (<@${target.id}>)\n**Linked to:** ${HOTEL_NAMES[hotelId]}\n**Role Sync:** ${syncMode}\n**Admin:** {{AGENT_NAME}}`,
+      description: `**Agent:** ${target.username} (<@${target.id}>)\n**Linked to:** ${getCombinedHotelLabel(hotelId)}\n**Role Sync:** ${syncMode}\n**Admin:** {{AGENT_NAME}}`,
       color: 0x3498DB,
       userId: interaction.user.id,
       guild: interaction.guild
