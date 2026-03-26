@@ -1932,10 +1932,17 @@ async function handleSetupSecurity(interaction) {
 
 async function handleSecuritySetupStart(interaction) {
   try {
-    const agent = db.prepare("SELECT pin, phone FROM agents WHERE discord_id = ?").get(interaction.user.id);
+    const agent = db.prepare("SELECT pin, phone, pin_is_set FROM agents WHERE discord_id = ?").get(interaction.user.id);
     if (!agent) {
       return interaction.reply({
         content: '❌ You are not a registered agent. Ask Operations Manager or Developer to run `/add-agent` first.',
+        ephemeral: true
+      });
+    }
+
+    if (hasConfiguredPin(agent)) {
+      return interaction.reply({
+        content: '✅ Your security PIN is already set. You do not need to open this again.',
         ephemeral: true
       });
     }

@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Prevent the security setup button from reopening after a PIN has already been saved.
+  - Summary: If someone clicks the security setup button after their PIN is already on file, the bot now stops the flow and tells them the setup is already complete. This keeps stale buttons from reopening the form after the account is finished.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Track whether a PIN was actually set, and prompt for security setup before any PIN-gated shift flow.
   - Summary: The bot now keeps a simple PIN-set flag in the agents table, marks bot-generated PINs as not yet confirmed, and shows a clear security setup prompt if someone tries to start a shift before their PIN has been properly set. This keeps manual role grants from slipping through with an unfinished security setup.
   - Files touched:
