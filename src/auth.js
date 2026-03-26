@@ -1158,11 +1158,6 @@ async function updateHotelStatusEmbed(client, hotelId) {
       const actionRow = new ActionRowBuilder();
       const actionRow2 = new ActionRowBuilder();
       
-      const logoutBtn = new ButtonBuilder()
-        .setCustomId(`logout_btn_${primarySession.discord_id}`)
-        .setLabel('🔴 End Shift')
-        .setStyle(ButtonStyle.Danger);
-      
       const checkInBtn = new ButtonBuilder()
         .setCustomId(`activity_checkin_${hotelId}`)
         .setLabel('🛎️ Check-In')
@@ -1189,9 +1184,9 @@ async function updateHotelStatusEmbed(client, hotelId) {
         .setStyle(ButtonStyle.Secondary);
 
       if (hotelId === 'AD1') {
-        actionRow.addComponents(logoutBtn, callBtn, handoverBtn);
+        actionRow.addComponents(callBtn, handoverBtn);
       } else {
-        actionRow.addComponents(logoutBtn, checkInBtn, checkOutBtn);
+        actionRow.addComponents(checkInBtn, checkOutBtn);
         actionRow2.addComponents(callBtn, maintenanceBtn, handoverBtn);
       }
 
@@ -1303,15 +1298,15 @@ function buildAgentKioskPayload() {
     .setLabel('🚀 Initialize Shift')
     .setStyle(ButtonStyle.Primary);
 
-  const trainingBtn = new ButtonBuilder()
-    .setCustomId('training_start_btn')
-    .setLabel('🧭 Training')
-    .setStyle(ButtonStyle.Secondary);
+  const endShiftBtn = new ButtonBuilder()
+    .setCustomId('kiosk_end_shift_btn')
+    .setLabel('🔴 End Shift')
+    .setStyle(ButtonStyle.Danger);
 
   return {
     embeds: [embed],
     components: [
-      new ActionRowBuilder().addComponents(startBtn)
+      new ActionRowBuilder().addComponents(startBtn, endShiftBtn)
     ]
   };
 }
@@ -1388,7 +1383,12 @@ async function handleSetupLogin(interaction) {
       .setLabel('🚀 Initialize Shift')
       .setStyle(ButtonStyle.Primary);
 
-    const row = new ActionRowBuilder().addComponents(startBtn);
+    const endShiftBtn = new ButtonBuilder()
+      .setCustomId('kiosk_end_shift_btn')
+      .setLabel('🔴 End Shift')
+      .setStyle(ButtonStyle.Danger);
+
+    const row = new ActionRowBuilder().addComponents(startBtn, endShiftBtn);
     const msg = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
 
     // Store kiosk message ID so status embeds never overwrite it
