@@ -214,6 +214,14 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Fixed the Discord update log so it posts in plain English and is easier to read.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+  - Notes:
+    - Update log now uses the latest `HISTORY.md` summary instead of raw technical commit lines
+    - Message wording is now short and human-friendly
+    - Commit tracking now uses full commit hash for more reliable "new update" detection
 - Polished Team Leader and Training status board UI for readability and consistency with the bot's cleaner embed style.
   - Files touched:
     - src/auth.js

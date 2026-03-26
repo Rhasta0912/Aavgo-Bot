@@ -12,6 +12,7 @@ const {
 } = require('discord.js');
 const db = require('./database');
 const { execSync } = require('child_process');
+const fs = require('fs');
 
 // ─── Identity Helpers ────────────────────────────────
 async function getAgentDisplayName(guild, discordId) {
@@ -275,7 +276,7 @@ async function sendShiftActivityLog(client, { title, color, description, fields 
 }
 
 // ─── Centralized Session Maintenance ────────────────
-async function broadcastUpdateLog(client) {
+async function broadcastUpdateLogLegacy(client) {
   const UPDATE_LOG_CHANNEL_ID = '1485584578927132863';
   try {
     const channel = await client.channels.fetch(UPDATE_LOG_CHANNEL_ID).catch(() => null);
@@ -5462,7 +5463,92 @@ async function handleDbRemoveUser(interaction) {
 }
 
 
-module.exports = { 
+function readLatestHistorySummaryForUpdateLog() {
+  try {
+    const historyPath = 'HISTORY.md';
+    if (!fs.existsSync(historyPath)) return null;
+
+    const lines = fs.readFileSync(historyPath, 'utf8').split(/\r?\n/);
+    const latestHeaderIndex = lines.findIndex(line => line.trim().toLowerCase() === '## latest changes');
+    if (latestHeaderIndex === -1) return null;
+
+    for (let i = latestHeaderIndex + 1; i < lines.length; i += 1) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      if (line.startsWith('## ')) break;
+      if (line.startsWith('- ')) return line.slice(2).trim();
+    }
+  } catch (error) {
+    console.warn('[UPDATE-LOG] Could not read HISTORY.md summary:', error.message);
+  }
+  return null;
+}
+
+function simplifyCommitSubjectForUpdateLog(subject) {
+  const clean = String(subject || '')
+    .replace(/`/g, '')
+    .replace(/\[[^\]]+\]/g, '')
+    .replace(/\b\d{5}\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!clean) return 'General reliability and quality improvements were deployed.';
+  return clean.charAt(0).toUpperCase() + clean.slice(1);
+}
+
+async function broadcastUpdateLog(client) {
+  const UPDATE_LOG_CHANNEL_ID = '1485584578927132863';
+  try {
+    const channel = await client.channels.fetch(UPDATE_LOG_CHANNEL_ID).catch(() => null);
+    if (!channel || !channel.isTextBased()) return;
+
+    const currentCommitFull = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
+    const currentCommitShort = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    if (!currentCommitFull) return;
+
+    const lastPosted = db.prepare("SELECT value FROM config WHERE key = ?").get('update_log_last_commit')?.value || null;
+    if (lastPosted === currentCommitFull) return;
+
+    let commitSubjects = [];
+    try {
+      if (lastPosted) {
+        const raw = execSync(`git log --pretty=format:%s ${lastPosted}..HEAD`, { encoding: 'utf8' }).trim();
+        commitSubjects = raw ? raw.split('\n').filter(Boolean) : [];
+      } else {
+        const raw = execSync('git log -1 --pretty=format:%s', { encoding: 'utf8' }).trim();
+        commitSubjects = raw ? [raw] : [];
+      }
+    } catch (rangeErr) {
+      console.warn('[UPDATE-LOG] Commit range lookup failed:', rangeErr.message);
+      const fallback = execSync('git log -1 --pretty=format:%s', { encoding: 'utf8' }).trim();
+      commitSubjects = fallback ? [fallback] : [];
+    }
+
+    const historySummary = readLatestHistorySummaryForUpdateLog();
+    const plainEnglishLines = historySummary
+      ? [`- ${historySummary}`]
+      : commitSubjects.slice(0, 3).map(subject => `- ${simplifyCommitSubjectForUpdateLog(subject)}`);
+
+    const embed = new EmbedBuilder()
+      .setTitle('Aavgo Bot Update Log')
+      .setDescription(
+        'A new update is now live.\n\n' +
+        'What changed:\n' +
+        (plainEnglishLines.length ? plainEnglishLines.join('\n') : '- General stability updates were applied.')
+      )
+      .addFields({ name: 'Build', value: `\`${currentCommitShort || 'unknown'}\``, inline: true })
+      .setColor(0xF1C40F)
+      .setFooter({ text: 'Aavgo Operations - Plain English Update Log' })
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run('update_log_last_commit', currentCommitFull);
+  } catch (error) {
+    console.warn('[UPDATE-LOG] Failed to broadcast deployment update:', error.message);
+  }
+}
+
+module.exports = {
   HOTEL_NAMES,
   HOTEL_LOGIN_CHANNELS,
   sendAuditLog,
