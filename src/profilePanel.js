@@ -14,10 +14,15 @@ const PROFILE_PANEL_KEY_PREFIX = 'profiles_dashboard_msg_';
 const TEAM_1 = 'Team 1';
 const TEAM_2 = 'Team 2';
 const TEAM_AGENTS = 'Agents';
+const TEAM_SME = 'SME';
+const TEAM_TEAM_LEADER = 'Team Leader';
 const TEAM_TRAINEES = 'Trainees';
 const TRAINEE_ROLE_ID = '1484705126026449029';
 const AGENT_ROLE_ID = '1482227287159078964';
-const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_AGENTS, TEAM_TRAINEES];
+const SME_ROLE_ID = '1482382342621233153';
+const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
+const DEVELOPER_ROLE_ID = '1482312134875418737';
+const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES];
 const ROLE_STEPS = ['agent', 'sme', 'team_leader', 'operations_manager'];
 const ROLE_LABELS = {
   trainee: 'Trainee',
@@ -30,12 +35,19 @@ const TEAM_ROLE_LOOKUPS = {
   [TEAM_1]: { names: ['team 1', 'team one'] },
   [TEAM_2]: { names: ['team 2', 'team two'] }
 };
+const SME_ROLE_NAMES = ['subject matter expert', 'sme'];
+const TEAM_LEADER_ROLE_NAMES = ['team leader'];
+const OPERATIONS_MANAGER_ROLE_NAMES = ['operations manager'];
+const DEVELOPER_ROLE_NAMES = ['developer', 'developers'];
+const TEAM_ASSIGNMENT_ROLE_NAMES = ['team 1', 'team one', 'team 2', 'team two'];
 
 function normalizeTeamName(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'team 1' || raw === 'team1' || raw === '1') return TEAM_1;
   if (raw === 'team 2' || raw === 'team2' || raw === '2') return TEAM_2;
   if (raw === 'agents' || raw === 'agent') return TEAM_AGENTS;
+  if (raw === 'sme' || raw === 'subject matter expert') return TEAM_SME;
+  if (raw === 'team leader' || raw === 'teamlead' || raw === 'tl') return TEAM_TEAM_LEADER;
   if (raw === 'trainees' || raw === 'trainee') return TEAM_TRAINEES;
   return null;
 }
@@ -90,6 +102,12 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   const agentsDescription = normalizedSelected === TEAM_AGENTS
     ? 'Browse agents only (current)'
     : 'Browse agents only';
+  const smeDescription = normalizedSelected === TEAM_SME
+    ? 'Browse SME only (current)'
+    : 'Browse SME only';
+  const teamLeaderDescription = normalizedSelected === TEAM_TEAM_LEADER
+    ? 'Browse Team Leader only (current)'
+    : 'Browse Team Leader only';
   const traineesDescription = normalizedSelected === TEAM_TRAINEES
     ? 'Browse trainees only (current)'
     : 'Browse trainees only';
@@ -110,6 +128,14 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
         .setLabel(TEAM_AGENTS)
         .setDescription(agentsDescription)
         .setValue(TEAM_AGENTS),
+      new StringSelectMenuOptionBuilder()
+        .setLabel(TEAM_SME)
+        .setDescription(smeDescription)
+        .setValue(TEAM_SME),
+      new StringSelectMenuOptionBuilder()
+        .setLabel(TEAM_TEAM_LEADER)
+        .setDescription(teamLeaderDescription)
+        .setValue(TEAM_TEAM_LEADER),
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_TRAINEES)
         .setDescription(traineesDescription)
@@ -145,6 +171,8 @@ function buildDashboardEmbed(activeTeam = null) {
       '──────────────────────────────\n' +
       `🏨 **Current Team:** ${selected || 'Not selected'}\n` +
       `👤 **Agents View:** Available in the team picker\n` +
+      `🎯 **SME View:** Available in the team picker\n` +
+      `🧭 **Team Leader View:** Available in the team picker\n` +
       `🎓 **Trainees View:** Available in the team picker`
     )
     .setColor(0x5865F2)
@@ -187,6 +215,8 @@ function buildTeamRosterEmbed(teamName, members) {
     .setColor(
       teamName === TEAM_1 ? 0x2ECC71 :
       teamName === TEAM_AGENTS ? 0x3498DB :
+      teamName === TEAM_SME ? 0xE67E22 :
+      teamName === TEAM_TEAM_LEADER ? 0x9B59B6 :
       teamName === TEAM_TRAINEES ? 0xF1C40F :
       0x5865F2
     )
@@ -312,6 +342,18 @@ async function getRoleMemberIds(guild, { roleId = null, roleNames = [] } = {}) {
   return [...role.members.keys()];
 }
 
+function memberHasAnyRoleByName(member, names = []) {
+  if (!member || !Array.isArray(names) || names.length === 0) return false;
+  const lowered = names.map(name => String(name || '').toLowerCase()).filter(Boolean);
+  if (lowered.length === 0) return false;
+  return member.roles.cache.some(role => lowered.includes(String(role.name || '').toLowerCase()));
+}
+
+function memberHasAnyRoleById(member, ids = []) {
+  if (!member || !Array.isArray(ids) || ids.length === 0) return false;
+  return ids.some(roleId => roleId && member.roles.cache.has(roleId));
+}
+
 async function fetchAgentsByDiscordIds(guild, discordIds, forcedRole = null) {
   if (!Array.isArray(discordIds) || discordIds.length === 0) return [];
 
@@ -341,6 +383,40 @@ async function fetchAgentsByDiscordIds(guild, discordIds, forcedRole = null) {
   })));
 }
 
+async function fetchStrictRoleMembers(guild, {
+  includeRoleId = null,
+  includeRoleNames = [],
+  excludeRoleIds = [],
+  excludeRoleNames = [],
+  forcedRole = null,
+  enforceNoTeamAssignment = false
+} = {}) {
+  const candidateIds = await getRoleMemberIds(guild, {
+    roleId: includeRoleId,
+    roleNames: includeRoleNames
+  });
+  if (candidateIds.length === 0) return [];
+
+  const developerRows = db.prepare('SELECT discord_id FROM developers').all();
+  const developerIds = new Set(developerRows.map(row => String(row.discord_id || '')));
+
+  const allowedIds = candidateIds.filter(discordId => {
+    const member = guild.members.cache.get(discordId);
+    if (!member) return false;
+    if (developerIds.has(discordId)) return false;
+    if (memberHasAnyRoleById(member, excludeRoleIds)) return false;
+    if (memberHasAnyRoleByName(member, excludeRoleNames)) return false;
+
+    if (enforceNoTeamAssignment && memberHasAnyRoleByName(member, TEAM_ASSIGNMENT_ROLE_NAMES)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return fetchAgentsByDiscordIds(guild, allowedIds, forcedRole);
+}
+
 async function fetchTeamMembers(guild, teamName) {
   const normalizedTeam = normalizeTeamName(teamName);
   if (!normalizedTeam || !VALID_TEAMS.includes(normalizedTeam)) return [];
@@ -353,11 +429,38 @@ async function fetchTeamMembers(guild, teamName) {
   }
 
   if (normalizedTeam === TEAM_AGENTS) {
-    const agentRoleIds = await getRoleMemberIds(guild, {
-      roleId: AGENT_ROLE_ID,
-      roleNames: ['agents', 'agent']
+    const rows = await fetchStrictRoleMembers(guild, {
+      includeRoleId: AGENT_ROLE_ID,
+      includeRoleNames: ['agents', 'agent'],
+      excludeRoleIds: [TRAINEE_ROLE_ID, SME_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID, DEVELOPER_ROLE_ID],
+      excludeRoleNames: [...SME_ROLE_NAMES, ...TEAM_LEADER_ROLE_NAMES, ...OPERATIONS_MANAGER_ROLE_NAMES, ...DEVELOPER_ROLE_NAMES],
+      forcedRole: 'agent',
+      enforceNoTeamAssignment: true
     });
-    return fetchAgentsByDiscordIds(guild, agentRoleIds);
+    return rows.filter(row => !normalizeTeamName(row.team));
+  }
+
+  if (normalizedTeam === TEAM_SME) {
+    const rows = await fetchStrictRoleMembers(guild, {
+      includeRoleId: SME_ROLE_ID,
+      includeRoleNames: SME_ROLE_NAMES,
+      excludeRoleIds: [TRAINEE_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID, DEVELOPER_ROLE_ID],
+      excludeRoleNames: [...TEAM_LEADER_ROLE_NAMES, ...OPERATIONS_MANAGER_ROLE_NAMES, ...DEVELOPER_ROLE_NAMES],
+      forcedRole: 'sme',
+      enforceNoTeamAssignment: true
+    });
+    return rows.filter(row => !normalizeTeamName(row.team));
+  }
+
+  if (normalizedTeam === TEAM_TEAM_LEADER) {
+    const rows = await fetchStrictRoleMembers(guild, {
+      includeRoleNames: TEAM_LEADER_ROLE_NAMES,
+      excludeRoleIds: [TRAINEE_ROLE_ID, SME_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID, DEVELOPER_ROLE_ID],
+      excludeRoleNames: [...SME_ROLE_NAMES, ...OPERATIONS_MANAGER_ROLE_NAMES, ...DEVELOPER_ROLE_NAMES],
+      forcedRole: 'team_leader',
+      enforceNoTeamAssignment: true
+    });
+    return rows.filter(row => !normalizeTeamName(row.team));
   }
 
   if (normalizedTeam === TEAM_TRAINEES) {
