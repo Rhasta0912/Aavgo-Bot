@@ -55,6 +55,13 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Add a developer-only PIN audit command so staff can see who has a PIN set without revealing any PIN values.
+  - Summary: The new `/see-all-pins` command lists every agent with a clear PIN status, along with role, team, and hotel context, so developers can audit coverage safely without exposing secrets.
+  - Files touched:
+    - src/commands.js
+    - src/index.js
+    - src/auth.js
+    - HISTORY.md
 - Simplify role-sync logging and store hotel compatibility in the database.
   - Summary: The role sync now prints only the important changes instead of a long snapshot line, and it also saves hotel compatibility in the agents table so the bot can fall back to stored hotel access if Discord role data is missing or stale.
   - Files touched:

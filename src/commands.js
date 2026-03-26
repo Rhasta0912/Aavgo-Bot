@@ -92,6 +92,9 @@ const commandData = [
     .setName('db-info')
     .setDescription('(Developer Only) Show database path and table information'),
   new SlashCommandBuilder()
+    .setName('see-all-pins')
+    .setDescription('(Developer Only) Show which agents have PINs set without revealing them'),
+  new SlashCommandBuilder()
     .setName('setup-login-team')
     .setDescription('Refresh unified login portal (legacy alias, Admin only)'),
   new SlashCommandBuilder()

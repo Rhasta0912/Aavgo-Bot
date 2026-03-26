@@ -5160,6 +5160,116 @@ async function handleDbInfo(interaction) {
   }
 }
 
+function chunkPinAuditLines(lines, maxLength = 900) {
+  const chunks = [];
+  let current = [];
+  let currentLength = 0;
+
+  for (const line of lines) {
+    const lineLength = line.length + 1;
+    if (current.length > 0 && currentLength + lineLength > maxLength) {
+      chunks.push(current.join('\n'));
+      current = [];
+      currentLength = 0;
+    }
+
+    current.push(line);
+    currentLength += lineLength;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current.join('\n'));
+  }
+
+  return chunks;
+}
+
+function formatPinAuditLine(agent) {
+  const pinStatus = hasConfiguredPin(agent) ? '✅ PIN set' : '⚪ PIN missing';
+  const roleLabel = getRoleLabel(agent.role);
+  const teamLabel = agent.team || 'No team';
+  const hotelLabel = agent.hotel_id ? getCombinedHotelLabel(agent.hotel_id) : 'Unlinked';
+  let compatibilityIds = [];
+  try {
+    compatibilityIds = JSON.parse(agent.hotel_compatibility || '[]');
+  } catch {
+    compatibilityIds = [];
+  }
+  const compatibilityLabel = formatHotelCompatibilityLabel(compatibilityIds);
+
+  return `• ${agent.username} | ${roleLabel} | ${teamLabel} | ${hotelLabel} | ${pinStatus}${compatibilityLabel !== 'none' ? ` | Access: ${compatibilityLabel}` : ''}`;
+}
+
+async function handleSeeAllPins(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: '❌ Access Denied: Developer Only.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const agents = db.prepare(`
+      SELECT discord_id, username, role, team, hotel_id, pin_is_set, hotel_compatibility
+      FROM agents
+      ORDER BY pin_is_set DESC, username COLLATE NOCASE ASC
+    `).all();
+
+    if (agents.length === 0) {
+      return interaction.editReply({ content: '🔐 No agents were found in the database.' });
+    }
+
+    const withPins = agents.filter(agent => hasConfiguredPin(agent));
+    const missingPins = agents.filter(agent => !hasConfiguredPin(agent));
+
+    const setLines = withPins.map(formatPinAuditLine);
+    const missingLines = missingPins.map(formatPinAuditLine);
+    const setChunks = chunkPinAuditLines(setLines);
+    const missingChunks = chunkPinAuditLines(missingLines);
+
+    const embed = new EmbedBuilder()
+      .setTitle('🔐 Aavgo PIN Audit')
+      .setDescription(
+        `### PIN Inventory\n` +
+        '───────────────────\n' +
+        `**📊 Total Agents:** ${agents.length}\n` +
+        `**✅ PIN Set:** ${withPins.length}\n` +
+        `**⚪ PIN Missing:** ${missingPins.length}\n` +
+        `**🛡️ Scope:** Read-only audit of PIN flags and access coverage.\n` +
+        '───────────────────'
+      )
+      .setColor(withPins.length > 0 ? 0x57F287 : 0xFEE75C)
+      .setFooter({ text: 'Aavgo Operations - PIN Audit' })
+      .setTimestamp();
+
+    for (const [index, chunk] of setChunks.entries()) {
+      embed.addFields({
+        name: index === 0 ? `✅ PIN Set (${withPins.length})` : `✅ PIN Set (cont.)`,
+        value: chunk,
+        inline: false
+      });
+    }
+
+    if (missingPins.length > 0) {
+      for (const [index, chunk] of missingChunks.entries()) {
+        embed.addFields({
+          name: index === 0 ? `⚪ PIN Missing (${missingPins.length})` : `⚪ PIN Missing (cont.)`,
+          value: chunk,
+          inline: false
+        });
+      }
+    }
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error in handleSeeAllPins:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to build the PIN audit.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to build the PIN audit.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 async function handleFindGuest(interaction) {
   try {
     const query = interaction.options.getString('query');
@@ -5374,6 +5484,7 @@ async function handleHelpStaff(interaction) {
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
+        '> `/see-all-pins`: Review which agents have a PIN set without revealing the PIN itself.\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +
         '### 📎 Useful SQL Snippets (`/db-query`)\n' +
@@ -6408,6 +6519,7 @@ module.exports = {
   handleDbClearPending,
   handleDbQuery,
   handleDbInfo,
+  handleSeeAllPins,
   handleDbSetPin,
   handleResetPin,
   handleSetupLoginTeam,

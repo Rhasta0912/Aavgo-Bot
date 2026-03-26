@@ -443,6 +443,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDbRemoveUser(interaction);
     } else if (commandName === 'db-info') {
       await auth.handleDbInfo(interaction);
+    } else if (commandName === 'see-all-pins') {
+      await auth.handleSeeAllPins(interaction);
     } else if (commandName === 'db-set-pin') {
       await auth.handleDbSetPin(interaction);
     } else if (commandName === 'help-staff') {
