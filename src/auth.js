@@ -1310,9 +1310,13 @@ async function ensureAgentKioskMessage(client, channelId) {
     const hasStartButton = message.components.some(row =>
       row.components.some(component => component.customId === 'start_shift_btn')
     );
-    if (!hasStartButton) {
+    const hasLegacyTrainingButton = message.components.some(row =>
+      row.components.some(component => component.customId === 'training_start_btn')
+    );
+
+    if (!hasStartButton || hasLegacyTrainingButton) {
       await message.edit(buildAgentKioskPayload());
-      console.log(`[KIOSK] Restored Initialize Shift button in channel ${channelId}: ${message.id}`);
+      console.log(`[KIOSK] Refreshed kiosk layout in channel ${channelId}: ${message.id}`);
     }
 
     return message;
@@ -1503,11 +1507,11 @@ async function updateTeamStatusEmbed(client, teamName) {
         : '- Everyone in roster is online';
 
       return {
-        name: `${teamLabel} Oversight`,
+        name: `${teamLabel} Status`,
         value:
-          `**Service Hotels**\n${hotelLabel}\n\n` +
-          `**Logged In Now**\n${liveLines}\n\n` +
-          `**Logged Out**\n${offlineLines}`,
+          `**Hotels**\n${hotelLabel}\n\n` +
+          `**Online Now**\n${liveLines}\n\n` +
+          `**Offline**\n${offlineLines}`,
         inline: false
       };
     });
@@ -1518,8 +1522,8 @@ async function updateTeamStatusEmbed(client, teamName) {
     const embed = new EmbedBuilder()
       .setTitle('Team Leader Login Status')
       .setDescription(
-        '**Operations Oversight Board**\n' +
-        'Live management coverage and team leader presence.\n\n' +
+        '**Live Management Board**\n' +
+        'Who is online right now and who is offline.\n\n' +
         `**Team 1 Online:** ${teamOneLoggedIn}\n` +
         `**Team 2 Online:** ${teamTwoLoggedIn}\n` +
         `**Total Active Oversight:** ${activeTLs.length}`
@@ -1578,10 +1582,10 @@ async function updateTrainingStatusEmbed(client) {
     const embed = new EmbedBuilder()
       .setTitle('Training Status')
       .setDescription(
-        '**Training Oversight Board**\n' +
-        'Live visibility of active trainees by hotel group.\n\n' +
+        '**Live Training Board**\n' +
+        'Current trainees grouped by training location.\n\n' +
         `**Agents in Training Now:** ${trainingSessions.length}\n` +
-        '**Scope:** Team 1 training groups'
+        '**Scope:** Team 1 training groups only'
       )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
       .setFooter({ text: 'Aavgo Operations - Training Presence' })
@@ -1613,6 +1617,7 @@ async function refreshOperationalBoards(client) {
       await updateHotelStatusEmbed(client, hotel.id);
     }
     await updateTeamStatusEmbed(client, 'Team 1');
+    await updateTeamStatusEmbed(client, 'Team 2');
     await updateTrainingStatusEmbed(client);
   } catch (error) {
     console.warn('[STATUS] Boot refresh failed:', error.message);

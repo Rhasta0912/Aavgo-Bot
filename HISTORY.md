@@ -214,6 +214,14 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Fixed stale kiosk layout refresh and tightened status board wording.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+  - Notes:
+    - Existing kiosk messages now refresh if they still contain the old Training button beside Initialize Shift
+    - Team Leader and Training status board text was cleaned up for readability
+    - Startup board refresh now updates both Team 1 and Team 2 status sections
 - Fixed the shift start flow and cleaned up the profiles UI.
   - Files touched:
     - src/auth.js
