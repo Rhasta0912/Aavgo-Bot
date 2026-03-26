@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Update the Discord update log to read the human `Summary:` line from `HISTORY.md` instead of the short section title.
+  - Summary: The plain-English update card now posts the actual human summary from the latest history entry, so Discord no longer repeats generic titles like `Fix profiles interaction timeout + UI consistency`.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Fix profiles interaction timeout + UI consistency
   - Summary: Fixed profiles panel interaction expiry by acknowledging component interactions before heavy DB/member fetch work, then responding through safe edit/follow-up paths. Also refreshed profiles embeds to match kiosk/approval styling and added SOP rules for interaction reliability and no PIN exposure.
   - Files touched:

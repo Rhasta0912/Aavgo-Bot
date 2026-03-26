@@ -5802,7 +5802,19 @@ function readLatestHistorySummaryForUpdateLog() {
       const line = lines[i].trim();
       if (!line) continue;
       if (line.startsWith('## ')) break;
-      if (line.startsWith('- ')) return line.slice(2).trim();
+      if (line.startsWith('- ')) {
+        const title = line.slice(2).trim();
+        for (let j = i + 1; j < lines.length; j += 1) {
+          const detailLine = lines[j].trim();
+          if (!detailLine) continue;
+          if (detailLine.startsWith('## ') || detailLine.startsWith('- ')) break;
+          if (detailLine.toLowerCase().startsWith('summary:')) {
+            const summary = detailLine.slice('Summary:'.length).trim();
+            return summary || title;
+          }
+        }
+        return title;
+      }
     }
   } catch (error) {
     console.warn('[UPDATE-LOG] Could not read HISTORY.md summary:', error.message);
