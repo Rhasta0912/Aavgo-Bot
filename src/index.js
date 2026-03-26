@@ -190,6 +190,11 @@ client.once('ready', async () => {
     auth.ensureAgentKioskMessage(client, '1482228169485582446').catch(error => {
       console.warn('[KIOSK] Failed to restore agent kiosk on boot:', error.message);
     });
+    client.guilds.cache.forEach(guild => {
+      auth.syncGuildAgentRecordsFromRoles(guild, 'ROLE SYNC BOOT').catch(error => {
+        console.warn(`[ROLE SYNC] Boot sync failed for ${guild.name}:`, error.message);
+      });
+    });
     profilePanel.ensureProfilesDashboard(client).catch(error => {
       console.warn('[PROFILES] Failed to restore profiles dashboard on boot:', error.message);
     });
@@ -268,15 +273,15 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
     const gainedTrainee = !oldMember.roles.cache.has(traineeRoleId) && newMember.roles.cache.has(traineeRoleId);
     const gainedAgent = !oldMember.roles.cache.has(agentRoleId) && newMember.roles.cache.has(agentRoleId);
 
-    if (!(gainedTrainee || gainedAgent)) return;
-
     const applicantsRole = newMember.guild.roles.cache.get(applicantsRoleId) || newMember.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
-    if (applicantsRole && newMember.roles.cache.has(applicantsRole.id)) {
+    if ((gainedTrainee || gainedAgent) && applicantsRole && newMember.roles.cache.has(applicantsRole.id)) {
       await newMember.roles.remove(applicantsRole);
       console.log(`[ROLE SYNC] Removed Applicants role from ${newMember.user.username} after promotion`);
     }
+
+    await auth.syncAgentRecordFromDiscordMember(newMember, newMember.guild, 'ROLE SYNC UPDATE');
   } catch (error) {
-    console.warn('[ROLE SYNC] Failed to clear Applicants role after promotion:', error.message);
+    console.warn('[ROLE SYNC] Failed to process member role update:', error.message);
   }
 });
 

@@ -114,12 +114,14 @@ const AGENT_STATUS_LABELS = {
   ready: 'Ready for Live Shifts'
 };
 const ROLE_LABELS = {
+  trainee: 'Trainee',
   agent: 'Agent',
   sme: 'Subject Matter Expert (SME)',
   team_leader: 'Team Leader',
   operations_manager: 'Operations Manager'
 };
 const ROLE_HIERARCHY = {
+  trainee: 0,
   agent: 1,
   sme: 2,
   team_leader: 3,
@@ -1626,6 +1628,88 @@ async function refreshOperationalBoards(client) {
 
 function isTraineeMember(interaction) {
   return interaction?.member?.roles?.cache?.some(role => role?.name?.toLowerCase() === 'trainees');
+}
+
+function getDiscordRoleSyncSnapshot(member) {
+  const roleNames = [...(member?.roles?.cache?.values?.() || [])]
+    .map(role => role?.name?.toLowerCase())
+    .filter(Boolean);
+
+  if (roleNames.includes('operations manager')) return { role: 'operations_manager', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
+  if (roleNames.includes('subject matter expert') || roleNames.includes('sme')) return { role: 'sme', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
+  if (roleNames.includes('team leader') || roleNames.includes('team_leader')) return { role: 'team_leader', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
+  if (roleNames.includes('agents')) return { role: 'agent', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
+  if (roleNames.includes('trainees')) return { role: 'trainee', team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
+
+  return { role: null, team: normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null };
+}
+
+async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, contextLabel = 'ROLE SYNC') {
+  try {
+    if (!member || !guild) return null;
+
+    const snapshot = getDiscordRoleSyncSnapshot(member);
+
+    const displayName = member.displayName || member.user?.username || member.user?.tag || 'Unknown';
+    const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
+
+    if (existing) {
+      const updates = [];
+      const params = [];
+
+      if (existing.username !== displayName) {
+        updates.push('username = ?');
+        params.push(displayName);
+      }
+
+      if (snapshot.role && normalizeAgentRole(existing.role) !== snapshot.role) {
+        updates.push('role = ?');
+        params.push(snapshot.role);
+      }
+
+      if (snapshot.team && existing.team !== snapshot.team) {
+        updates.push('team = ?');
+        params.push(snapshot.team);
+      }
+
+      if (updates.length > 0) {
+        params.push(member.id);
+        db.prepare(`UPDATE agents SET ${updates.join(', ')} WHERE discord_id = ?`).run(...params);
+        console.log(`[${contextLabel}] Synced agent row for ${displayName}: ${updates.join(', ')}`);
+      }
+
+      return { action: 'updated', role: snapshot.role || normalizeAgentRole(existing.role), team: snapshot.team || existing.team || null };
+    }
+
+    if (!snapshot.role) return null;
+
+    const bootstrapRole = snapshot.role || 'trainee';
+    const bootstrapStatus = bootstrapRole === 'trainee' ? 'standby' : 'ready';
+    const bootstrapPin = String(Math.floor(100000 + Math.random() * 900000));
+    db.prepare(
+      "INSERT INTO agents (discord_id, username, pin, role, agent_status, team) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(member.id, displayName, bootstrapPin, bootstrapRole, bootstrapStatus, snapshot.team || null);
+
+    console.log(`[${contextLabel}] Created missing agent row for ${displayName} with role ${bootstrapRole}`);
+    return { action: 'created', role: bootstrapRole, team: snapshot.team || null };
+  } catch (error) {
+    console.warn(`[${contextLabel}] Failed to sync agent row from Discord roles:`, error.message);
+    return null;
+  }
+}
+
+async function syncGuildAgentRecordsFromRoles(guild, contextLabel = 'ROLE SYNC') {
+  try {
+    if (!guild) return;
+    const members = await guild.members.fetch().catch(() => null);
+    if (!members) return;
+
+    for (const member of members.values()) {
+      await syncAgentRecordFromDiscordMember(member, guild, contextLabel);
+    }
+  } catch (error) {
+    console.warn(`[${contextLabel}] Failed to backfill Discord roles into DB:`, error.message);
+  }
 }
 
 function normalizeCombinedHotelId(hotelId) {
@@ -5223,6 +5307,7 @@ async function handleSelectTrainee(interaction) {
     }
 
     await member.roles.add(traineeRole);
+    await syncAgentRecordFromDiscordMember(member, interaction.guild, 'SELECT-TRAINEE');
 
     await interaction.editReply({
       content: `✅ **${targetUser.username}** has been assigned the **Trainees** role.`,
@@ -5930,6 +6015,8 @@ module.exports = {
   handleManagementTeamStart,
   handleShiftModePrompt,
   handleStartShiftClick, 
+  syncAgentRecordFromDiscordMember,
+  syncGuildAgentRecordsFromRoles,
   handleHotelSelect, 
   handleLogin, 
   handleRegisterSubmit, 

@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Sync Discord roles back into the database automatically when members are promoted or backfilled at startup.
+  - Summary: The bot now watches role changes and startup membership data so staff roles like SME, Team Leader, and Trainee can be reflected in the agents table even when people are changed manually in Discord.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Update the Discord update log to read the human `Summary:` line from `HISTORY.md` instead of the short section title.
   - Summary: The plain-English update card now posts the actual human summary from the latest history entry, so Discord no longer repeats generic titles like `Fix profiles interaction timeout + UI consistency`.
   - Files touched:
