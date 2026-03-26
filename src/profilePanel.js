@@ -441,26 +441,24 @@ async function fetchTeamMembers(guild, teamName) {
   }
 
   if (normalizedTeam === TEAM_SME) {
-    const rows = await fetchStrictRoleMembers(guild, {
+    return fetchStrictRoleMembers(guild, {
       includeRoleId: SME_ROLE_ID,
       includeRoleNames: SME_ROLE_NAMES,
-      excludeRoleIds: [TRAINEE_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID, DEVELOPER_ROLE_ID],
-      excludeRoleNames: [...TEAM_LEADER_ROLE_NAMES, ...OPERATIONS_MANAGER_ROLE_NAMES, ...DEVELOPER_ROLE_NAMES],
+      excludeRoleIds: [DEVELOPER_ROLE_ID],
+      excludeRoleNames: [...DEVELOPER_ROLE_NAMES],
       forcedRole: 'sme',
-      enforceNoTeamAssignment: true
+      enforceNoTeamAssignment: false
     });
-    return rows.filter(row => !normalizeTeamName(row.team));
   }
 
   if (normalizedTeam === TEAM_TEAM_LEADER) {
-    const rows = await fetchStrictRoleMembers(guild, {
+    return fetchStrictRoleMembers(guild, {
       includeRoleNames: TEAM_LEADER_ROLE_NAMES,
-      excludeRoleIds: [TRAINEE_ROLE_ID, SME_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID, DEVELOPER_ROLE_ID],
-      excludeRoleNames: [...SME_ROLE_NAMES, ...OPERATIONS_MANAGER_ROLE_NAMES, ...DEVELOPER_ROLE_NAMES],
+      excludeRoleIds: [DEVELOPER_ROLE_ID],
+      excludeRoleNames: [...DEVELOPER_ROLE_NAMES],
       forcedRole: 'team_leader',
-      enforceNoTeamAssignment: true
+      enforceNoTeamAssignment: false
     });
-    return rows.filter(row => !normalizeTeamName(row.team));
   }
 
   if (normalizedTeam === TEAM_TRAINEES) {
