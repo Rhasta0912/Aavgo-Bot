@@ -1574,30 +1574,40 @@ async function updateTrainingStatusEmbed(client) {
 
     const groupRows = TRAINING_HOTEL_GROUPS.map(group => {
       const matching = trainingSessions.filter(session => group.hotelIds.includes(session.hotel_id));
+      const groupIcon = group.label === 'Indianhead/Magnuson'
+        ? '🏙️'
+        : group.label === 'Ramada / Super 8'
+          ? '🛖'
+          : group.label === 'The Garden Inn At Campsite'
+            ? '🏨'
+            : '📞';
       const value = matching.length > 0
         ? matching
-          .map(session => `- <@${session.discord_id}> | active ${formatLoginTimeLabel(session.login_time)}`)
+          .map(session => `• <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`)
           .join('\n')
-        : '- No active trainee';
+        : '• No active trainee';
 
       return {
-        name: group.label,
+        name: `${groupIcon} ${group.label}`,
         value,
         inline: false
       };
     });
 
+    const activeLabel = trainingSessions.length > 0 ? '🟦 TRAINING IN PROGRESS' : '⚫ TRAINING BOARD IDLE';
     const embed = new EmbedBuilder()
-      .setTitle('Training Status')
+      .setTitle('🎓 Aavgo Operations · Training Status')
       .setDescription(
-        '**Live Training Board**\n' +
+        `### ${activeLabel}\n` +
         '────────────────────────\n' +
-        `**Agents in Training Now:** ${trainingSessions.length}\n` +
-        '**Scope:** Team 1 training groups only'
+        `**🤖 Board:** Live training presence tracker\n` +
+        `**👥 Active Trainees:** ${trainingSessions.length}\n` +
+        `**📍 Scope:** Team 1 training groups only\n` +
+        '────────────────────────'
       )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
-      .setFooter({ text: 'Aavgo Operations - Training Presence' })
-      .addFields(groupRows)
+      .setFields(groupRows)
+      .setFooter({ text: 'Aavgo Operations • Training Presence' })
       .setTimestamp();
 
     const key = 'training_status_msg';

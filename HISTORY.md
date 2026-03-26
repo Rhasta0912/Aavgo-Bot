@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Restyle the training status board to match the cleaner status-card UI system.
+  - Summary: The training board now uses a stronger title, a clear live/idle status line, separator blocks, and emoji-labeled group fields so it reads more like the other operational cards in the bot.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Prevent the security setup button from reopening after a PIN has already been saved.
   - Summary: If someone clicks the security setup button after their PIN is already on file, the bot now stops the flow and tells them the setup is already complete. This keeps stale buttons from reopening the form after the account is finished.
   - Files touched:
