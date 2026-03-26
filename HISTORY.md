@@ -214,6 +214,22 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Added a training path to `/setup-login` with a new Training button, tracked training sessions separately in the database, and posted a dedicated training status board in channel `1486623221225750660` so management can see which hotel each agent is training for.
+  - Files touched:
+    - src/auth.js
+    - src/commands.js
+    - src/database.js
+    - src/index.js
+  - Notes:
+    - Training sessions are now stored separately from normal shifts
+    - Training status groups Ramada and Super 8 together
+- Added a dedicated Team Leader login status board in channel `1486347360417349682` that shows Team 1 hotel coverage and a Team 2 placeholder section, so it is easier to tell who is logged in or offline.
+  - Files touched:
+    - src/auth.js
+    - SOP.md
+  - Notes:
+    - Team 1 now lists its hotels directly on the board
+    - Team 2 is intentionally kept as a future placeholder
 - Removed the dormant WhatsApp bridge from the live bot codebase by deleting `src/whatsapp.js`, removing all bridge calls from `auth.js` and `tools.js`, and clearing the empty `messageCreate` placeholder in `index.js`.
   - Files touched:
     - src/auth.js

@@ -20,7 +20,7 @@ const commandData = [
     .setDescription('Check current shift statuses'),
   new SlashCommandBuilder()
     .setName('setup-login')
-    .setDescription('Setup the persistent login message (Admin only)'),
+    .setDescription('Setup the persistent login message and training button (Admin only)'),
   new SlashCommandBuilder()
     .setName('add-agent')
     .setDescription('(Admin) Add a user as an agent instantly')
@@ -93,7 +93,7 @@ const commandData = [
     .setDescription('(Developer Only) Show database path and table information'),
   new SlashCommandBuilder()
     .setName('setup-login-team')
-    .setDescription('Setup the TL/SME login portal (Admin only)'),
+    .setDescription('Setup the TL/SME login portal and status board (Admin only)'),
   new SlashCommandBuilder()
     .setName('db-add-developer')
     .setDescription('(Developer Only) Propose adding a new developer')

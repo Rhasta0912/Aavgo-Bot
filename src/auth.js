@@ -89,10 +89,18 @@ const AUDIT_LOG_CHANNEL_ID = '1482239767134339182';
 const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
+const TL_STATUS_CHANNEL_ID = '1486347360417349682';
+const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 
 const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
+const TRAINING_HOTEL_GROUPS = [
+  { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
+  { label: 'Ramada / Super 8', hotelIds: ['RMDA', 'SUP8'] },
+  { label: 'The Garden Inn At Campsite', hotelIds: ['GICP'] },
+  { label: 'AD1', hotelIds: ['AD1'] }
+];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
   ready: 'Ready for Live Shifts'
@@ -322,10 +330,12 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
   const nowIso = new Date().toISOString();
   
   // 1. Fetch active sessions to know what to refresh later
-  const activeSessions = db.prepare("SELECT hotel_id FROM sessions WHERE agent_id = ? AND status = 'active'").all(agentId);
+  const activeSessions = db.prepare("SELECT hotel_id, session_kind FROM sessions WHERE agent_id = ? AND status = 'active'").all(agentId);
   if (activeSessions.length === 0) return [];
 
   const hotelIds = [...new Set(activeSessions.map(s => s.hotel_id))];
+  const hasTrainingSessions = activeSessions.some(s => s.session_kind === 'training');
+  const hasTeamShift = activeSessions.some(s => s.hotel_id === 'TEAM_SHIFT');
 
   // 2. Close in DB
   const result = db.prepare("UPDATE sessions SET status = 'closed', logout_time = ? WHERE agent_id = ? AND status = 'active'").run(nowIso, agentId);
@@ -349,6 +359,25 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
       }
     } catch (e) {
       console.warn(`[AUTH-MAINT] Refresh failed for ${hId}:`, e.message);
+    }
+  }
+
+  if (hasTrainingSessions) {
+    try {
+      await updateTrainingStatusEmbed(client);
+    } catch (e) {
+      console.warn('[AUTH-MAINT] Training status refresh failed:', e.message);
+    }
+  }
+
+  if (hasTeamShift) {
+    try {
+      const agent = db.prepare("SELECT team FROM agents WHERE id = ?").get(agentId);
+      if (agent && agent.team) {
+        await updateTeamStatusEmbed(client, agent.team);
+      }
+    } catch (e) {
+      console.warn('[AUTH-MAINT] Team status refresh failed:', e.message);
     }
   }
 
@@ -392,10 +421,10 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
 }
 
 // ─── PIN Verification Modal ─────────────────────────
-async function showPinModal(interaction, hotelId, isTakeover = false, allowMultiHotel = false) {
+async function showPinModal(interaction, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
   const hotelName = HOTEL_NAMES[hotelId] || (hotelId === 'TEAM_SHIFT' ? 'Management Shift' : hotelId);
   const modal = new ModalBuilder()
-    .setCustomId(`loginmodal_${hotelId}${isTakeover ? '_takeover' : ''}${allowMultiHotel ? '_multi' : ''}`)
+    .setCustomId(`loginmodal_${sessionMode}_${hotelId}${isTakeover ? '_takeover' : ''}${allowMultiHotel ? '_multi' : ''}`)
     .setTitle(`🔑 Verify PIN — ${hotelName}`.substring(0, 45));
 
   const pinInput = new TextInputBuilder()
@@ -804,7 +833,7 @@ async function showShiftInitModal(interaction, agent) {
   await interaction.showModal(modal);
 }
 
-async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false, allowMultiHotel = false) {
+async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
   const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
   const recentSession = db.prepare("SELECT id FROM sessions WHERE agent_id = ? AND hotel_id = ? AND login_time >= ?").get(agent.id, hotelId, fiveSecondsAgo);
   if (recentSession) {
@@ -834,7 +863,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   }
 
   const nowIso = new Date().toISOString();
-  db.prepare("INSERT INTO sessions (agent_id, hotel_id, login_time) VALUES (?, ?, ?)").run(agent.id, hotelId, nowIso);
+  db.prepare("INSERT INTO sessions (agent_id, hotel_id, session_kind, login_time) VALUES (?, ?, ?, ?)").run(agent.id, hotelId, sessionMode, nowIso);
 
   let noteAlert = '';
 
@@ -869,6 +898,9 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     }
   } else {
     updateHotelStatusEmbed(interaction.client, hotelId).catch(e => console.error('Failed to update hotel status embed:', e));
+  }
+  if (sessionMode === 'training') {
+    updateTrainingStatusEmbed(interaction.client).catch(e => console.error('Failed to update training status embed:', e));
   }
 
   const unreadNotes = db.prepare(`
@@ -910,8 +942,9 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   }
 
   const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+  const sessionLabel = sessionMode === 'training' ? 'training session' : 'shift';
   await interaction.editReply({
-    content: `✅ **Success!** You are now logged into **${hotelName}**. ${noteAlert}`,
+    content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}`,
     embeds: [],
     components: []
   });
@@ -962,26 +995,30 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 // ─── Single Persistent Hotel Status Embed ────────────
 async function updateHotelStatusEmbed(client, hotelId) {
   try {
-    const hotelChannelId = HOTEL_LOGIN_CHANNELS[hotelId];
+    const hotelGroup = getHotelStatusGroup(hotelId);
+    const hotelChannelId = HOTEL_LOGIN_CHANNELS[hotelGroup.key] || HOTEL_LOGIN_CHANNELS[hotelId];
     if (!hotelChannelId) return;
 
     const channel = await client.channels.fetch(hotelChannelId);
     if (!channel) return;
 
-    // Fetch all active sessions for this hotel (Deduplicated by agent ID in the visual layer)
+    const placeholders = hotelGroup.hotelIds.map(() => '?').join(', ');
+
+    // Fetch all active sessions for this hotel group (Deduplicated by agent ID in the visual layer)
     const activeSessions = db.prepare(`
       SELECT s1.*, agents.discord_id, agents.username 
       FROM sessions s1
       JOIN agents ON s1.agent_id = agents.id 
-      WHERE s1.hotel_id = ? AND s1.status = 'active'
+      WHERE s1.hotel_id IN (${placeholders}) AND s1.status = 'active'
       AND s1.id = (SELECT MAX(s2.id) FROM sessions s2 WHERE s2.agent_id = s1.agent_id AND s2.status = 'active')
       ORDER BY s1.login_time DESC
-    `).all(hotelId);
+    `).all(...hotelGroup.hotelIds);
 
-    const hotelName = HOTEL_NAMES[hotelId] || hotelId;
+    const hotelName = hotelGroup.label;
     const OVERTIME_HOURS = 8;
     let embedColor, embedTitle, description;
     let components = [];
+    const statusKey = hotelGroup.key;
 
     if (activeSessions.length === 0) {
       // No one on shift
@@ -1000,8 +1037,8 @@ async function updateHotelStatusEmbed(client, hotelId) {
         FROM sessions 
         JOIN agents ON sessions.agent_id = agents.id 
         WHERE sessions.hotel_id = 'TEAM_SHIFT' AND sessions.status = 'active'
-        AND agents.team IN (SELECT team FROM hotels WHERE id = ?)
-      `).all(hotelId);
+        AND agents.team IN (SELECT team FROM hotels WHERE id IN (${placeholders}))
+      `).all(...hotelGroup.hotelIds);
 
       const tlNames = activeTLs.length > 0 ? activeTLs.map(t => t.username).join(', ') : 'None';
       description += `> 🛡️ **Team Leader on Shift:** ${tlNames}\n` +
@@ -1015,7 +1052,7 @@ async function updateHotelStatusEmbed(client, hotelId) {
       const isNormal = primarySession.break_status === 'Normal Break';
 
       // Get active management for this team
-      const teamId = db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team || 'Team 1';
+      const teamId = db.prepare(`SELECT team FROM hotels WHERE id IN (${placeholders}) ORDER BY CASE id WHEN 'RMDA' THEN 0 WHEN 'SUP8' THEN 1 ELSE 2 END LIMIT 1`).get(...hotelGroup.hotelIds)?.team || 'Team 1';
       const activeTLs = db.prepare(`
         SELECT agents.username 
         FROM sessions 
@@ -1062,6 +1099,9 @@ async function updateHotelStatusEmbed(client, hotelId) {
         lines.push(`> 👤 **Agent:** <@${session.discord_id}>`);
         lines.push(`> ⏱️ **Logged in for:** <t:${loginUnix}:R>`);
         lines.push(`> 📅 **Since:** <t:${loginUnix}:f>`);
+        if (session.session_kind === 'training') {
+          lines.push(`> 🧭 **Mode:** Training`);
+        }
         
         if (isOvertime) {
           lines.push(`> ⚠️ **STATUS: OVERTIME** (${hours}h+)`);
@@ -1147,11 +1187,19 @@ async function updateHotelStatusEmbed(client, hotelId) {
       .setTitle(embedTitle)
       .setDescription(description)
       .setColor(embedColor)
-      .setFooter({ text: `Aavgo Operations • Live Status • Ref: ${hotelId}` })
+      .setFooter({ text: `Aavgo Operations • Live Status • Ref: ${statusKey}` })
       .addFields({ name: '📡 System Status', value: '🟢 **Bot is Online**', inline: false })
       .setTimestamp();
 
-    const statusRow = db.prepare("SELECT message_id FROM hotel_status WHERE hotel_id = ?").get(hotelId);
+    let statusRow = db.prepare("SELECT message_id FROM hotel_status WHERE hotel_id = ?").get(statusKey);
+    if (!statusRow && statusKey !== hotelId) {
+      const legacyRow = db.prepare("SELECT message_id FROM hotel_status WHERE hotel_id = ?").get(hotelId);
+      if (legacyRow?.message_id) {
+        statusRow = legacyRow;
+        db.prepare("INSERT OR REPLACE INTO hotel_status (hotel_id, message_id) VALUES (?, ?)").run(statusKey, legacyRow.message_id);
+        db.prepare("DELETE FROM hotel_status WHERE hotel_id = ?").run(hotelId);
+      }
+    }
     let existingMsg = null;
 
     // Safety guard: never overwrite the kiosk/login message
@@ -1177,11 +1225,11 @@ async function updateHotelStatusEmbed(client, hotelId) {
           message.author?.id === client.user?.id &&
           message.id !== kioskMsgId &&
           Array.isArray(message.embeds) &&
-          message.embeds.some(existingEmbed => existingEmbed.footer?.text?.includes(`Ref: ${hotelId}`))
+          message.embeds.some(existingEmbed => existingEmbed.footer?.text?.includes(`Ref: ${statusKey}`))
         ) || null;
 
         if (existingMsg) {
-          db.prepare("INSERT OR REPLACE INTO hotel_status (hotel_id, message_id) VALUES (?, ?)").run(hotelId, existingMsg.id);
+          db.prepare("INSERT OR REPLACE INTO hotel_status (hotel_id, message_id) VALUES (?, ?)").run(statusKey, existingMsg.id);
         }
       }
     }
@@ -1190,7 +1238,7 @@ async function updateHotelStatusEmbed(client, hotelId) {
       await existingMsg.edit({ embeds: [embed], components });
     } else {
       const newMsg = await channel.send({ embeds: [embed], components });
-      db.prepare("INSERT OR REPLACE INTO hotel_status (hotel_id, message_id) VALUES (?, ?)").run(hotelId, newMsg.id);
+      db.prepare("INSERT OR REPLACE INTO hotel_status (hotel_id, message_id) VALUES (?, ?)").run(statusKey, newMsg.id);
     }
 
   } catch (e) {
@@ -1211,7 +1259,8 @@ function buildAgentKioskPayload() {
       '> **1.** Click **Initialize Shift** below\n' +
       '> **2.** Select your **Team** (First time only)\n' +
       '> **3.** Choose your **Hotel Assignment**\n' +
-      '> **4.** Verify your **Secure PIN**\n\n' +
+      '> **4.** Verify your **Secure PIN**\n' +
+      '> **5.** Use **Training** when you are learning a hotel\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
       '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Super 8`, `Ramada`, `AD1`'
@@ -1225,9 +1274,16 @@ function buildAgentKioskPayload() {
     .setLabel('🚀 Initialize Shift')
     .setStyle(ButtonStyle.Primary);
 
+  const trainingBtn = new ButtonBuilder()
+    .setCustomId('training_start_btn')
+    .setLabel('🧭 Training')
+    .setStyle(ButtonStyle.Secondary);
+
   return {
     embeds: [embed],
-    components: [new ActionRowBuilder().addComponents(startBtn)]
+    components: [
+      new ActionRowBuilder().addComponents(startBtn, trainingBtn)
+    ]
   };
 }
 
@@ -1253,8 +1309,11 @@ async function ensureAgentKioskMessage(client, channelId) {
     const hasStartButton = message.components.some(row =>
       row.components.some(component => component.customId === 'start_shift_btn')
     );
+    const hasTrainingButton = message.components.some(row =>
+      row.components.some(component => component.customId === 'training_start_btn')
+    );
 
-    if (!hasStartButton) {
+    if (!hasStartButton || !hasTrainingButton) {
       await message.edit(buildAgentKioskPayload());
       console.log(`[KIOSK] Restored Initialize Shift button in channel ${channelId}: ${message.id}`);
     }
@@ -1363,66 +1422,169 @@ async function handleSetupLoginTeam(interaction) {
 
     // Initial status embed
     await updateTeamStatusEmbed(interaction.client, 'Team 1');
-    await updateTeamStatusEmbed(interaction.client, 'Team 2');
   } catch (error) {
     console.error('Error in handleSetupLoginTeam:', error);
   }
 }
 
+function formatLoginTimeLabel(loginTime) {
+  let cleanTime = loginTime;
+  if (cleanTime && !cleanTime.includes('T') && !cleanTime.includes('Z')) {
+    cleanTime = cleanTime.replace(' ', 'T') + 'Z';
+  }
+  const loginUnix = Math.floor(new Date(cleanTime || Date.now()).getTime() / 1000);
+  return `<t:${loginUnix}:R>`;
+}
+
+function getTeam1HotelSummary() {
+  return ['Indianhead/Magnuson', 'The Garden Inn At Campsite', 'Ramada / Super 8', 'AD1'];
+}
+
+function getTrainingGroupLabel(hotelId) {
+  const group = TRAINING_HOTEL_GROUPS.find(entry => entry.hotelIds.includes(hotelId));
+  return group ? group.label : (HOTEL_NAMES[hotelId] || hotelId);
+}
+
+function getHotelStatusGroup(hotelId) {
+  if (hotelId === 'RMDA' || hotelId === 'SUP8') {
+    return {
+      key: 'RMDA',
+      label: 'Ramada / Super 8',
+      hotelIds: ['RMDA', 'SUP8']
+    };
+  }
+
+  return {
+    key: hotelId,
+    label: HOTEL_NAMES[hotelId] || hotelId,
+    hotelIds: [hotelId]
+  };
+}
+
 async function updateTeamStatusEmbed(client, teamName) {
   try {
-    const channel = await client.channels.fetch(TL_PORTAL_CHANNEL_ID);
+    const channel = await client.channels.fetch(TL_STATUS_CHANNEL_ID);
     if (!channel) return;
 
-    // Get active TL/SME sessions for this team
     const activeTLs = db.prepare(`
-      SELECT agents.username, agents.discord_id, agents.role, sessions.login_time
+      SELECT agents.username, agents.discord_id, agents.role, sessions.login_time, agents.team
       FROM sessions
       JOIN agents ON sessions.agent_id = agents.id
-      WHERE sessions.hotel_id = 'TEAM_SHIFT' AND sessions.status = 'active' AND agents.team = ?
-    `).all(teamName);
+      WHERE sessions.hotel_id = 'TEAM_SHIFT' AND sessions.status = 'active'
+    `).all();
+
+    const teamRows = TEAM_NAMES.map(name => {
+      const loggedIn = activeTLs.filter(row => row.team === name);
+      const roster = db.prepare(`
+        SELECT username, discord_id, role
+        FROM agents
+        WHERE team = ? AND role IN ('team_leader', 'sme', 'operations_manager')
+        ORDER BY CASE role
+          WHEN 'operations_manager' THEN 0
+          WHEN 'team_leader' THEN 1
+          WHEN 'sme' THEN 2
+          ELSE 3
+        END, username ASC
+      `).all(name);
+
+      const loggedInIds = new Set(loggedIn.map(row => row.discord_id));
+      const offline = roster.filter(row => !loggedInIds.has(row.discord_id));
+
+      const teamLabel = name === 'Team 1'
+        ? `${name}\n**Hotels:** ${getTeam1HotelSummary().join(', ')}`
+        : `${name}\n**Hotels:** Placeholder for future`;
+
+      const liveLines = loggedIn.length > 0
+        ? loggedIn.map(row => `• **${row.username}** (<@${row.discord_id}>) \`${getRoleLabel(row.role)}\` ${formatLoginTimeLabel(row.login_time)}`).join('\n')
+        : '• None';
+
+      const offlineLines = offline.length > 0
+        ? offline.map(row => `• **${row.username}** (<@${row.discord_id}>)`).join('\n')
+        : '• None';
+
+      return {
+        name: teamLabel,
+        value: `**Logged In**\n${liveLines}\n\n**Logged Out**\n${offlineLines}`,
+        inline: false
+      };
+    });
 
     const embed = new EmbedBuilder()
-      .setTitle(`📈 ${teamName} Operations Status`)
+      .setTitle('🛡️ Team Leader Login Status')
+      .setDescription('Live oversight presence for each team. Team 2 remains a placeholder for future expansion.')
       .setColor(activeTLs.length > 0 ? 0x57F287 : 0x2B2D31)
-      .addFields({ name: '📡 System Status', value: '🟢 **Bot is Online**', inline: false })
+      .addFields(teamRows)
       .setTimestamp();
 
-    if (activeTLs.length > 0) {
-      const tlList = activeTLs
-        .map(a => {
-           let cleanTime = a.login_time;
-           if (cleanTime && !cleanTime.includes('T') && !cleanTime.includes('Z')) {
-              cleanTime = cleanTime.replace(' ', 'T') + 'Z';
-           }
-           const loginUnix = Math.floor(new Date(cleanTime || Date.now()).getTime() / 1000);
-           return `👤 **${a.username}** (<@${a.discord_id}>)\n> 🛡️ *Role:* ${getRoleLabel(a.role)}\n> ⏳ *On shift for:* <t:${loginUnix}:R>`;
-        })
-        .join('\n\n');
-      
-      embed.addFields({ name: '🏥 Management on Shift', value: tlList });
-      embed.setDescription('✅ **Active Oversight in Progress**');
-    } else {
-      embed.setDescription('💤 **No Management currently on shift for this team.**');
-    }
-
-    const hs = db.prepare("SELECT message_id FROM team_status WHERE team = ?").get(teamName);
-    
-    if (hs && hs.message_id) {
+    const key = 'team_leader_status_msg';
+    const stored = db.prepare("SELECT value FROM config WHERE key = ?").get(key);
+    if (stored?.value) {
       try {
-        const msg = await channel.messages.fetch(hs.message_id);
+        const msg = await channel.messages.fetch(stored.value);
         await msg.edit({ embeds: [embed] });
+        return;
       } catch (e) {
-        const newMsg = await channel.send({ embeds: [embed] });
-        db.prepare("INSERT OR REPLACE INTO team_status (team, message_id) VALUES (?, ?)").run(teamName, newMsg.id);
+        db.prepare("DELETE FROM config WHERE key = ?").run(key);
       }
-    } else {
-      const newMsg = await channel.send({ embeds: [embed] });
-      db.prepare("INSERT OR REPLACE INTO team_status (team, message_id) VALUES (?, ?)").run(teamName, newMsg.id);
     }
 
+    const newMsg = await channel.send({ embeds: [embed] });
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, newMsg.id);
   } catch (e) {
     console.warn('[TL-STATUS] Failed to update team status embed:', e.message);
+  }
+}
+
+async function updateTrainingStatusEmbed(client) {
+  try {
+    const channel = await client.channels.fetch(TRAINING_STATUS_CHANNEL_ID);
+    if (!channel) return;
+
+    const trainingSessions = db.prepare(`
+      SELECT agents.username, agents.discord_id, sessions.hotel_id, sessions.login_time
+      FROM sessions
+      JOIN agents ON sessions.agent_id = agents.id
+      WHERE sessions.status = 'active' AND sessions.session_kind = 'training'
+      ORDER BY sessions.login_time DESC
+    `).all();
+
+    const groupRows = TRAINING_HOTEL_GROUPS.map(group => {
+      const matching = trainingSessions.filter(session => group.hotelIds.includes(session.hotel_id));
+      const value = matching.length > 0
+        ? matching.map(session => `• **${session.username}** (<@${session.discord_id}>) ${formatLoginTimeLabel(session.login_time)}`).join('\n')
+        : '• None';
+
+      return {
+        name: group.label,
+        value,
+        inline: false
+      };
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle('🧭 Training Status')
+      .setDescription('Current agents in training and the location they are training for.')
+      .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
+      .addFields(groupRows)
+      .setFooter({ text: 'Team 2 is reserved as a future placeholder.' })
+      .setTimestamp();
+
+    const key = 'training_status_msg';
+    const stored = db.prepare("SELECT value FROM config WHERE key = ?").get(key);
+    if (stored?.value) {
+      try {
+        const msg = await channel.messages.fetch(stored.value);
+        await msg.edit({ embeds: [embed] });
+        return;
+      } catch (e) {
+        db.prepare("DELETE FROM config WHERE key = ?").run(key);
+      }
+    }
+
+    const newMsg = await channel.send({ embeds: [embed] });
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, newMsg.id);
+  } catch (e) {
+    console.warn('[TRAINING-STATUS] Failed to update training status embed:', e.message);
   }
 }
 
@@ -2317,6 +2479,77 @@ async function handleHotelSelect(interaction) {
   }
 }
 
+async function showTrainingHotelSelection(interaction, isUpdate = false) {
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId('training_hotel_select_menu')
+    .setPlaceholder('Choose the hotel you are training for')
+    .addOptions(
+      TRAINING_HOTEL_GROUPS.map(group =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(group.label)
+          .setValue(group.hotelIds[0])
+          .setDescription('Start a training session for this location')
+      )
+    );
+
+  const embed = new EmbedBuilder()
+    .setTitle('Training Session Setup')
+    .setDescription(
+      'Choose the hotel you are training for.\n' +
+      'Training sessions are tracked separately from live shifts.'
+    )
+    .setColor(0x5865F2);
+
+  const payload = { content: null, embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true };
+
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(payload);
+  } else if (isUpdate) {
+    await interaction.update(payload);
+  } else {
+    await interaction.reply(payload);
+  }
+}
+
+async function handleTrainingStartClick(interaction) {
+  try {
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
+    }
+
+    return await showTrainingHotelSelection(interaction);
+  } catch (error) {
+    console.error('Error in handleTrainingStartClick:', error);
+    if (error?.code === 10062) return;
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to open the training selector.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to open the training selector.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleTrainingHotelSelectMenu(interaction) {
+  try {
+    const hotelId = interaction.values[0];
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
+    }
+
+    await showPinModal(interaction, hotelId, false, false, 'training');
+  } catch (error) {
+    console.error('Error in handleTrainingHotelSelectMenu:', error);
+    if (error?.code === 10062) return;
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to open the training PIN modal.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to open the training PIN modal.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 // ─── Hotel Select Menu Handler (Premium Dropdown) ────────────────────────
 async function handleHotelSelectMenu(interaction) {
   try {
@@ -2610,6 +2843,13 @@ async function handleModalSubmit(interaction) {
     if (!interaction.customId.startsWith('loginmodal_')) return;
 
     let modalPayload = interaction.customId.replace('loginmodal_', '');
+    let sessionMode = 'shift';
+    if (modalPayload.startsWith('training_')) {
+      sessionMode = 'training';
+      modalPayload = modalPayload.slice(9);
+    } else if (modalPayload.startsWith('shift_')) {
+      modalPayload = modalPayload.slice(6);
+    }
     const allowMultiHotel = modalPayload.endsWith('_multi');
     if (allowMultiHotel) modalPayload = modalPayload.slice(0, -6);
     const isTakeover = modalPayload.endsWith('_takeover');
@@ -2621,7 +2861,7 @@ async function handleModalSubmit(interaction) {
       return interaction.editReply({ content: '❌ **Incorrect PIN.** Access denied.' });
     }
 
-    await finalizeShiftLogin(interaction, agent, hotelId, isTakeover, allowMultiHotel);
+    await finalizeShiftLogin(interaction, agent, hotelId, isTakeover, allowMultiHotel, sessionMode);
     return;
 
     // Submission Guard: Block double-submissions within 5 seconds for the same hotel/agent
@@ -2770,15 +3010,17 @@ async function handleModalSubmit(interaction) {
 
     console.log(`[LOGIN] ${interaction.user.username} → ${hotelName}`);
 
-    const auditUnix = Math.floor(Date.now() / 1000);
-    const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
-    sendAuditLog(interaction.client, {
-      title: hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In',
-      description: `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
-      color: 0x57F287,
-      userId: interaction.user.id,
-      guild: interaction.guild
-    });
+  const auditUnix = Math.floor(Date.now() / 1000);
+  const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
+  sendAuditLog(interaction.client, {
+    title: sessionMode === 'training' ? '🧭 Agent Training Started' : (hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In'),
+    description: sessionMode === 'training'
+      ? `**User:** ${nickname} (<@${interaction.user.id}>)\n**Training For:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`
+      : `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
+    color: 0x57F287,
+    userId: interaction.user.id,
+    guild: interaction.guild
+  });
 
       // Simplified notification (Discord only)
 

@@ -90,9 +90,11 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 - Current display set:
   - `BW_TO`: Indianhead/Magnuson
   - `GICP`: The Garden Inn At Campsite
-  - `SUP8`: Super 8
-  - `RMDA`: Ramada
+  - `RMDA` / `SUP8`: Ramada / Super 8
   - `AD1`: AD1
+- Ramada and Super 8 share the same live login/status channel: `1483417977859870881`
+- Team Leader status board lives in `1486347360417349682`
+- Training status board lives in `1486623221225750660`
 
 ## Logging SOP
 - Every meaningful feature/fix must be appended to:

@@ -32,6 +32,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id INTEGER NOT NULL,
     hotel_id TEXT NOT NULL,
+    session_kind TEXT DEFAULT 'shift',
     login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     logout_time DATETIME,
     status TEXT DEFAULT 'active',
@@ -177,7 +178,6 @@ db.exec(`
   -- Seed hotel_status
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('BW_TO');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('GICP');
-  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('SUP8');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('RMDA');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('AD1');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('TEAM_SHIFT');
@@ -212,6 +212,11 @@ db.pragma('foreign_keys = ON');
     if (!tableInfo.find(col => col.name === 'agent_status')) {
       db.prepare("ALTER TABLE agents ADD COLUMN agent_status TEXT DEFAULT 'standby'").run();
     }
+    const sessionTableInfo = db.prepare("PRAGMA table_info(sessions)").all();
+    if (!sessionTableInfo.find(col => col.name === 'session_kind')) {
+      db.prepare("ALTER TABLE sessions ADD COLUMN session_kind TEXT DEFAULT 'shift'").run();
+    }
+    db.prepare("UPDATE sessions SET session_kind = 'shift' WHERE session_kind IS NULL OR session_kind = ''").run();
     db.prepare("UPDATE agents SET agent_status = 'standby' WHERE agent_status IS NULL").run();
     db.transaction(() => {
       db.prepare("UPDATE agents SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();

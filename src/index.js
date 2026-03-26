@@ -434,6 +434,8 @@ client.on('interactionCreate', async interaction => {
       await profilePanel.handleButton(interaction);
     } else if (interaction.customId === 'start_shift_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
       await auth.handleStartShiftClick(interaction);
+    } else if (interaction.customId === 'training_start_btn') {
+      await auth.handleTrainingStartClick(interaction);
     } else if (interaction.customId === 'security_setup_btn') {
       await auth.handleSecuritySetupStart(interaction);
     } else if (interaction.customId === 'register_start_btn') {
@@ -506,6 +508,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleShiftHotelPickMenu(interaction);
     } else if (interaction.customId === 'hotel_select_menu') {
       await auth.handleHotelSelectMenu(interaction);
+    } else if (interaction.customId === 'training_hotel_select_menu') {
+      await auth.handleTrainingHotelSelectMenu(interaction);
     }
   }
   } catch (error) {
