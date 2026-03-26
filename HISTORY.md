@@ -39,6 +39,7 @@ Working rules:
 - Added automatic DB cleanup when members leave the server.
 - Hardened bot lifecycle visibility with a dedicated developer bot-status surface.
 - Unified the shift entry flow so trainees are routed to training only, and merged Ramada / Super 8 into one combined hotel choice in the login and shift pickers.
+- Fixed the trainee login path so `Initialize Shift` goes to training first, and the first training PIN submit can create the missing agent row instead of rejecting the user.
 - Normalized the DB-first permission hierarchy around:
   - `agent`
   - `sme`

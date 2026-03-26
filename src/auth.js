@@ -2250,6 +2250,10 @@ async function handleDenyReg(interaction) {
 // ─── Start Shift Button Click ────────────────────────
 async function handleStartShiftClick(interaction) {
   try {
+    if (isTraineeMember(interaction) && interaction.customId !== 'tl_start_shift_btn') {
+      return await showTrainingHotelSelection(interaction, true);
+    }
+
     const isTLButton = interaction.customId === 'tl_start_shift_btn';
     const allowMultiHotel = interaction.customId === 'start_shift_multi_confirm_btn' || interaction.customId === 'tl_start_shift_multi_confirm_btn';
     const discordId = interaction.user.id;
@@ -2263,17 +2267,12 @@ async function handleStartShiftClick(interaction) {
 
     const role = normalizeAgentRole(agent.role);
     const isTLOrSME = interactionHasRoleAtLeast(interaction, 'sme');
-    const isTraineeOnly = isTraineeMember(interaction);
 
     if (isTLButton && !isTLOrSME) {
       return interaction.reply({ 
         content: `❌ **Access Denied.** This portal is reserved for **Team Leaders** and **Subject Matter Experts**. \n\n*Your current role is:* **${role.charAt(0).toUpperCase() + role.slice(1).replace('_', ' ')}**` ,
         ephemeral: true
       });
-    }
-
-    if (isTraineeOnly) {
-      return await showTrainingHotelSelection(interaction, true);
     }
 
     // Check if agent is already on shift
@@ -2638,13 +2637,13 @@ async function showTrainingHotelSelection(interaction, isUpdate = false) {
 
 async function handleShiftModePrompt(interaction) {
   try {
+    if (isTraineeMember(interaction)) {
+      return await showTrainingHotelSelection(interaction);
+    }
+
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return interaction.reply({ content: 'âŒ You are not registered as an agent.', ephemeral: true });
-    }
-
-    if (isTraineeMember(interaction)) {
-      return await showTrainingHotelSelection(interaction);
     }
 
     const embed = new EmbedBuilder()
@@ -2683,13 +2682,13 @@ async function handleShiftModePrompt(interaction) {
 
 async function handleShiftRolePrompt(interaction) {
   try {
+    if (isTraineeMember(interaction)) {
+      return await showTrainingHotelSelection(interaction);
+    }
+
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
-    }
-
-    if (isTraineeMember(interaction)) {
-      return await showTrainingHotelSelection(interaction);
     }
 
     const embed = new EmbedBuilder()
@@ -2737,13 +2736,13 @@ async function handleShiftRolePrompt(interaction) {
 
 async function handleAgentRoutePick(interaction) {
   try {
+    if (isTraineeMember(interaction)) {
+      return await showTrainingHotelSelection(interaction, true);
+    }
+
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
-    }
-
-    if (isTraineeMember(interaction)) {
-      return await showTrainingHotelSelection(interaction, true);
     }
 
     const embed = new EmbedBuilder()
@@ -2865,11 +2864,6 @@ async function handleManagementTeamStart(interaction, teamName) {
 
 async function handleTrainingStartClick(interaction) {
   try {
-    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
-    if (!agent) {
-      return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
-    }
-
     return await showTrainingHotelSelection(interaction);
   } catch (error) {
     console.error('Error in handleTrainingStartClick:', error);
@@ -2885,11 +2879,6 @@ async function handleTrainingStartClick(interaction) {
 async function handleTrainingHotelSelectMenu(interaction) {
   try {
     const hotelId = normalizeCombinedHotelId(interaction.values[0]);
-    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
-    if (!agent) {
-      return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
-    }
-
     await showPinModal(interaction, hotelId, false, false, 'training');
   } catch (error) {
     console.error('Error in handleTrainingHotelSelectMenu:', error);
@@ -3214,6 +3203,15 @@ async function handleModalSubmit(interaction) {
     }
     const pin = interaction.fields.getTextInputValue('pin_input');
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+
+    if (!agent && sessionMode === 'training') {
+      const username = interaction.member?.displayName || interaction.user.username;
+      db.prepare(`
+        INSERT INTO agents (discord_id, username, pin, role, agent_status, team, hotel_id)
+        VALUES (?, ?, ?, ?, ?, NULL, NULL)
+      `).run(interaction.user.id, username, pin, 'agent', 'standby');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    }
 
     if (!agent || agent.pin !== pin) {
       return interaction.editReply({ content: '❌ **Incorrect PIN.** Access denied.' });
