@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Simplify role-sync logging and store hotel compatibility in the database.
+  - Summary: The role sync now prints only the important changes instead of a long snapshot line, and it also saves hotel compatibility in the agents table so the bot can fall back to stored hotel access if Discord role data is missing or stale.
+  - Files touched:
+    - src/auth.js
+    - src/database.js
+    - HISTORY.md
 - Keep training sessions out of live hotel status cards and add an End-training button to the training board.
   - Summary: Live hotel boards now ignore training sessions completely, so trainees only appear in the training status channel. The training board also gets a red End-training button that ends the trainee's session through the normal logout flow.
   - Files touched:

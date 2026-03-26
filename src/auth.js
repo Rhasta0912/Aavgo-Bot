@@ -1759,15 +1759,33 @@ function getDiscordRoleSyncSnapshot(member) {
   return { role: null, team: teamName };
 }
 
+function getDiscordHotelCompatibilitySnapshot(member) {
+  const hotelIds = Object.entries(ROLE_NAMES.GREY)
+    .filter(([, roleId]) => member?.roles?.cache?.has(roleId))
+    .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
+
+  return [...new Set(hotelIds)];
+}
+
+function serializeHotelCompatibility(hotelIds) {
+  return JSON.stringify([...new Set((hotelIds || []).filter(Boolean))]);
+}
+
+function formatHotelCompatibilityLabel(hotelIds) {
+  const labels = [...new Set((hotelIds || []).filter(Boolean))].map(getCombinedHotelLabel);
+  return labels.length > 0 ? labels.join(', ') : 'none';
+}
+
 async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, contextLabel = 'ROLE SYNC') {
   try {
     if (!member || !guild) return null;
 
     const snapshot = getDiscordRoleSyncSnapshot(member);
+    const hotelCompatibility = getDiscordHotelCompatibilitySnapshot(member);
+    const hotelCompatibilityValue = serializeHotelCompatibility(hotelCompatibility);
 
     const displayName = member.displayName || member.user?.username || member.user?.tag || 'Unknown';
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
-    console.log(`[${contextLabel}] Snapshot for ${displayName}: role=${snapshot.role || 'none'} team=${snapshot.team || 'none'} existing=${existing ? 'yes' : 'no'}`);
 
     if (existing) {
       const updates = [];
@@ -1788,19 +1806,23 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
         params.push(snapshot.team);
       }
 
+      if ((existing.hotel_compatibility || '[]') !== hotelCompatibilityValue) {
+        updates.push('hotel_compatibility = ?');
+        params.push(hotelCompatibilityValue);
+      }
+
       if (updates.length > 0) {
         params.push(member.id);
         db.prepare(`UPDATE agents SET ${updates.join(', ')} WHERE discord_id = ?`).run(...params);
-        console.log(`[${contextLabel}] Synced agent row for ${displayName}: ${updates.join(', ')}`);
-      } else {
-        console.log(`[${contextLabel}] No DB change needed for ${displayName}`);
+        const resolvedRole = snapshot.role || normalizeAgentRole(existing.role);
+        const resolvedTeam = snapshot.team || existing.team || 'none';
+        console.log(`[${contextLabel}] Updated ${displayName}: role=${resolvedRole} team=${resolvedTeam} hotels=${formatHotelCompatibilityLabel(hotelCompatibility)}`);
       }
 
       return { action: 'updated', role: snapshot.role || normalizeAgentRole(existing.role), team: snapshot.team || existing.team || null };
     }
 
     if (!snapshot.role) {
-      console.log(`[${contextLabel}] Skipped ${displayName}: no recognized staff role found.`);
       return null;
     }
 
@@ -1808,13 +1830,13 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
     const bootstrapStatus = bootstrapRole === 'trainee' ? 'standby' : 'ready';
     const bootstrapPin = String(Math.floor(100000 + Math.random() * 900000));
     db.prepare(
-      "INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, team) VALUES (?, ?, ?, 0, ?, ?, ?)"
-    ).run(member.id, displayName, bootstrapPin, bootstrapRole, bootstrapStatus, snapshot.team || null);
+      "INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, team, hotel_compatibility) VALUES (?, ?, ?, 0, ?, ?, ?, ?)"
+    ).run(member.id, displayName, bootstrapPin, bootstrapRole, bootstrapStatus, snapshot.team || null, hotelCompatibilityValue);
 
-    console.log(`[${contextLabel}] Created missing agent row for ${displayName} with role ${bootstrapRole}`);
+    console.log(`[${contextLabel}] Created ${displayName}: role=${bootstrapRole} team=${snapshot.team || 'none'} hotels=${formatHotelCompatibilityLabel(hotelCompatibility)}`);
     return { action: 'created', role: bootstrapRole, team: snapshot.team || null };
   } catch (error) {
-    console.warn(`[${contextLabel}] Failed to sync agent row from Discord roles:`, error.message);
+    console.warn(`[${contextLabel}] Role sync failed for ${member?.displayName || member?.user?.username || member?.id || 'unknown'}:`, error.message);
     return null;
   }
 }
@@ -2534,7 +2556,14 @@ async function handleStartShiftClick(interaction) {
     const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
       .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && interaction.member.roles.cache.has(roleId))
       .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
-    const uniqueAssignedHotelIds = [...new Set(assignedHotelIds)];
+    const compatibilityHotelIds = (() => {
+      try {
+        return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
+      } catch {
+        return [];
+      }
+    })();
+    const uniqueAssignedHotelIds = [...new Set([...assignedHotelIds, ...compatibilityHotelIds])];
     if (uniqueAssignedHotelIds.length > 1) {
       return await showAssignedHotelShiftPicker(interaction, uniqueAssignedHotelIds, allowMultiHotel);
     }
@@ -3196,7 +3225,8 @@ async function handleConfirmHotelLink(interaction) {
     }
 
     // Permanent Linkage: Save selection to agent profile and assign Grey role
-    db.prepare('UPDATE agents SET hotel_id = ? WHERE discord_id = ?').run(hotelId, discordId);
+    db.prepare('UPDATE agents SET hotel_id = ?, hotel_compatibility = ? WHERE discord_id = ?')
+      .run(hotelId, serializeHotelCompatibility([hotelId]), discordId);
     
     // Sync Grey Role (Ghost role) immediately
     try {
@@ -5591,7 +5621,8 @@ async function handleDbAssignHotel(interaction) {
     const syncPermission = syncMode === 'permission' || syncMode === 'both';
     const syncGhost = syncMode === 'ghost' || syncMode === 'both';
 
-    db.prepare("UPDATE agents SET hotel_id = ? WHERE discord_id = ?").run(hotelId, target.id);
+    db.prepare("UPDATE agents SET hotel_id = ?, hotel_compatibility = ? WHERE discord_id = ?")
+      .run(hotelId, serializeHotelCompatibility([hotelId]), target.id);
     
     await interaction.reply({ 
       content: `✅ Successfully linked **${target.username}** permanently to **${getCombinedHotelLabel(hotelId)}**.\nRole sync mode: **${syncMode}**.`, 
@@ -5700,6 +5731,8 @@ async function handleAddHotelShifts(interaction) {
         created_by = excluded.created_by,
         created_at = CURRENT_TIMESTAMP
     `).run(agent.id, hotelOne, hotelTwo, interaction.user.id);
+    db.prepare("UPDATE agents SET hotel_compatibility = ? WHERE id = ?")
+      .run(serializeHotelCompatibility([hotelOne, hotelTwo]), agent.id);
 
     let roleSyncNote = '';
     try {

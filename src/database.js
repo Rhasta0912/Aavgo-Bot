@@ -18,6 +18,7 @@ db.exec(`
     role TEXT DEFAULT 'agent',
     agent_status TEXT DEFAULT 'standby',
     team TEXT,
+    hotel_compatibility TEXT DEFAULT '[]',
     phone TEXT,
     approval_message_id TEXT,
     FOREIGN KEY (hotel_id) REFERENCES hotels(id)
@@ -216,7 +217,11 @@ db.pragma('foreign_keys = ON');
     if (!tableInfo.find(col => col.name === 'pin_is_set')) {
       db.prepare("ALTER TABLE agents ADD COLUMN pin_is_set INTEGER DEFAULT 1").run();
     }
+    if (!tableInfo.find(col => col.name === 'hotel_compatibility')) {
+      db.prepare("ALTER TABLE agents ADD COLUMN hotel_compatibility TEXT DEFAULT '[]'").run();
+    }
     db.prepare("UPDATE agents SET pin_is_set = 1 WHERE pin_is_set IS NULL").run();
+    db.prepare("UPDATE agents SET hotel_compatibility = '[]' WHERE hotel_compatibility IS NULL OR hotel_compatibility = ''").run();
     const sessionTableInfo = db.prepare("PRAGMA table_info(sessions)").all();
     if (!sessionTableInfo.find(col => col.name === 'session_kind')) {
       db.prepare("ALTER TABLE sessions ADD COLUMN session_kind TEXT DEFAULT 'shift'").run();
