@@ -867,10 +867,21 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     ).get(hotelId, agent.id);
 
     if (conflictingSession && !isTakeover) {
+      const otherAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(conflictingSession.agent_id);
+      const promptEmbed = buildShiftConflictEmbed(hotelId, otherAgent, conflictingSession.login_time);
+      const takeoverBtn = new ButtonBuilder()
+        .setCustomId(`takeover_btn_${hotelId}`)
+        .setLabel('🚧 Take Over Shift')
+        .setStyle(ButtonStyle.Success);
+
+      const cancelBtn = new ButtonBuilder()
+        .setCustomId('cancel_takeover_btn')
+        .setLabel('⬅️ Cancel')
+        .setStyle(ButtonStyle.Secondary);
+
       return interaction.editReply({
-        content: `Another agent is already active in **${getCombinedHotelLabel(hotelId)}**. Please use the takeover flow instead.`,
-        embeds: [],
-        components: []
+        embeds: [promptEmbed],
+        components: [new ActionRowBuilder().addComponents(takeoverBtn, cancelBtn)]
       });
     }
 
@@ -1668,6 +1679,29 @@ async function promptForPinSetup(interaction, hotelName = 'Shift', sessionMode =
     return interaction.editReply({ embeds: [setupEmbed], components: [row] });
   }
   return interaction.reply({ embeds: [setupEmbed], components: [row], ephemeral: true });
+}
+
+function buildShiftConflictEmbed(hotelId, otherAgent, loginTime = null) {
+  const hotelName = getCombinedHotelLabel(hotelId);
+  const sinceLabel = loginTime ? formatLoginTimeLabel(loginTime) : 'Unknown';
+
+  return new EmbedBuilder()
+    .setTitle(`⚠️ Aavgo Operations · ${hotelName} Conflict`)
+    .setDescription(
+      `### ⚠️ SHIFT ALREADY ACTIVE\n` +
+      '────────────────────────\n' +
+      `**🤖 Board:** Another live session is already running for this hotel.\n` +
+      `**📍 Hotel:** ${hotelName}\n` +
+      '────────────────────────'
+    )
+    .addFields(
+      { name: '👤 Active Agent', value: otherAgent?.username ? `**${otherAgent.username}**` : 'Unknown Agent', inline: true },
+      { name: '📅 Since', value: sinceLabel, inline: true },
+      { name: '🛡️ Next Step', value: 'Use the takeover flow below if you are authorized to replace this live session.', inline: false }
+    )
+    .setColor(0xFEE75C)
+    .setFooter({ text: 'Aavgo Operations • Shift Control' })
+    .setTimestamp();
 }
 
 function isTraineeMember(interaction) {
@@ -2621,23 +2655,17 @@ async function handleShiftHotelPickMenu(interaction) {
 
     if (hotelSession) {
       const otherAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(hotelSession.agent_id);
-      const promptEmbed = new EmbedBuilder()
-        .setTitle('⚠️ Overlapping Shift Detected')
-        .setDescription(
-          `Agent **${otherAgent?.username || 'Unknown Agent'}** is currently logged into **${getCombinedHotelLabel(hotelId)}**.\n\n` +
-          'Are you sure you want to take over this shift?'
-        )
-        .setColor(0xFEE75C);
+      const promptEmbed = buildShiftConflictEmbed(hotelId, otherAgent, hotelSession.login_time);
 
       const takeoverId = allowMultiHotel ? `takeover_btn_${hotelId}_multi` : `takeover_btn_${hotelId}`;
       const takeOverBtn = new ButtonBuilder()
         .setCustomId(takeoverId)
-        .setLabel('Yes, Take Over Shift')
+        .setLabel('🚧 Take Over Shift')
         .setStyle(ButtonStyle.Success);
 
       const cancelBtn = new ButtonBuilder()
         .setCustomId('cancel_takeover_btn')
-        .setLabel('Cancel')
+        .setLabel('⬅️ Cancel')
         .setStyle(ButtonStyle.Secondary);
 
       return interaction.update({
@@ -2864,17 +2892,18 @@ async function handleShiftRolePrompt(interaction) {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('Aavgo Operations - Shift Access')
+      .setTitle(`🛡️ Aavgo Operations · ${roleLabel} Route`)
       .setDescription(
-        '# Initialize Shift\n' +
-        '### Choose Your Access Route\n\n' +
-        '──────────────────────────────\n' +
-        '1. **Agent**\n' +
-        '2. **Team Leader**\n' +
-        '3. **SME**\n' +
-        '──────────────────────────────'
+        '### ✅ ACCESS ROUTE READY\n' +
+        '────────────────────────\n' +
+        '**🤖 Board:** Pick the shift lane that matches your role.\n' +
+        '**👤 Agent:** Hotel Shift or Training.\n' +
+        '**🧑‍💼 Team Leader / SME:** Team shift login.\n' +
+        '────────────────────────'
       )
-      .setColor(0x5865F2);
+      .setColor(0x5865F2)
+      .setFooter({ text: 'Aavgo Operations • Role Routing' })
+      .setTimestamp();
 
     const agentBtn = new ButtonBuilder()
       .setCustomId('shift_role_agent_btn')
@@ -2918,16 +2947,18 @@ async function handleAgentRoutePick(interaction) {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('Aavgo Operations - Agent Route')
+      .setTitle('🛡️ Aavgo Operations · Agent Route')
       .setDescription(
-        '# Agent Shift Route\n' +
-        '### Select Session Type\n\n' +
-        '──────────────────────────────\n' +
-        '- **Hotel Shift** (live operations)\n' +
-        '- **Training** (practice mode)\n' +
-        '──────────────────────────────'
+        '### ✅ SESSION TYPE SELECTED\n' +
+        '────────────────────────\n' +
+        '**🤖 Board:** Choose how this session should run.\n' +
+        '**🟦 Live:** Hotel Shift for normal operations.\n' +
+        '**🟪 Practice:** Training for trainee sessions.\n' +
+        '────────────────────────'
       )
-      .setColor(0x5865F2);
+      .setColor(0x5865F2)
+      .setFooter({ text: 'Aavgo Operations • Session Routing' })
+      .setTimestamp();
 
     const hotelBtn = new ButtonBuilder()
       .setCustomId('shift_mode_hotel_btn')
@@ -2936,7 +2967,7 @@ async function handleAgentRoutePick(interaction) {
 
     const trainingBtn = new ButtonBuilder()
       .setCustomId('training_start_btn')
-      .setLabel('Training')
+      .setLabel('🧭 Training')
       .setStyle(ButtonStyle.Secondary);
 
     return sendComponentUpdate(interaction, {

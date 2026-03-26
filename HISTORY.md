@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Improve the agent login route and takeover conflict prompts to match the cleaner operational card style.
+  - Summary: The login route panels now use stronger status-led embeds, clearer labels, and a proper structured takeover conflict card instead of a plain text warning. Training remains multi-person friendly because the training board lists every active trainee in each group.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Restyle the training status board to match the cleaner status-card UI system.
   - Summary: The training board now uses a stronger title, a clear live/idle status line, separator blocks, and emoji-labeled group fields so it reads more like the other operational cards in the bot.
   - Files touched:
