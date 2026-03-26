@@ -1,9 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const db = require('./database');
 const { sendAuditLog, HOTEL_NAMES, HOTEL_LOGIN_CHANNELS, updateHotelStatusEmbed, isDeveloper, interactionHasRoleAtLeast } = require('./auth');
-const whatsapp = {
-  sendToWhatsApp: async () => false
-};
 
 const TL_ALERT_CHANNEL_ID = '1482222657935118487';
 const TL_TOOLS_CHANNEL_ID = '1482222657935118487';
@@ -341,9 +338,6 @@ async function handleBioBreak(interaction) {
       hotelId: session.hotel_id
     });
     
-    // WhatsApp Bridge
-    whatsapp.sendToWhatsApp(`🚽 *BIO BREAK STARTED*\n\n*User:* ${interaction.user.username}\n*Hotel:* ${hotelName}\n*Time:* ${new Date().toLocaleTimeString()}`, session.hotel_id);
-
   } catch (error) {
     console.error('Error in handleBioBreak:', error);
   }
@@ -429,8 +423,6 @@ async function handleBioApprove(interaction) {
         hotelId: session.hotel_id
       });
       
-      // WhatsApp Bridge
-      whatsapp.sendToWhatsApp(`${breakEmoji} *${requestType.toUpperCase()} STARTED*\n\n*User:* ${agentMember.user.username}\n*Hotel:* ${hotelName}\n*Approved By:* ${interaction.user.username}\n*Time:* ${new Date().toLocaleTimeString()}`, session.hotel_id);
     }
 
     activeBioBreaks.set(agentId, { startTime: Date.now(), type: requestType });
@@ -600,15 +592,6 @@ async function handleEndBioBreak(interaction) {
       hotelId: (db.prepare("SELECT hotel_id FROM sessions WHERE agent_id = (SELECT id FROM agents WHERE discord_id = ?) AND status = 'active'").get(userId))?.hotel_id
     });
     
-    // WhatsApp Bridge
-    const agentData = db.prepare("SELECT id FROM agents WHERE discord_id = ?").get(userId);
-    if (agentData) {
-      const sess = db.prepare("SELECT hotel_id FROM sessions WHERE agent_id = ? AND status = 'active'").get(agentData.id);
-      if (sess) {
-        whatsapp.sendToWhatsApp(`${breakEmoji} *${requestType.toUpperCase()} ENDED*\n\n*User:* ${interaction.user.username}\n*Duration:* ${minutes}m ${seconds}s`, sess.hotel_id);
-      }
-    }
-
   } catch (error) {
     console.error('Error in handleEndBioBreak:', error);
   }
@@ -657,16 +640,7 @@ async function handleAgentCallStart(interaction) {
 
     await interaction.deferReply({ ephemeral: true });
 
-    // 2. WhatsApp Audit Alert
-    let whatsappError = null;
-    try {
-        const success = await whatsapp.sendToWhatsApp(`🚨 *AGENT AUDIT ALERT* 🚨\n\n*Agent:* <@${targetId}>\n*Action Required:* Agent is being audited. Please acknowledge if they are responsive.\n\n_Sent via Aavgo Management Bridge_`);
-        if (!success) whatsappError = 'WhatsApp bridge not ready or group not linked.';
-    } catch (err) {
-        whatsappError = err.message;
-    }
-
-    // 3. Discord Audit Check
+    // 2. Discord Audit Check
     const guild = interaction.guild;
     const member = await guild.members.fetch(targetId);
     
@@ -677,10 +651,10 @@ async function handleAgentCallStart(interaction) {
        attentive = true; // Simple heuristic: Being in a VC is "attentive"
     }
 
-    // 4. Result UI
+    // 3. Result UI
     const resultEmbed = new EmbedBuilder()
       .setTitle(attentive ? '✅ Agent is Attentive and Active!' : '⚠️ Agent Audit: Potential Inactivity')
-      .setDescription(`**Audited agent:** <@${targetId}>\n**Status:** ${attentive ? 'Connected to Voice Channel' : 'NOT in Voice Channel'}\n**WhatsApp Alert:** ${whatsappError ? `❌ Failed: \`${whatsappError}\`` : '✅ Sent to Group'}`)
+      .setDescription(`**Audited agent:** <@${targetId}>\n**Status:** ${attentive ? 'Connected to Voice Channel' : 'NOT in Voice Channel'}\n**Portal Notice:** Logged in Discord only.`)
       .setColor(attentive ? 0x57F287 : 0xED4245)
       .setTimestamp();
 

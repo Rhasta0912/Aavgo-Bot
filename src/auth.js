@@ -12,9 +12,6 @@ const {
 } = require('discord.js');
 const db = require('./database');
 const { execSync } = require('child_process');
-const whatsapp = {
-  sendToWhatsApp: async () => false
-};
 
 // ─── Identity Helpers ────────────────────────────────
 async function getAgentDisplayName(guild, discordId) {
@@ -3129,9 +3126,6 @@ async function handleActivityModalSubmit(interaction) {
         ]
       });
 
-      const waAlertMsg = `*MAINTENANCE ALERT*\n*Hotel:* ${hotelName}\n*Agent:* ${nickname}\n*Room:* ${room}\n*Category:* ${cat}\n*Issue:* ${desc}`;
-      await whatsapp.sendToWhatsApp(waAlertMsg, hotelId);
-
       return await interaction.editReply({ content: `Success: **Maintenance issue** reported for Room **${room}**.` });
       
       await sendAuditLog(interaction.client, { 
@@ -3142,9 +3136,6 @@ async function handleActivityModalSubmit(interaction) {
         userId: interaction.user.id,
         guild: interaction.guild
       });
-
-      const waMsg = `🚨 *MAINTENANCE ALERT*\n*Hotel:* ${hotelName}\n*Agent:* ${nickname}\n*Room:* ${room}\n*Category:* ${cat}\n*Issue:* ${desc}`;
-      await whatsapp.sendToWhatsApp(waMsg, hotelId);
 
       return await interaction.editReply({ content: `Success: **Maintenance issue** reported for Room **${room}**.` });
     }
@@ -3214,16 +3205,6 @@ async function handleActivityModalSubmit(interaction) {
       fields: detailFields
     });
 
-    // WhatsApp Notification
-    const waDetailLines = Object.entries(details).map(([k, v]) => `  - *${k}:* ${v || 'N/A'}`).join('\n');
-    const waActivityMsg = `*${hotelName} Operational Log*\n` +
-                  `*Agent:* ${nickname}\n` +
-                  `*Type:* ${type.toUpperCase()}\n` +
-                  `*Guest:* ${guest_name}\n` +
-                  `*Details:*\n${waDetailLines}`;
-
-    await whatsapp.sendToWhatsApp(waActivityMsg, hotelId);
-
     return await interaction.editReply({ content: `Success: **${type.toUpperCase()}** logged successfully for **${guest_name}**.` });
 
     const auditInfo = `**Agent:** ${nickname}\n**Hotel:** ${hotelName}\n**Type:** ${type.toUpperCase()}\n**Guest:** ${guest_name}`;
@@ -3236,16 +3217,6 @@ async function handleActivityModalSubmit(interaction) {
       userId: interaction.user.id,
       guild: interaction.guild
     });
-
-    // WhatsApp Notification
-    const waDetails = Object.entries(details).map(([k, v]) => `  - *${k}:* ${v || 'N/A'}`).join('\n');
-    const waMsg = `*${hotelName} Operational Log*\n` +
-                  `*Agent:* ${nickname}\n` +
-                  `*Type:* ${type.toUpperCase()}\n` +
-                  `*Guest:* ${guest_name}\n` +
-                  `*Details:*\n${waDetails}`;
-    
-    await whatsapp.sendToWhatsApp(waMsg, hotelId);
 
     await interaction.editReply({ content: `✅ **${type.toUpperCase()}** logged successfully for **${guest_name}**.` });
   } catch (error) {
@@ -3819,12 +3790,8 @@ async function handleDbLogCheckin(interaction) {
       await channel.send({ embeds: [embed] });
     }
 
-    // WhatsApp Bridge
-    const waMsg = `🛎️ *GUEST CHECK-IN*\n\n*Guest:* ${guestName}\n*Handled by:* ${agentName}\n\n_Logged via Discord_`;
-    const success = await whatsapp.sendToWhatsApp(waMsg);
-
     await interaction.reply({ 
-      content: `✅ Check-in for **${guestName}** logged to portal and ${success ? 'WhatsApp Group' : '❌ WhatsApp (Bridge Error)'}.`, 
+      content: `✅ Check-in for **${guestName}** logged to portal.`, 
       ephemeral: true 
     });
 

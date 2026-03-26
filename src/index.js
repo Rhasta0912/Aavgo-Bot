@@ -236,11 +236,6 @@ client.once('ready', async () => {
   }
 });
 
-// Discord to WhatsApp Bridge (Multi-Channel Routing)
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-});
-
 client.on('guildMemberAdd', async member => {
   try {
     const applicantsRole = member.guild.roles.cache.get('1484919969689894912') || member.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');

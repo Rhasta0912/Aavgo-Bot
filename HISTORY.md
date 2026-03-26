@@ -214,6 +214,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Removed the dormant WhatsApp bridge from the live bot codebase by deleting `src/whatsapp.js`, removing all bridge calls from `auth.js` and `tools.js`, and clearing the empty `messageCreate` placeholder in `index.js`.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - src/tools.js
+    - src/whatsapp.js
+  - Notes:
+    - Live bot now runs Discord-only
+    - No WhatsApp bridge calls remain in the active source path
 - Removed retired `Value Suites` and `Russelville` hotel placeholders from the live hotel map, unified `Ramada` and `Super 8` to the shared login channel `1483417977859870881`, and updated the hotel seeds/migration so old hotel references are redirected into `Indianhead/Magnuson` instead of lingering in the active roster.
   - Files touched:
     - src/auth.js
