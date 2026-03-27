@@ -616,9 +616,12 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
   const activeText = activeSession
     ? `${hotelName(activeSession.hotel_id)} since ${dateTag(activeSession.login_time)}`
     : 'Not on an active shift';
-  const weeklyHours = formatHours(hourTotals?.weeklyHours || 0);
-  const monthlyHours = formatHours(hourTotals?.monthlyHours || 0);
-  const totalHours = formatHours(hourTotals?.allHours || 0);
+  const shiftWeeklyHours = formatHours(hourTotals?.shift?.weeklyHours || 0);
+  const shiftMonthlyHours = formatHours(hourTotals?.shift?.monthlyHours || 0);
+  const shiftAllTimeHours = formatHours(hourTotals?.shift?.allHours || 0);
+  const trainingWeeklyHours = formatHours(hourTotals?.training?.weeklyHours || 0);
+  const trainingMonthlyHours = formatHours(hourTotals?.training?.monthlyHours || 0);
+  const trainingAllTimeHours = formatHours(hourTotals?.training?.allHours || 0);
 
   const embed = new EmbedBuilder()
     .setTitle('✅ Active Agent · Verified')
@@ -634,9 +637,8 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
       `> 🏢 Primary Hotel: ${hotelName(agent.hotel_id)}\n` +
       `> 🔗 Hotel Pair: ${pairText}\n` +
       `> 🟢 Live Session: ${activeText}\n` +
-      `> ⏱️ Total Weekly Hours: ${weeklyHours} hrs (resets Monday 1:00 AM PH)\n` +
-      `> 🗓️ Total Monthly Hours: ${monthlyHours} hrs (resets 1st of month 1:00 AM PH)\n` +
-      `> 📊 Total All-Time Hours: ${totalHours} hrs\n` +
+      `> ✅ Live Shift Hours: Weekly ${shiftWeeklyHours} hrs | Monthly ${shiftMonthlyHours} hrs | All-Time ${shiftAllTimeHours} hrs\n` +
+      `> 🧪 Training Hours: Weekly ${trainingWeeklyHours} hrs | Monthly ${trainingMonthlyHours} hrs | All-Time ${trainingAllTimeHours} hrs\n` +
       '──────────────────────────────\n' +
       '*Review the profile below.*\n\n' +
       `**Reviewed by:** ${reviewerTag || 'System'}\n` +

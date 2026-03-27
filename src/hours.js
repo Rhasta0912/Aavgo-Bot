@@ -75,7 +75,7 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
   const monthlyStartMs = getMonthlyResetStartMs(nowMs);
 
   const sessions = db.prepare(`
-    SELECT login_time, logout_time, status
+    SELECT login_time, logout_time, status, session_kind
     FROM sessions
     WHERE agent_id = ?
   `).all(agentId);
@@ -86,9 +86,8 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
     WHERE agent_id = ?
   `).all(agentId);
 
-  let allMs = 0;
-  let weeklyMs = 0;
-  let monthlyMs = 0;
+  const shiftTotals = { allMs: 0, weeklyMs: 0, monthlyMs: 0 };
+  const trainingTotals = { allMs: 0, weeklyMs: 0, monthlyMs: 0 };
 
   for (const session of sessions) {
     const loginMs = parseDbTimestamp(session.login_time, NaN);
@@ -101,9 +100,13 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
     if (!Number.isFinite(logoutMs) || logoutMs <= loginMs) continue;
 
     const durationMs = logoutMs - loginMs;
-    allMs += durationMs;
-    weeklyMs += getOverlapMs(loginMs, logoutMs, weeklyStartMs, nowMs);
-    monthlyMs += getOverlapMs(loginMs, logoutMs, monthlyStartMs, nowMs);
+    const bucket = String(session.session_kind || 'shift').toLowerCase() === 'training'
+      ? trainingTotals
+      : shiftTotals;
+
+    bucket.allMs += durationMs;
+    bucket.weeklyMs += getOverlapMs(loginMs, logoutMs, weeklyStartMs, nowMs);
+    bucket.monthlyMs += getOverlapMs(loginMs, logoutMs, monthlyStartMs, nowMs);
   }
 
   for (const adjustment of adjustments) {
@@ -111,21 +114,35 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
     if (!Number.isFinite(hours) || hours === 0) continue;
 
     const adjustmentMs = hours * HOUR_MS;
-    allMs += adjustmentMs;
+    shiftTotals.allMs += adjustmentMs;
 
     const createdMs = parseDbTimestamp(adjustment.created_at, NaN);
     if (Number.isFinite(createdMs) && createdMs >= weeklyStartMs) {
-      weeklyMs += adjustmentMs;
+      shiftTotals.weeklyMs += adjustmentMs;
     }
     if (Number.isFinite(createdMs) && createdMs >= monthlyStartMs) {
-      monthlyMs += adjustmentMs;
+      shiftTotals.monthlyMs += adjustmentMs;
     }
   }
 
+  const combinedAllMs = shiftTotals.allMs + trainingTotals.allMs;
+  const combinedWeeklyMs = shiftTotals.weeklyMs + trainingTotals.weeklyMs;
+  const combinedMonthlyMs = shiftTotals.monthlyMs + trainingTotals.monthlyMs;
+
   return {
-    allHours: allMs / HOUR_MS,
-    weeklyHours: weeklyMs / HOUR_MS,
-    monthlyHours: monthlyMs / HOUR_MS,
+    allHours: combinedAllMs / HOUR_MS,
+    weeklyHours: combinedWeeklyMs / HOUR_MS,
+    monthlyHours: combinedMonthlyMs / HOUR_MS,
+    shift: {
+      allHours: shiftTotals.allMs / HOUR_MS,
+      weeklyHours: shiftTotals.weeklyMs / HOUR_MS,
+      monthlyHours: shiftTotals.monthlyMs / HOUR_MS
+    },
+    training: {
+      allHours: trainingTotals.allMs / HOUR_MS,
+      weeklyHours: trainingTotals.weeklyMs / HOUR_MS,
+      monthlyHours: trainingTotals.monthlyMs / HOUR_MS
+    },
     weeklyStartMs,
     monthlyStartMs
   };

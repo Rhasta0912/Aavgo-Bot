@@ -4320,9 +4320,8 @@ async function handleCheckHours(interaction) {
       .setDescription(
         `**Agent:** ${nickname} (<@${targetUser.id}>)\n\n` +
         `**⏱️ Activity Breakdown:**\n` +
-        `> **Weekly Hours:** \`${formatHours(totals.weeklyHours)} hrs\`\n` +
-        `> **Monthly Hours:** \`${formatHours(totals.monthlyHours)} hrs\`\n` +
-        `> **All-Time Hours:** \`${formatHours(totals.allHours)} hrs\`\n\n` +
+        `> **Live Shift:** Weekly \`${formatHours(totals.shift?.weeklyHours || 0)} hrs\` | Monthly \`${formatHours(totals.shift?.monthlyHours || 0)} hrs\` | All-Time \`${formatHours(totals.shift?.allHours || 0)} hrs\`\n` +
+        `> **Training:** Weekly \`${formatHours(totals.training?.weeklyHours || 0)} hrs\` | Monthly \`${formatHours(totals.training?.monthlyHours || 0)} hrs\` | All-Time \`${formatHours(totals.training?.allHours || 0)} hrs\`\n\n` +
         `**Reset Windows:**\n` +
         `> Weekly: Monday 1:00 AM Philippine Time\n` +
         `> Monthly: 1st of each month at 1:00 AM Philippine Time`

@@ -282,6 +282,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Separated training hours from live shift hours in the shared hour tracker. Profile cards and `/check-hours` now show distinct live-shift vs training weekly/monthly/all-time totals, while `/add-hours` continues to apply manual corrections to live shift hours only.
+  - Summary: Hours tracking now splits `session_kind = training` away from normal shift time, so training work does not blur into live shift totals.
+  - Files touched:
+    - src/hours.js
+    - src/profilePanel.js
+    - src/auth.js
+    - HISTORY.md
 - Added weekly and monthly hour totals to profile cards and hours tracking, with Monday 1:00 AM Philippine Time weekly resets and first-of-month 1:00 AM Philippine Time monthly resets. Also added `/add-hours` for management to append manual hours into an agent’s hour history, and updated `/check-hours` plus `/clear-hours` so they use the new shared hour-adjustment system.
   - Summary: Profiles now show `Total Weekly Hours` and `Total Monthly Hours` using the same shift-session math as `/check-hours`, and staff can manually correct totals with `/add-hours`.
   - Files touched:
