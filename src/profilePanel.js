@@ -23,7 +23,6 @@ const SME_ROLE_ID = '1482382342621233153';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 const DEVELOPER_ROLE_ID = '1482312134875418737';
 const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES];
-const ROLE_STEPS = ['agent', 'sme', 'team_leader', 'operations_manager'];
 const ROLE_LABELS = {
   trainee: 'Trainee',
   agent: 'Agent',
@@ -40,6 +39,21 @@ const TEAM_LEADER_ROLE_NAMES = ['team leader'];
 const OPERATIONS_MANAGER_ROLE_NAMES = ['operations manager'];
 const DEVELOPER_ROLE_NAMES = ['developer', 'developers'];
 const TEAM_ASSIGNMENT_ROLE_NAMES = ['team 1', 'team one', 'team 2', 'team two'];
+const HOTEL_IDS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1'];
+const HOTEL_GREY_ROLE_IDS = {
+  BW_TO: '1483429969807020032',
+  GICP: '1484531611549831189',
+  SUP8: '1483430096013623427',
+  RMDA: '1483430118016684135',
+  AD1: '1483430144449187923'
+};
+const HOTEL_GREEN_ROLE_IDS = {
+  BW_TO: '1482227783232000070',
+  GICP: '1484531060699168778',
+  SUP8: '1482227848440971408',
+  RMDA: '1483418491464843345',
+  AD1: '1483418531180843049'
+};
 
 function normalizeTeamName(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -66,6 +80,21 @@ function trimLabel(value, maxLength = 100) {
   const text = String(value || '').trim();
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1)}...`;
+}
+
+function serializeHotelSelection(ids = []) {
+  const cleaned = [...new Set((ids || []).map(id => String(id || '').trim().toUpperCase()).filter(id => HOTEL_IDS.includes(id)))];
+  return cleaned.length > 0 ? cleaned.join(',') : 'none';
+}
+
+function parseHotelSelection(value) {
+  if (!value || value === 'none') return [];
+  return [...new Set(
+    String(value)
+      .split(',')
+      .map(id => id.trim().toUpperCase())
+      .filter(id => HOTEL_IDS.includes(id))
+  )];
 }
 
 function roleLabel(role) {
@@ -251,21 +280,6 @@ function buildTeamRosterPayload(teamName, members) {
     embeds: [buildTeamRosterEmbed(teamName, members)],
     components
   };
-}
-
-function nextRole(currentRole) {
-  const normalized = String(currentRole || '').toLowerCase();
-  const index = ROLE_STEPS.indexOf(normalized);
-  if (index < 0) return 'sme';
-  if (index >= ROLE_STEPS.length - 1) return normalized;
-  return ROLE_STEPS[index + 1];
-}
-
-function previousRole(currentRole) {
-  const normalized = String(currentRole || '').toLowerCase();
-  const index = ROLE_STEPS.indexOf(normalized);
-  if (index <= 0) return 'agent';
-  return ROLE_STEPS[index - 1];
 }
 
 async function syncLeadershipDiscordRoles(member, role) {
@@ -590,47 +604,159 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
   return embed;
 }
 
-function buildMoreActionsRow(targetDiscordId) {
-  const menu = new StringSelectMenuBuilder()
-    .setCustomId(`profiles_more:${targetDiscordId}`)
-    .setPlaceholder('More actions')
-    .addOptions(
-      new StringSelectMenuOptionBuilder().setLabel('Refresh Profile').setDescription('Reload the profile card').setValue('refresh'),
-      new StringSelectMenuOptionBuilder().setLabel('Kick Agent').setDescription('Open kick confirmation').setValue('kick'),
-      new StringSelectMenuOptionBuilder().setLabel('Ban Agent').setDescription('Open ban confirmation').setValue('ban'),
-      new StringSelectMenuOptionBuilder().setLabel('Assign Team 1').setDescription('Move the agent to Team 1').setValue('assign_team_1'),
-      new StringSelectMenuOptionBuilder().setLabel('Assign Team 2').setDescription('Move the agent to Team 2').setValue('assign_team_2'),
-      new StringSelectMenuOptionBuilder().setLabel('Clear Team Assignment').setDescription('Remove explicit team assignment').setValue('clear_team'),
-      new StringSelectMenuOptionBuilder().setLabel('Clear Primary Hotel').setDescription('Unset the linked hotel').setValue('clear_hotel'),
-      new StringSelectMenuOptionBuilder().setLabel('Unlink Paired Hotels').setDescription('Remove paired hotel assignment').setValue('clear_pair'),
-      new StringSelectMenuOptionBuilder().setLabel('End Active Sessions').setDescription('Close open sessions for this agent').setValue('end_sessions'),
-      new StringSelectMenuOptionBuilder().setLabel('Remove Agent Record').setDescription('Delete database records only').setValue('remove_agent_record')
-    );
+function getHotelChoiceRows() {
+  const placeholders = HOTEL_IDS.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT id, name
+    FROM hotels
+    WHERE id IN (${placeholders})
+  `).all(...HOTEL_IDS);
 
-  return new ActionRowBuilder().addComponents(menu);
+  if (!rows || rows.length === 0) {
+    return HOTEL_IDS.map(id => ({ id, name: hotelName(id) }));
+  }
+
+  const byId = new Map(rows.map(row => [row.id, row]));
+  return HOTEL_IDS
+    .map(id => byId.get(id))
+    .filter(Boolean);
 }
 
-function buildActionButtonRow(targetDiscordId, currentRole, teamName) {
-  const normalizedRole = String(currentRole || '').toLowerCase();
-  const index = ROLE_STEPS.indexOf(normalizedRole);
-  const promoteDisabled = index >= ROLE_STEPS.length - 1;
-  const demoteDisabled = index <= 0;
-
+function buildProfileActionRow(targetDiscordId, teamName) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`profiles_promote:${targetDiscordId}`)
-      .setLabel('Promote')
-      .setStyle(ButtonStyle.Success)
-      .setDisabled(promoteDisabled),
+      .setCustomId(`profiles_set_role:${targetDiscordId}:${teamName}`)
+      .setLabel('Set Role')
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId(`profiles_demote:${targetDiscordId}`)
-      .setLabel('Demote')
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(demoteDisabled),
+      .setCustomId(`profiles_set_team:${targetDiscordId}:${teamName}`)
+      .setLabel('Set Team')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`profiles_set_hotel:${targetDiscordId}:${teamName}`)
+      .setLabel('Set Hotel')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`profiles_kick:${targetDiscordId}`)
+      .setLabel('Kick')
+      .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId(`profiles_back_team:${teamName}`)
-      .setLabel('Back to Team')
+      .setLabel('Back')
       .setStyle(ButtonStyle.Primary)
+  );
+}
+
+function buildBackToProfileRow(targetDiscordId, teamName) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`profiles_back_profile:${targetDiscordId}:${teamName}`)
+      .setLabel('Back')
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buildSetRoleMenuRow(targetDiscordId, teamName) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`profiles_set_role_pick:${targetDiscordId}:${teamName}`)
+      .setPlaceholder('Select role rank')
+      .addOptions(
+        new StringSelectMenuOptionBuilder().setLabel('Trainee').setDescription('Set as Trainee role').setValue('trainee'),
+        new StringSelectMenuOptionBuilder().setLabel('Agent').setDescription('Set as Agent role').setValue('agent'),
+        new StringSelectMenuOptionBuilder().setLabel('SME').setDescription('Set as Subject Matter Expert').setValue('sme'),
+        new StringSelectMenuOptionBuilder().setLabel('Team Leader').setDescription('Set as Team Leader').setValue('team_leader')
+      )
+  );
+}
+
+function buildSetTeamMenuRow(targetDiscordId, teamName) {
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`profiles_set_team_pick:${targetDiscordId}:${teamName}`)
+      .setPlaceholder('Select team')
+      .addOptions(
+        new StringSelectMenuOptionBuilder().setLabel(TEAM_1).setDescription('Assign Team 1 role').setValue(TEAM_1),
+        new StringSelectMenuOptionBuilder().setLabel(TEAM_2).setDescription('Assign Team 2 role').setValue(TEAM_2)
+      )
+  );
+}
+
+function buildSetHotelModeRow(targetDiscordId, teamName) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`profiles_set_hotel_mode_single:${targetDiscordId}:${teamName}`)
+      .setLabel('1 Hotel')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`profiles_set_hotel_mode_multi:${targetDiscordId}:${teamName}`)
+      .setLabel('+2 Hotels')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`profiles_back_profile:${targetDiscordId}:${teamName}`)
+      .setLabel('Back')
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buildSingleHotelMenuRow(targetDiscordId, teamName) {
+  const options = getHotelChoiceRows().map(row =>
+    new StringSelectMenuOptionBuilder()
+      .setLabel(trimLabel(row.name, 100))
+      .setDescription(trimLabel(`Assign ${row.name}`, 100))
+      .setValue(row.id)
+  );
+
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`profiles_set_hotel_single_pick:${targetDiscordId}:${teamName}`)
+      .setPlaceholder('Select one hotel')
+      .setOptions(options)
+  );
+}
+
+function buildMultiHotelMenuRow(targetDiscordId, teamName, selectedHotels = []) {
+  const selected = parseHotelSelection(serializeHotelSelection(selectedHotels));
+  const availableRows = getHotelChoiceRows().filter(row => !selected.includes(row.id));
+  const options = availableRows.map(row =>
+    new StringSelectMenuOptionBuilder()
+      .setLabel(trimLabel(row.name, 100))
+      .setDescription(trimLabel(`Add ${row.name}`, 100))
+      .setValue(row.id)
+  );
+  const fallbackOption = new StringSelectMenuOptionBuilder()
+    .setLabel('No more hotels available')
+    .setDescription('All available hotels are already selected')
+    .setValue('none');
+
+  const serialized = serializeHotelSelection(selected);
+  return new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(`profiles_set_hotel_multi_pick:${targetDiscordId}:${teamName}:${serialized}`)
+      .setPlaceholder(selected.length < 2 ? `Select hotel #${selected.length + 1}` : 'Add another hotel')
+      .setOptions(options.length > 0 ? options : [fallbackOption])
+      .setDisabled(options.length === 0)
+  );
+}
+
+function buildMultiHotelActionRow(targetDiscordId, teamName, selectedHotels = []) {
+  const selected = parseHotelSelection(serializeHotelSelection(selectedHotels));
+  const serialized = serializeHotelSelection(selected);
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`profiles_set_hotel_multi_add:${targetDiscordId}:${teamName}:${serialized}`)
+      .setLabel('+ Add Hotel')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(selected.length >= HOTEL_IDS.length),
+    new ButtonBuilder()
+      .setCustomId(`profiles_set_hotel_multi_save:${targetDiscordId}:${teamName}:${serialized}`)
+      .setLabel('Save Hotels')
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(selected.length < 2),
+    new ButtonBuilder()
+      .setCustomId(`profiles_back_profile:${targetDiscordId}:${teamName}`)
+      .setLabel('Back')
+      .setStyle(ButtonStyle.Secondary)
   );
 }
 
@@ -662,9 +788,188 @@ function buildConfirmRow(action, discordId) {
 
 function buildProfileRows(profile, teamName) {
   return [
-    buildActionButtonRow(profile.agent.discord_id, profile.agent.role, teamName),
-    buildMoreActionsRow(profile.agent.discord_id)
+    buildProfileActionRow(profile.agent.discord_id, teamName)
   ];
+}
+
+function buildConfigEmbed(title, description) {
+  return new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(0xF1C40F)
+    .setFooter({ text: 'Aavgo Operations - Profile Actions' })
+    .setTimestamp();
+}
+
+function summarizeHotelSelection(selectedHotels = []) {
+  const selected = parseHotelSelection(serializeHotelSelection(selectedHotels));
+  if (selected.length === 0) return 'No hotels selected yet.';
+  return selected.map((hotelId, index) => `${index + 1}. ${hotelName(hotelId)} (\`${hotelId}\`)`).join('\n');
+}
+
+async function syncTeamDiscordRoles(member, teamName) {
+  if (!member || !teamName) return;
+  const target = member.guild.roles.cache.find(role => String(role.name || '').toLowerCase() === String(teamName || '').toLowerCase());
+  const otherTeamName = teamName === TEAM_1 ? TEAM_2 : TEAM_1;
+  const other = member.guild.roles.cache.find(role => String(role.name || '').toLowerCase() === String(otherTeamName || '').toLowerCase());
+
+  if (other && member.roles.cache.has(other.id)) {
+    await member.roles.remove(other).catch(() => {});
+  }
+  if (target && !member.roles.cache.has(target.id)) {
+    await member.roles.add(target).catch(() => {});
+  }
+}
+
+async function syncBaseRoleDiscordRoles(member, roleValue) {
+  if (!member) return;
+
+  const traineeRole = member.guild.roles.cache.get(TRAINEE_ROLE_ID) ||
+    member.guild.roles.cache.find(role => String(role.name || '').toLowerCase() === 'trainees');
+  const agentsRole = member.guild.roles.cache.get(AGENT_ROLE_ID) ||
+    member.guild.roles.cache.find(role => String(role.name || '').toLowerCase() === 'agents');
+
+  const normalized = String(roleValue || '').toLowerCase();
+  if (normalized === 'trainee') {
+    if (agentsRole && member.roles.cache.has(agentsRole.id)) {
+      await member.roles.remove(agentsRole).catch(() => {});
+    }
+    if (traineeRole && !member.roles.cache.has(traineeRole.id)) {
+      await member.roles.add(traineeRole).catch(() => {});
+    }
+  } else {
+    if (traineeRole && member.roles.cache.has(traineeRole.id)) {
+      await member.roles.remove(traineeRole).catch(() => {});
+    }
+    if (agentsRole && !member.roles.cache.has(agentsRole.id)) {
+      await member.roles.add(agentsRole).catch(() => {});
+    }
+  }
+}
+
+async function syncHotelDiscordRoles(member, selectedHotels = []) {
+  if (!member) return;
+  const selected = parseHotelSelection(serializeHotelSelection(selectedHotels));
+
+  const allHotelRoleIds = [
+    ...Object.values(HOTEL_GREY_ROLE_IDS),
+    ...Object.values(HOTEL_GREEN_ROLE_IDS)
+  ];
+  const allHotelRoles = allHotelRoleIds
+    .map(roleId => member.guild.roles.cache.get(roleId))
+    .filter(Boolean);
+  if (allHotelRoles.length > 0) {
+    await member.roles.remove(allHotelRoles).catch(() => {});
+  }
+
+  const selectedGreyRoles = selected
+    .map(hotelId => member.guild.roles.cache.get(HOTEL_GREY_ROLE_IDS[hotelId]))
+    .filter(Boolean);
+  if (selectedGreyRoles.length > 0) {
+    await member.roles.add(selectedGreyRoles).catch(() => {});
+  }
+}
+
+async function applyRoleUpdate(interaction, discordId, roleValue, teamName) {
+  const normalized = String(roleValue || '').toLowerCase();
+  const allowed = ['trainee', 'agent', 'sme', 'team_leader'];
+  if (!allowed.includes(normalized)) {
+    return sendComponentUpdate(interaction, { content: 'Invalid role selected.', embeds: [], components: [] });
+  }
+
+  const current = db.prepare('SELECT role, team FROM agents WHERE discord_id = ?').get(discordId);
+  if (!current) {
+    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
+  }
+
+  db.prepare('UPDATE agents SET role = ? WHERE discord_id = ?').run(normalized, discordId);
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  await syncBaseRoleDiscordRoles(member, normalized);
+  await syncLeadershipDiscordRoles(member, normalized === 'trainee' ? 'agent' : normalized);
+
+  return showProfileCard(interaction, discordId, {
+    teamName,
+    notice: `Role set to ${roleLabel(normalized)}.`
+  });
+}
+
+async function applyTeamUpdate(interaction, discordId, selectedTeam, teamName) {
+  const normalizedTeam = normalizeTeamName(selectedTeam);
+  if (![TEAM_1, TEAM_2].includes(normalizedTeam)) {
+    return sendComponentUpdate(interaction, { content: 'Invalid team selected.', embeds: [], components: [] });
+  }
+
+  const current = db.prepare('SELECT role FROM agents WHERE discord_id = ?').get(discordId);
+  if (!current) {
+    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
+  }
+
+  db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(normalizedTeam, discordId);
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  await syncTeamDiscordRoles(member, normalizedTeam);
+
+  return showProfileCard(interaction, discordId, {
+    teamName,
+    notice: `Team set to ${normalizedTeam}.`
+  });
+}
+
+async function applySingleHotelUpdate(interaction, discordId, hotelId, teamName) {
+  if (!HOTEL_IDS.includes(hotelId)) {
+    return sendComponentUpdate(interaction, { content: 'Invalid hotel selected.', embeds: [], components: [] });
+  }
+
+  const current = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(discordId);
+  if (!current) {
+    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
+  }
+
+  db.transaction(() => {
+    db.prepare('UPDATE agents SET hotel_id = ? WHERE id = ?').run(hotelId, current.id);
+    db.prepare('DELETE FROM hotel_shift_assignments WHERE agent_id = ?').run(current.id);
+  })();
+
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  await syncHotelDiscordRoles(member, [hotelId]);
+
+  return showProfileCard(interaction, discordId, {
+    teamName,
+    notice: `Primary hotel set to ${hotelName(hotelId)}.`
+  });
+}
+
+async function applyMultiHotelUpdate(interaction, discordId, selectedHotels, teamName) {
+  const selected = parseHotelSelection(serializeHotelSelection(selectedHotels));
+  if (selected.length < 2) {
+    return sendComponentUpdate(interaction, { content: 'Please select at least 2 hotels for this mode.', embeds: [], components: [] });
+  }
+
+  const current = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(discordId);
+  if (!current) {
+    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
+  }
+
+  db.transaction(() => {
+    db.prepare('UPDATE agents SET hotel_id = ? WHERE id = ?').run(selected[0], current.id);
+    db.prepare('DELETE FROM hotel_shift_assignments WHERE agent_id = ?').run(current.id);
+    db.prepare(`
+      INSERT INTO hotel_shift_assignments (agent_id, primary_hotel_id, secondary_hotel_id, created_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    `).run(current.id, selected[0], selected[1]);
+  })();
+
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  await syncHotelDiscordRoles(member, selected);
+
+  const selectedLabel = selected.map(hotelId => hotelName(hotelId)).join(', ');
+  const note = selected.length > 2
+    ? `Hotels updated: ${selectedLabel}. (DB pair stores first two; roles include all selected.)`
+    : `Hotels updated: ${selectedLabel}.`;
+
+  return showProfileCard(interaction, discordId, {
+    teamName,
+    notice: note
+  });
 }
 
 async function showProfileCard(interaction, discordId, options = {}) {
@@ -762,7 +1067,7 @@ async function handleTeamPick(interaction) {
   return sendComponentUpdate(interaction, payload);
 }
 
-async function handleBackToTeam(interaction, discordId) {
+async function handleBackToTeam(interaction) {
   const teamName = normalizeTeamName(interaction.customId.split(':')[1]) || TEAM_1;
   const members = await fetchTeamMembers(interaction.guild, teamName);
   return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
@@ -782,39 +1087,91 @@ async function handleAgentPick(interaction) {
   return showProfileCard(interaction, discordId, { teamName });
 }
 
-async function handlePromote(interaction, discordId) {
-  const current = db.prepare('SELECT role, team FROM agents WHERE discord_id = ?').get(discordId);
-  if (!current) {
-    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
-  }
+function parseProfileActionContext(customId, prefix) {
+  const raw = String(customId || '').slice(prefix.length);
+  const [discordId = '', rawTeam = TEAM_1, extra = ''] = raw.split(':');
+  return {
+    discordId,
+    teamName: normalizeTeamName(rawTeam) || TEAM_1,
+    extra
+  };
+}
 
-  const newRole = nextRole(current.role);
-  db.prepare('UPDATE agents SET role = ? WHERE discord_id = ?').run(newRole, discordId);
-
-  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
-  await syncLeadershipDiscordRoles(member, newRole);
-
-  return showProfileCard(interaction, discordId, {
-    teamName: current.team,
-    notice: `Role updated to ${roleLabel(newRole)}.`
+async function showSetRoleView(interaction, discordId, teamName) {
+  return sendComponentUpdate(interaction, {
+    embeds: [
+      buildConfigEmbed(
+        'Set Role',
+        `Select the rank for <@${discordId}>.\n\nOptions: Trainee, Agent, SME, Team Leader.`
+      )
+    ],
+    components: [
+      buildSetRoleMenuRow(discordId, teamName),
+      buildBackToProfileRow(discordId, teamName)
+    ]
   });
 }
 
-async function handleDemote(interaction, discordId) {
-  const current = db.prepare('SELECT role, team FROM agents WHERE discord_id = ?').get(discordId);
-  if (!current) {
-    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
-  }
+async function showSetTeamView(interaction, discordId, teamName) {
+  return sendComponentUpdate(interaction, {
+    embeds: [
+      buildConfigEmbed(
+        'Set Team',
+        `Select the team role for <@${discordId}>.`
+      )
+    ],
+    components: [
+      buildSetTeamMenuRow(discordId, teamName),
+      buildBackToProfileRow(discordId, teamName)
+    ]
+  });
+}
 
-  const newRole = previousRole(current.role);
-  db.prepare('UPDATE agents SET role = ? WHERE discord_id = ?').run(newRole, discordId);
+async function showSetHotelModeView(interaction, discordId, teamName) {
+  return sendComponentUpdate(interaction, {
+    embeds: [
+      buildConfigEmbed(
+        'Set Hotel',
+        `Choose hotel assignment mode for <@${discordId}>.\n\nUse \`1 Hotel\` for a single assignment, or \`+2 Hotels\` to assign multiple hotels.`
+      )
+    ],
+    components: [buildSetHotelModeRow(discordId, teamName)]
+  });
+}
 
-  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
-  await syncLeadershipDiscordRoles(member, newRole);
+async function showSingleHotelPickerView(interaction, discordId, teamName) {
+  return sendComponentUpdate(interaction, {
+    embeds: [
+      buildConfigEmbed(
+        'Set Hotel - 1 Hotel',
+        `Select one hotel for <@${discordId}>.`
+      )
+    ],
+    components: [
+      buildSingleHotelMenuRow(discordId, teamName),
+      buildBackToProfileRow(discordId, teamName)
+    ]
+  });
+}
 
-  return showProfileCard(interaction, discordId, {
-    teamName: current.team,
-    notice: `Role updated to ${roleLabel(newRole)}.`
+async function showMultiHotelPickerView(interaction, discordId, teamName, selectedHotels = []) {
+  const selected = parseHotelSelection(serializeHotelSelection(selectedHotels));
+  const summary = summarizeHotelSelection(selected);
+  const guidance = selected.length < 2
+    ? 'Select at least 2 hotels, then click Save Hotels.'
+    : 'You can add more hotels with + Add Hotel, then click Save Hotels.';
+
+  return sendComponentUpdate(interaction, {
+    embeds: [
+      buildConfigEmbed(
+        'Set Hotel - +2 Hotels',
+        `Current selection for <@${discordId}>:\n${summary}\n\n${guidance}`
+      )
+    ],
+    components: [
+      buildMultiHotelMenuRow(discordId, teamName, selected),
+      buildMultiHotelActionRow(discordId, teamName, selected)
+    ]
   });
 }
 
@@ -851,84 +1208,6 @@ async function handleKickOrBanConfirm(interaction, action, discordId) {
   });
 }
 
-function removeAgentFromDb(discordId) {
-  const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(discordId);
-  db.transaction(() => {
-    if (agent) {
-      db.prepare('DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)').run(agent.id);
-      db.prepare('DELETE FROM sessions WHERE agent_id = ?').run(agent.id);
-      db.prepare('DELETE FROM maintenance_logs WHERE agent_id = ?').run(agent.id);
-      db.prepare('DELETE FROM handover_notes WHERE agent_id = ?').run(agent.id);
-      db.prepare('DELETE FROM schedules WHERE agent_id = ?').run(agent.id);
-      db.prepare('DELETE FROM hotel_shift_assignments WHERE agent_id = ?').run(agent.id);
-    }
-    db.prepare('DELETE FROM agents WHERE discord_id = ?').run(discordId);
-    db.prepare('DELETE FROM pending_registrations WHERE discord_id = ?').run(discordId);
-    db.prepare('DELETE FROM developers WHERE discord_id = ?').run(discordId);
-    db.prepare('DELETE FROM dev_approvals WHERE target_id = ? OR proposed_by = ?').run(discordId, discordId);
-  })();
-}
-
-async function handleMisc(interaction, discordId) {
-  await safeDeferComponentUpdate(interaction);
-
-  const action = interaction.values?.[0];
-  const agent = db.prepare('SELECT id, team FROM agents WHERE discord_id = ?').get(discordId);
-  if (!agent) {
-    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
-  }
-
-  if (action === 'refresh') {
-    return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'Profile refreshed.' });
-  }
-
-  if (action === 'assign_team_1') {
-    db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(TEAM_1, discordId);
-    return showProfileCard(interaction, discordId, { teamName: TEAM_1, notice: 'Assigned to Team 1.' });
-  }
-
-  if (action === 'assign_team_2') {
-    db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(TEAM_2, discordId);
-    return showProfileCard(interaction, discordId, { teamName: TEAM_2, notice: 'Assigned to Team 2.' });
-  }
-
-  if (action === 'clear_team') {
-    db.prepare('UPDATE agents SET team = NULL WHERE discord_id = ?').run(discordId);
-    return showProfileCard(interaction, discordId, { teamName: TEAM_1, notice: 'Explicit team assignment cleared.' });
-  }
-
-  if (action === 'clear_hotel') {
-    db.prepare('UPDATE agents SET hotel_id = NULL WHERE discord_id = ?').run(discordId);
-    return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'Primary hotel link removed.' });
-  }
-
-  if (action === 'clear_pair') {
-    db.prepare('DELETE FROM hotel_shift_assignments WHERE agent_id = ?').run(agent.id);
-    return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'Paired hotel assignment removed.' });
-  }
-
-  if (action === 'end_sessions') {
-    db.prepare("UPDATE sessions SET status = 'closed', logout_time = CURRENT_TIMESTAMP WHERE agent_id = ? AND status = 'active'").run(agent.id);
-    return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'All active sessions have been closed.' });
-  }
-
-  if (action === 'remove_agent_record') {
-    removeAgentFromDb(discordId);
-    return sendComponentUpdate(interaction, {
-      embeds: [
-        new EmbedBuilder()
-          .setTitle('Agent Record Removed')
-          .setDescription(`<@${discordId}> was removed from database records.`)
-          .setColor(0xF1C40F)
-          .setTimestamp()
-      ],
-      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
-    });
-  }
-
-  return showProfileCard(interaction, discordId, { teamName: agent.team, notice: 'No action executed.' });
-}
-
 async function handleButton(interaction) {
   if (!canUsePanel(interaction)) {
     return interaction.reply({ content: 'Developer access required.', ephemeral: true });
@@ -937,20 +1216,48 @@ async function handleButton(interaction) {
   await safeDeferComponentUpdate(interaction);
 
   const customId = interaction.customId || '';
-  if (customId.startsWith('profiles_promote:')) {
-    const discordId = customId.split(':')[1];
-    return handlePromote(interaction, discordId);
-  }
-
-  if (customId.startsWith('profiles_demote:')) {
-    const discordId = customId.split(':')[1];
-    return handleDemote(interaction, discordId);
-  }
-
   if (customId.startsWith('profiles_back_team:')) {
-    const teamName = normalizeTeamName(customId.split(':')[1]) || TEAM_1;
-    const members = await fetchTeamMembers(interaction.guild, teamName);
-    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
+    return handleBackToTeam(interaction);
+  }
+
+  if (customId.startsWith('profiles_back_profile:')) {
+    const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_back_profile:');
+    return showProfileCard(interaction, discordId, { teamName });
+  }
+
+  if (customId.startsWith('profiles_set_role:')) {
+    const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_set_role:');
+    return showSetRoleView(interaction, discordId, teamName);
+  }
+
+  if (customId.startsWith('profiles_set_team:')) {
+    const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_set_team:');
+    return showSetTeamView(interaction, discordId, teamName);
+  }
+
+  if (customId.startsWith('profiles_set_hotel:')) {
+    const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_set_hotel:');
+    return showSetHotelModeView(interaction, discordId, teamName);
+  }
+
+  if (customId.startsWith('profiles_set_hotel_mode_single:')) {
+    const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_set_hotel_mode_single:');
+    return showSingleHotelPickerView(interaction, discordId, teamName);
+  }
+
+  if (customId.startsWith('profiles_set_hotel_mode_multi:')) {
+    const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_set_hotel_mode_multi:');
+    return showMultiHotelPickerView(interaction, discordId, teamName, []);
+  }
+
+  if (customId.startsWith('profiles_set_hotel_multi_add:')) {
+    const { discordId, teamName, extra } = parseProfileActionContext(customId, 'profiles_set_hotel_multi_add:');
+    return showMultiHotelPickerView(interaction, discordId, teamName, parseHotelSelection(extra));
+  }
+
+  if (customId.startsWith('profiles_set_hotel_multi_save:')) {
+    const { discordId, teamName, extra } = parseProfileActionContext(customId, 'profiles_set_hotel_multi_save:');
+    return applyMultiHotelUpdate(interaction, discordId, parseHotelSelection(extra), teamName);
   }
 
   if (customId.startsWith('profiles_kick:')) {
@@ -1003,25 +1310,39 @@ async function handleSelectMenu(interaction) {
     return handleAgentPick(interaction);
   }
 
-  if (interaction.customId.startsWith('profiles_more:')) {
-    if (!canUsePanel(interaction)) {
-      return sendComponentUpdate(interaction, { content: 'Developer access required.', embeds: [], components: [] });
+  if (!canUsePanel(interaction)) {
+    return sendComponentUpdate(interaction, { content: 'Developer access required.', embeds: [], components: [] });
+  }
+
+  await safeDeferComponentUpdate(interaction);
+
+  if (interaction.customId.startsWith('profiles_set_role_pick:')) {
+    const { discordId, teamName } = parseProfileActionContext(interaction.customId, 'profiles_set_role_pick:');
+    const roleValue = interaction.values?.[0];
+    return applyRoleUpdate(interaction, discordId, roleValue, teamName);
+  }
+
+  if (interaction.customId.startsWith('profiles_set_team_pick:')) {
+    const { discordId, teamName } = parseProfileActionContext(interaction.customId, 'profiles_set_team_pick:');
+    const selectedTeam = interaction.values?.[0];
+    return applyTeamUpdate(interaction, discordId, selectedTeam, teamName);
+  }
+
+  if (interaction.customId.startsWith('profiles_set_hotel_single_pick:')) {
+    const { discordId, teamName } = parseProfileActionContext(interaction.customId, 'profiles_set_hotel_single_pick:');
+    const hotelId = String(interaction.values?.[0] || '').trim().toUpperCase();
+    return applySingleHotelUpdate(interaction, discordId, hotelId, teamName);
+  }
+
+  if (interaction.customId.startsWith('profiles_set_hotel_multi_pick:')) {
+    const { discordId, teamName, extra } = parseProfileActionContext(interaction.customId, 'profiles_set_hotel_multi_pick:');
+    const selected = parseHotelSelection(extra);
+    const picked = String(interaction.values?.[0] || '').trim().toUpperCase();
+    if (!HOTEL_IDS.includes(picked)) {
+      return showMultiHotelPickerView(interaction, discordId, teamName, selected);
     }
-    const discordId = interaction.customId.split(':')[1];
-    const action = interaction.values?.[0];
-    if (action === 'kick') {
-      return sendComponentUpdate(interaction, {
-        embeds: [buildConfirmEmbed('kick', discordId)],
-        components: [buildConfirmRow('kick', discordId)]
-      });
-    }
-    if (action === 'ban') {
-      return sendComponentUpdate(interaction, {
-        embeds: [buildConfirmEmbed('ban', discordId)],
-        components: [buildConfirmRow('ban', discordId)]
-      });
-    }
-    return handleMisc(interaction, discordId);
+    const nextSelection = parseHotelSelection(serializeHotelSelection([...selected, picked]));
+    return showMultiHotelPickerView(interaction, discordId, teamName, nextSelection);
   }
 
   return null;
