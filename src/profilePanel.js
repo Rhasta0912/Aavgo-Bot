@@ -870,6 +870,21 @@ async function syncHotelDiscordRoles(member, selectedHotels = []) {
   }
 }
 
+function memberHasAgentAccess(member) {
+  return memberHasAnyRoleById(member, [AGENT_ROLE_ID]) || memberHasAnyRoleByName(member, ['agents', 'agent']);
+}
+
+function memberHasTeamAccess(member) {
+  return memberHasAnyRoleByName(member, [TEAM_1, TEAM_2, 'team 1', 'team 2', 'team one', 'team two']);
+}
+
+function buildAccessRequirementEmbed(title, description, requirement) {
+  return buildConfigEmbed(
+    title,
+    `${description}\n\n**Required before continuing:** ${requirement}`
+  );
+}
+
 async function applyRoleUpdate(interaction, discordId, roleValue, teamName) {
   const normalized = String(roleValue || '').toLowerCase();
   const allowed = ['trainee', 'agent', 'sme', 'team_leader'];
@@ -904,8 +919,21 @@ async function applyTeamUpdate(interaction, discordId, selectedTeam, teamName) {
     return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
-  db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(normalizedTeam, discordId);
   const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  if (!memberHasAgentAccess(member)) {
+    return sendComponentUpdate(interaction, {
+      embeds: [
+        buildAccessRequirementEmbed(
+          'Set Team Locked',
+          `You are trying to assign a team to <@${discordId}>.`,
+          'They must already have the Agent role first.'
+        )
+      ],
+      components: [buildBackToProfileRow(discordId, teamName)]
+    });
+  }
+
+  db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(normalizedTeam, discordId);
   await syncTeamDiscordRoles(member, normalizedTeam);
 
   return showProfileCard(interaction, discordId, {
@@ -924,12 +952,25 @@ async function applySingleHotelUpdate(interaction, discordId, hotelId, teamName)
     return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  if (!memberHasAgentAccess(member) || !memberHasTeamAccess(member)) {
+    return sendComponentUpdate(interaction, {
+      embeds: [
+        buildAccessRequirementEmbed(
+          'Set Hotel Locked',
+          `You are trying to assign a hotel to <@${discordId}>.`,
+          'They must already have the Agent role and a Team 1 / Team 2 role first.'
+        )
+      ],
+      components: [buildBackToProfileRow(discordId, teamName)]
+    });
+  }
+
   db.transaction(() => {
     db.prepare('UPDATE agents SET hotel_id = ? WHERE id = ?').run(hotelId, current.id);
     db.prepare('DELETE FROM hotel_shift_assignments WHERE agent_id = ?').run(current.id);
   })();
 
-  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
   await syncHotelDiscordRoles(member, [hotelId]);
 
   return showProfileCard(interaction, discordId, {
@@ -949,6 +990,20 @@ async function applyMultiHotelUpdate(interaction, discordId, selectedHotels, tea
     return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
   }
 
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  if (!memberHasAgentAccess(member) || !memberHasTeamAccess(member)) {
+    return sendComponentUpdate(interaction, {
+      embeds: [
+        buildAccessRequirementEmbed(
+          'Set Hotel Locked',
+          `You are trying to assign multiple hotels to <@${discordId}>.`,
+          'They must already have the Agent role and a Team 1 / Team 2 role first.'
+        )
+      ],
+      components: [buildBackToProfileRow(discordId, teamName)]
+    });
+  }
+
   db.transaction(() => {
     db.prepare('UPDATE agents SET hotel_id = ? WHERE id = ?').run(selected[0], current.id);
     db.prepare('DELETE FROM hotel_shift_assignments WHERE agent_id = ?').run(current.id);
@@ -958,7 +1013,6 @@ async function applyMultiHotelUpdate(interaction, discordId, selectedHotels, tea
     `).run(current.id, selected[0], selected[1]);
   })();
 
-  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
   await syncHotelDiscordRoles(member, selected);
 
   const selectedLabel = selected.map(hotelId => hotelName(hotelId)).join(', ');
@@ -1113,6 +1167,20 @@ async function showSetRoleView(interaction, discordId, teamName) {
 }
 
 async function showSetTeamView(interaction, discordId, teamName) {
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  if (!memberHasAgentAccess(member)) {
+    return sendComponentUpdate(interaction, {
+      embeds: [
+        buildAccessRequirementEmbed(
+          'Set Team Locked',
+          `You are trying to assign a team to <@${discordId}>.`,
+          'They must already have the Agent role first.'
+        )
+      ],
+      components: [buildBackToProfileRow(discordId, teamName)]
+    });
+  }
+
   return sendComponentUpdate(interaction, {
     embeds: [
       buildConfigEmbed(
@@ -1128,6 +1196,20 @@ async function showSetTeamView(interaction, discordId, teamName) {
 }
 
 async function showSetHotelModeView(interaction, discordId, teamName) {
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  if (!memberHasAgentAccess(member) || !memberHasTeamAccess(member)) {
+    return sendComponentUpdate(interaction, {
+      embeds: [
+        buildAccessRequirementEmbed(
+          'Set Hotel Locked',
+          `You are trying to assign hotel access to <@${discordId}>.`,
+          'They must already have the Agent role and a Team 1 / Team 2 role first.'
+        )
+      ],
+      components: [buildBackToProfileRow(discordId, teamName)]
+    });
+  }
+
   return sendComponentUpdate(interaction, {
     embeds: [
       buildConfigEmbed(
