@@ -865,70 +865,17 @@ function buildConfigEmbed(title, description) {
     .setTimestamp();
 }
 
-function padCell(value, width = 10) {
-  return String(value || '').slice(0, width).padEnd(width, ' ');
-}
-
-function buildMonthCalendarGrid(monthHistory) {
-  const { year, month, days } = monthHistory;
-  const firstWeekday = new Date(Date.UTC(year, month, 1, 12, 0, 0)).getUTCDay();
-  const daysInMonth = days.length;
-  const prevMonthDays = new Date(Date.UTC(year, month, 0, 12, 0, 0)).getUTCDate();
-  const totalCells = 42;
-
-  const cells = [];
-  for (let i = 0; i < totalCells; i += 1) {
-    const dayNumber = i - firstWeekday + 1;
-    if (dayNumber < 1) {
-      cells.push({ current: false, day: prevMonthDays + dayNumber, total: null });
-    } else if (dayNumber > daysInMonth) {
-      cells.push({ current: false, day: dayNumber - daysInMonth, total: null });
-    } else {
-      cells.push({
-        current: true,
-        day: dayNumber,
-        total: days[dayNumber - 1]?.totalHours || 0
-      });
-    }
-  }
-
-  const lines = [];
-  lines.push('SUN       | MON       | TUE       | WED       | THU       | FRI       | SAT      ');
-  lines.push('----------+-----------+-----------+-----------+-----------+-----------+----------');
-
-  for (let row = 0; row < 6; row += 1) {
-    const week = cells.slice(row * 7, (row + 1) * 7);
-    const dayLine = week.map(cell => {
-      const dayLabel = cell.current
-        ? String(cell.day).padStart(2, '0')
-        : `(${String(cell.day).padStart(2, '0')})`;
-      return padCell(dayLabel);
-    }).join(' | ');
-    const hourLine = week.map(cell => {
-      const hourLabel = cell.current ? `${formatHours(cell.total)}h` : '--';
-      return padCell(hourLabel);
-    }).join(' | ');
-
-    lines.push(dayLine);
-    lines.push(hourLine);
-    if (row < 5) {
-      lines.push('----------+-----------+-----------+-----------+-----------+-----------+----------');
-    }
-  }
-
-  return lines.join('\n');
-}
-
 function buildHourHistoryEmbed(profile, monthHistory) {
-  const calendarGrid = buildMonthCalendarGrid(monthHistory);
-  const details = monthHistory.days.map(day => {
+  const header = 'Date | Shift | Training | Total';
+  const rows = monthHistory.days.map(day => {
     const date = String(day.day).padStart(2, '0');
-    return `${date}: Shift ${formatHours(day.shiftHours)}h | Training ${formatHours(day.trainingHours)}h | Total ${formatHours(day.totalHours)}h`;
+    return `${date} | ${formatHours(day.shiftHours)}h | ${formatHours(day.trainingHours)}h | ${formatHours(day.totalHours)}h`;
   });
-  let detailBlock = details.join('\n');
-  const maxDetailChars = 1300;
-  if (detailBlock.length > maxDetailChars) {
-    detailBlock = `${detailBlock.slice(0, maxDetailChars).trimEnd()}\n[Trimmed for Discord limit]`;
+
+  let calendarTable = `${header}\n${rows.join('\n')}`;
+  const maxChars = 1700;
+  if (calendarTable.length > maxChars) {
+    calendarTable = `${calendarTable.slice(0, maxChars).trimEnd()}\n[Trimmed for Discord limit]`;
   }
 
   return new EmbedBuilder()
@@ -939,11 +886,7 @@ function buildHourHistoryEmbed(profile, monthHistory) {
       `> Training Total (Month): ${formatHours(monthHistory.monthTrainingHours)} hrs\n` +
       `> Combined Total (Month): ${formatHours(monthHistory.monthTotalHours)} hrs\n\n` +
       '```text\n' +
-      `${calendarGrid}\n` +
-      '```\n' +
-      '**Daily Breakdown**\n' +
-      '```text\n' +
-      `${detailBlock}\n` +
+      `${calendarTable}\n` +
       '```'
     )
     .setColor(0x3498DB)

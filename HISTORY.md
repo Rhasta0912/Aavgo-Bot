@@ -55,11 +55,6 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
-- Reworked the Profiles `View Hour History` output to a true month-grid calendar layout (`SUN` to `SAT`) matching the requested template style. Each day now shows total hours in the calendar cells, with a detailed per-date `Shift` vs `Training` breakdown and monthly totals below it.
-  - Summary: Hour history now looks like a real calendar board while still exposing shift/training hour details per date.
-  - Files touched:
-    - src/profilePanel.js
-    - HISTORY.md
 - Updated Profiles panel card and actions: removed the `Email` line from the profile embed, added a new blue `View Hour History` button, and built a monthly calendar-style hour history view that shows per-date `Shift` vs `Training` hours plus total monthly hours.
   - Summary: Staff can now open a profile and instantly view date-by-date monthly hours (training and live shift separated) from one button without exposing email on the card.
   - Files touched:
