@@ -142,7 +142,9 @@ function buildPeriodHourHistory(db, agentId, period = 'month', nowInput = new Da
   const daily = Array.from({ length: dayCount }, (_, index) => ({
     dayStartMs: range.startMs + (index * DAY_MS),
     shiftMs: 0,
-    trainingMs: 0
+    trainingMs: 0,
+    firstLoginMs: null,
+    lastLogoutMs: null
   }));
 
   const sessions = db.prepare(`
@@ -178,6 +180,12 @@ function buildPeriodHourHistory(db, agentId, period = 'month', nowInput = new Da
       if (sliceMs > 0) {
         if (isTraining) daily[dayIndex].trainingMs += sliceMs;
         else daily[dayIndex].shiftMs += sliceMs;
+        daily[dayIndex].firstLoginMs = daily[dayIndex].firstLoginMs === null
+          ? cursor
+          : Math.min(daily[dayIndex].firstLoginMs, cursor);
+        daily[dayIndex].lastLogoutMs = daily[dayIndex].lastLogoutMs === null
+          ? sliceEndMs
+          : Math.max(daily[dayIndex].lastLogoutMs, sliceEndMs);
       }
       cursor = sliceEndMs;
     }
@@ -201,12 +209,14 @@ function buildPeriodHourHistory(db, agentId, period = 'month', nowInput = new Da
     daily[dayIndex].shiftMs += hours * HOUR_MS;
   }
 
-  const rows = daily.map((item, idx) => {
+  const rows = daily.map(item => {
     const shiftHours = item.shiftMs / HOUR_MS;
     const trainingHours = item.trainingMs / HOUR_MS;
     return {
       dayStartMs: item.dayStartMs,
       dateLabel: getDateLabelFromMs(item.dayStartMs),
+      firstLoginMs: item.firstLoginMs,
+      lastLogoutMs: item.lastLogoutMs,
       shiftHours,
       trainingHours,
       totalHours: shiftHours + trainingHours

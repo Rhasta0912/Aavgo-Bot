@@ -4395,20 +4395,37 @@ function escapeCsvValue(value) {
   return `"${text.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
 }
 
+function formatExportClockTime(ms) {
+  if (ms === null || ms === undefined || !Number.isFinite(Number(ms))) return '';
+  return new Date(ms).toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Manila'
+  });
+}
+
 function buildHoursExportCsvRows(agentRows) {
   const header = [
-    'Date',
     'Name',
-    'Hours'
+    'Date',
+    'In',
+    'Out',
+    'Shift Hours',
+    'Training Hours',
+    'Total Hours'
   ];
 
   const lines = [header.join(',')];
 
   for (const row of agentRows) {
     lines.push([
-      row.date,
       row.displayName,
-      row.hours
+      row.date,
+      row.inTime,
+      row.outTime,
+      row.shiftHours,
+      row.trainingHours,
+      row.totalHours
     ].map(escapeCsvValue).join(','));
   }
 
@@ -4434,11 +4451,17 @@ async function handleHoursExport(interaction) {
     for (const agent of agents) {
       const history = buildPeriodHourHistory(db, agent.id, period);
       for (const day of history.rows) {
+        const totalHours = Number(day.totalHours || 0);
+        if (!Number.isFinite(totalHours) || totalHours <= 0) continue;
         rows.push({
           sortDateMs: day.dayStartMs || 0,
-          date: day.dateLabel,
           displayName: agent.username || '',
-          hours: formatHours(day.totalHours || 0)
+          date: day.dateLabel,
+          inTime: formatExportClockTime(day.firstLoginMs),
+          outTime: formatExportClockTime(day.lastLogoutMs),
+          shiftHours: formatHours(day.shiftHours || 0),
+          trainingHours: formatHours(day.trainingHours || 0),
+          totalHours: formatHours(totalHours)
         });
       }
     }
@@ -4453,8 +4476,8 @@ async function handleHoursExport(interaction) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 
     await interaction.editReply({
-      content: `📊 **Hours export ready.** Open the attached CSV in Excel for a ${period} timesheet view.`,
-      files: [{ attachment: buffer, name: `aavgo-hours-export-${stamp}.csv` }]
+      content: `📊 **Hours timesheet ready.** Open the attached CSV in Excel for a clean horizontal ${period} view.`,
+      files: [{ attachment: buffer, name: `aavgo-hours-timesheet-${stamp}.csv` }]
     });
   } catch (error) {
     console.error('Error in handleHoursExport:', error);
@@ -5589,7 +5612,7 @@ async function handleHelpStaff(interaction) {
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
-        '> `/hours-export period:day|week|month`: Export a date-ordered timesheet spreadsheet.\n' +
+        '> `/hours-export period:day|week|month`: Export a horizontal Excel-style timesheet.\n' +
         '> `/see-all-pins`: Review which agents have a PIN set without revealing the PIN itself.\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +

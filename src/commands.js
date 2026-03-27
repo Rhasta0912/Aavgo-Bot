@@ -60,7 +60,7 @@ const commandData = [
     .addStringOption(option => option.setName('note').setDescription('Reason or note').setRequired(false)),
   new SlashCommandBuilder()
     .setName('hours-export')
-    .setDescription('(Developer/Operations Manager) Export hours logs to an Excel-friendly CSV')
+    .setDescription('(Developer/Operations Manager) Export hours logs as a horizontal Excel-style timesheet')
     .addStringOption(option => option
       .setName('period')
       .setDescription('Which period to export')
