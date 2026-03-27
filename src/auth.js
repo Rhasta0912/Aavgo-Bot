@@ -4398,15 +4398,7 @@ function escapeCsvValue(value) {
 function buildHoursExportCsvRows(agentRows) {
   const header = [
     'DisplayName',
-    'DiscordId',
-    'Role',
-    'Team',
     'PermanentHotel',
-    'HotelCompatibility',
-    'PinSet',
-    'AgentStatus',
-    'ActiveSessionKind',
-    'ActiveSessionHotel',
     'LiveShiftWeeklyHours',
     'LiveShiftMonthlyHours',
     'LiveShiftAllTimeHours',
@@ -4423,15 +4415,7 @@ function buildHoursExportCsvRows(agentRows) {
   for (const row of agentRows) {
     lines.push([
       row.displayName,
-      row.discordId,
-      row.role,
-      row.team,
       row.permanentHotel,
-      row.hotelCompatibility,
-      row.pinSet,
-      row.agentStatus,
-      row.activeSessionKind,
-      row.activeSessionHotel,
       row.liveWeeklyHours,
       row.liveMonthlyHours,
       row.liveAllTimeHours,
@@ -4456,45 +4440,17 @@ async function handleHoursExport(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
     const agents = db.prepare(`
-      SELECT id, discord_id, username, role, team, hotel_id, hotel_compatibility, pin_is_set, agent_status
+      SELECT id, username, hotel_id
       FROM agents
-      ORDER BY team ASC, role ASC, username COLLATE NOCASE ASC
+      ORDER BY username COLLATE NOCASE ASC
     `).all();
-
-    const activeSessionsByAgentId = db.prepare(`
-      SELECT agent_id, hotel_id, session_kind
-      FROM sessions
-      WHERE status = 'active'
-      ORDER BY id DESC
-    `).all().reduce((map, session) => {
-      if (!map.has(session.agent_id)) map.set(session.agent_id, session);
-      return map;
-    }, new Map());
 
     const rows = agents.map(agent => {
       const totals = calculateAgentHourTotals(db, agent.id);
-      const activeSession = activeSessionsByAgentId.get(agent.id) || null;
-      const activeSessionKind = activeSession ? String(activeSession.session_kind || 'shift') : '';
-      const activeSessionHotel = activeSession ? getCombinedHotelLabel(activeSession.hotel_id) : '';
-
-      let compatibility = [];
-      try {
-        compatibility = JSON.parse(agent.hotel_compatibility || '[]');
-      } catch {
-        compatibility = [];
-      }
 
       return {
         displayName: agent.username || '',
-        discordId: agent.discord_id || '',
-        role: getRoleLabel(agent.role),
-        team: agent.team || '',
         permanentHotel: agent.hotel_id ? getCombinedHotelLabel(agent.hotel_id) : '',
-        hotelCompatibility: formatHotelCompatibilityLabel(compatibility),
-        pinSet: hasConfiguredPin(agent) ? 'Yes' : 'No',
-        agentStatus: agent.agent_status || '',
-        activeSessionKind,
-        activeSessionHotel,
         liveWeeklyHours: formatHours(totals.shift?.weeklyHours || 0),
         liveMonthlyHours: formatHours(totals.shift?.monthlyHours || 0),
         liveAllTimeHours: formatHours(totals.shift?.allHours || 0),
