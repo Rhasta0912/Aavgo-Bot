@@ -282,6 +282,7 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Renamed the Profiles member selector placeholder to `Select Member Profile` and added a `Select Member Profile` search button that opens a search modal. The modal filters team/profile members by nickname, display name, or username and returns a shorter result list so management does not need to scroll long rosters.
 - Updated the Profiles `Set Role` button so it can recreate a wiped DB record instead of showing `Agent not found in database.`. When management sets a role on a deleted user, the bot now bootstraps the agent row and syncs Discord roles from that fresh record.
 - Reverted the temporary Applicants auto-row sync so Discord `Applicants` no longer creates or updates an `agents` table row on role sync. Applicant onboarding now goes back to the normal promotion path, where management promotion creates the DB record instead of the role itself.
 - new system change to 4 chan
