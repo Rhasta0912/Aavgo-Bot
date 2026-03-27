@@ -282,6 +282,7 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Reverted the temporary Applicants auto-row sync so Discord `Applicants` no longer creates or updates an `agents` table row on role sync. Applicant onboarding now goes back to the normal promotion path, where management promotion creates the DB record instead of the role itself.
 - new system change to 4 chan
   - Summary: Harmless test entry to confirm the Discord update log posts the newest history item instead of an older one.
   - Files touched:
@@ -413,4 +414,3 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added prerequisite role gating to the Profiles panel so `Set Team` now warns that the target must already have the `Agent` role before selection, and `Set Hotel` now requires both `Agent` plus a `Team 1` or `Team 2` role before single-hotel or multi-hotel assignment can proceed.
 - Added an `Applicants` profile view to the Profiles panel, renamed the main picker placeholder to `Select Profile`, and restored the `Applicants` role during `/db-remove-user` so a fully purged user returns to square one instead of staying role-less.
 - Expanded the `Applicants` profile card so it now shows the same action bar as other profiles (`Set Role`, `Set Team`, `Set Hotel`, `Kick`, `Back`) instead of only the fallback `Back` button.
-- Made `Applicants` a DB-backed first-class role during Discord role sync, so members who only have the `Applicants` role now get an `agents` table row created automatically with `role = applicant` and `agent_status = pending` instead of staying invisible to the database.

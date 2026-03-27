@@ -114,7 +114,6 @@ const AGENT_STATUS_LABELS = {
   ready: 'Ready for Live Shifts'
 };
 const ROLE_LABELS = {
-  applicant: 'Applicant',
   trainee: 'Trainee',
   agent: 'Agent',
   sme: 'Subject Matter Expert (SME)',
@@ -122,7 +121,6 @@ const ROLE_LABELS = {
   operations_manager: 'Operations Manager'
 };
 const ROLE_HIERARCHY = {
-  applicant: -1,
   trainee: 0,
   agent: 1,
   sme: 2,
@@ -1785,8 +1783,6 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
     const snapshot = getDiscordRoleSyncSnapshot(member);
     const hotelCompatibility = getDiscordHotelCompatibilitySnapshot(member);
     const hotelCompatibilityValue = serializeHotelCompatibility(hotelCompatibility);
-    const applicantsRole = guild.roles.cache.get('1484919969689894912') || guild.roles.cache.find(role => String(role.name || '').toLowerCase() === 'applicants');
-    const hasApplicantsRole = Boolean(applicantsRole && member.roles.cache.has(applicantsRole.id));
 
     const displayName = member.displayName || member.user?.username || member.user?.tag || 'Unknown';
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
@@ -1810,14 +1806,6 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
         params.push(snapshot.team);
       }
 
-      if (!snapshot.role && hasApplicantsRole && normalizeAgentRole(existing.role) !== 'applicant') {
-        updates.push('role = ?');
-        params.push('applicant');
-        if (existing.agent_status !== 'pending') {
-          updates.push("agent_status = 'pending'");
-        }
-      }
-
       if ((existing.hotel_compatibility || '[]') !== hotelCompatibilityValue) {
         updates.push('hotel_compatibility = ?');
         params.push(hotelCompatibilityValue);
@@ -1826,20 +1814,20 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
       if (updates.length > 0) {
         params.push(member.id);
         db.prepare(`UPDATE agents SET ${updates.join(', ')} WHERE discord_id = ?`).run(...params);
-        const resolvedRole = snapshot.role || (hasApplicantsRole ? 'applicant' : normalizeAgentRole(existing.role));
+        const resolvedRole = snapshot.role || normalizeAgentRole(existing.role);
         const resolvedTeam = snapshot.team || existing.team || 'none';
         console.log(`[${contextLabel}] Updated ${displayName}: role=${resolvedRole} team=${resolvedTeam} hotels=${formatHotelCompatibilityLabel(hotelCompatibility)}`);
       }
 
-      return { action: 'updated', role: snapshot.role || (hasApplicantsRole ? 'applicant' : normalizeAgentRole(existing.role)), team: snapshot.team || existing.team || null };
+      return { action: 'updated', role: snapshot.role || normalizeAgentRole(existing.role), team: snapshot.team || existing.team || null };
     }
 
-    if (!snapshot.role && !hasApplicantsRole) {
+    if (!snapshot.role) {
       return null;
     }
 
-    const bootstrapRole = snapshot.role || 'applicant';
-    const bootstrapStatus = bootstrapRole === 'trainee' ? 'standby' : bootstrapRole === 'applicant' ? 'pending' : 'ready';
+    const bootstrapRole = snapshot.role || 'trainee';
+    const bootstrapStatus = bootstrapRole === 'trainee' ? 'standby' : 'ready';
     const bootstrapPin = String(Math.floor(100000 + Math.random() * 900000));
     db.prepare(
       "INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, team, hotel_compatibility) VALUES (?, ?, ?, 0, ?, ?, ?, ?)"
