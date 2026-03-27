@@ -4390,6 +4390,141 @@ async function handleAddHours(interaction) {
 }
 
 // ─── /clear-hours (Admin) ─────────────────────────────
+function escapeCsvValue(value) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
+}
+
+function buildHoursExportCsvRows(agentRows) {
+  const header = [
+    'DisplayName',
+    'DiscordId',
+    'Role',
+    'Team',
+    'PermanentHotel',
+    'HotelCompatibility',
+    'PinSet',
+    'AgentStatus',
+    'ActiveSessionKind',
+    'ActiveSessionHotel',
+    'LiveShiftWeeklyHours',
+    'LiveShiftMonthlyHours',
+    'LiveShiftAllTimeHours',
+    'TrainingWeeklyHours',
+    'TrainingMonthlyHours',
+    'TrainingAllTimeHours',
+    'CombinedWeeklyHours',
+    'CombinedMonthlyHours',
+    'CombinedAllTimeHours'
+  ];
+
+  const lines = [header.join(',')];
+
+  for (const row of agentRows) {
+    lines.push([
+      row.displayName,
+      row.discordId,
+      row.role,
+      row.team,
+      row.permanentHotel,
+      row.hotelCompatibility,
+      row.pinSet,
+      row.agentStatus,
+      row.activeSessionKind,
+      row.activeSessionHotel,
+      row.liveWeeklyHours,
+      row.liveMonthlyHours,
+      row.liveAllTimeHours,
+      row.trainingWeeklyHours,
+      row.trainingMonthlyHours,
+      row.trainingAllTimeHours,
+      row.combinedWeeklyHours,
+      row.combinedMonthlyHours,
+      row.combinedAllTimeHours
+    ].map(escapeCsvValue).join(','));
+  }
+
+  return lines.join('\n');
+}
+
+async function handleHoursExport(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const agents = db.prepare(`
+      SELECT id, discord_id, username, role, team, hotel_id, hotel_compatibility, pin_is_set, agent_status
+      FROM agents
+      ORDER BY team ASC, role ASC, username COLLATE NOCASE ASC
+    `).all();
+
+    const activeSessionsByAgentId = db.prepare(`
+      SELECT agent_id, hotel_id, session_kind
+      FROM sessions
+      WHERE status = 'active'
+      ORDER BY id DESC
+    `).all().reduce((map, session) => {
+      if (!map.has(session.agent_id)) map.set(session.agent_id, session);
+      return map;
+    }, new Map());
+
+    const rows = agents.map(agent => {
+      const totals = calculateAgentHourTotals(db, agent.id);
+      const activeSession = activeSessionsByAgentId.get(agent.id) || null;
+      const activeSessionKind = activeSession ? String(activeSession.session_kind || 'shift') : '';
+      const activeSessionHotel = activeSession ? getCombinedHotelLabel(activeSession.hotel_id) : '';
+
+      let compatibility = [];
+      try {
+        compatibility = JSON.parse(agent.hotel_compatibility || '[]');
+      } catch {
+        compatibility = [];
+      }
+
+      return {
+        displayName: agent.username || '',
+        discordId: agent.discord_id || '',
+        role: getRoleLabel(agent.role),
+        team: agent.team || '',
+        permanentHotel: agent.hotel_id ? getCombinedHotelLabel(agent.hotel_id) : '',
+        hotelCompatibility: formatHotelCompatibilityLabel(compatibility),
+        pinSet: hasConfiguredPin(agent) ? 'Yes' : 'No',
+        agentStatus: agent.agent_status || '',
+        activeSessionKind,
+        activeSessionHotel,
+        liveWeeklyHours: formatHours(totals.shift?.weeklyHours || 0),
+        liveMonthlyHours: formatHours(totals.shift?.monthlyHours || 0),
+        liveAllTimeHours: formatHours(totals.shift?.allHours || 0),
+        trainingWeeklyHours: formatHours(totals.training?.weeklyHours || 0),
+        trainingMonthlyHours: formatHours(totals.training?.monthlyHours || 0),
+        trainingAllTimeHours: formatHours(totals.training?.allHours || 0),
+        combinedWeeklyHours: formatHours(totals.weeklyHours || 0),
+        combinedMonthlyHours: formatHours(totals.monthlyHours || 0),
+        combinedAllTimeHours: formatHours(totals.allHours || 0)
+      };
+    });
+
+    const csv = buildHoursExportCsvRows(rows);
+    const buffer = Buffer.from(csv, 'utf8');
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    await interaction.editReply({
+      content: '📊 **Hours export ready.** Open the attached CSV in Excel for a spreadsheet view of the hours ledger.',
+      files: [{ attachment: buffer, name: `aavgo-hours-export-${stamp}.csv` }]
+    });
+  } catch (error) {
+    console.error('Error in handleHoursExport:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Failed to export hours.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.editReply({ content: '❌ Failed to export hours.' }).catch(() => {});
+    }
+  }
+}
+
 async function handleClearHours(interaction) {
   try {
     const targetUser = interaction.options.getUser('user');
@@ -5513,6 +5648,7 @@ async function handleHelpStaff(interaction) {
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
+        '> `/hours-export`: Export a spreadsheet-friendly hours ledger for every agent.\n' +
         '> `/see-all-pins`: Review which agents have a PIN set without revealing the PIN itself.\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +
@@ -6543,6 +6679,7 @@ module.exports = {
   handleRemoveAgentCommand,
   handleCheckHours,
   handleAddHours,
+  handleHoursExport,
   handleClearHours,
   handlePurge,
   handleModalSubmit,

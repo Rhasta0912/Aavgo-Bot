@@ -55,6 +55,13 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Add an Excel-friendly hours export command so staff can audit live shift and training logs in a spreadsheet.
+  - Summary: The new `/hours-export` command generates a CSV that Excel can open directly, with one row per agent showing role, team, hotel compatibility, PIN state, current session info, and live vs training hour totals.
+  - Files touched:
+    - src/commands.js
+    - src/index.js
+    - src/auth.js
+    - HISTORY.md
 - Allow multiple trainees to be logged in at the same time without tripping hotel conflict checks.
   - Summary: Training sessions now skip the live-hotel takeover/conflict guard, so more than one person can train at once. Training still stays on the training board only and does not count as a live hotel shift.
   - Files touched:

@@ -59,6 +59,9 @@ const commandData = [
     .addNumberOption(option => option.setName('hours').setDescription('Hours to add (supports decimals)').setRequired(true).setMinValue(0.01))
     .addStringOption(option => option.setName('note').setDescription('Reason or note').setRequired(false)),
   new SlashCommandBuilder()
+    .setName('hours-export')
+    .setDescription('(Developer/Operations Manager) Export hours logs to an Excel-friendly CSV'),
+  new SlashCommandBuilder()
     .setName('end-shift')
     .setDescription('End your current shift'),
   new SlashCommandBuilder()
