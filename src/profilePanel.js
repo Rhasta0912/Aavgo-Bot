@@ -8,7 +8,7 @@ const {
 } = require('discord.js');
 const db = require('./database');
 const auth = require('./auth');
-const { calculateAgentHourTotals, formatHours } = require('./hours');
+const { calculateAgentHourTotals, getMonthDailyHourHistory, formatHours } = require('./hours');
 
 const PROFILES_CHANNEL_ID = '1485256962617643098';
 const PROFILE_PANEL_KEY_PREFIX = 'profiles_dashboard_msg_';
@@ -609,7 +609,7 @@ async function getProfileContext(guild, discordId) {
 }
 
 function buildProfileEmbed(profile, reviewerTag, notice = null) {
-  const { agent, member, shortName, email, phone, appliedAt, pair, activeSession, hourTotals } = profile;
+  const { agent, member, shortName, phone, appliedAt, pair, activeSession, hourTotals } = profile;
   const pairText = pair
     ? `${hotelName(pair.primary_hotel_id)} + ${hotelName(pair.secondary_hotel_id)}`
     : 'Not set';
@@ -629,7 +629,6 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
       `## 👤 ${shortName}\n` +
       '──────────────────────────────\n' +
       `> 🧑 Discord: <@${agent.discord_id}> (\`${agent.discord_id}\`)\n` +
-      `> 📧 Email: ${email}\n` +
       `> 📱 Phone (PH): ${phone}\n` +
       `> ⏰ Applied At: ${dateTag(appliedAt)}\n` +
       `> 🧩 Role: ${roleLabel(agent.role)}\n` +
@@ -696,9 +695,18 @@ function buildProfileActionRow(targetDiscordId, teamName) {
       .setLabel('Kick')
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
+      .setCustomId(`profiles_view_hours:${targetDiscordId}:${teamName}`)
+      .setLabel('View Hour History')
+      .setStyle(ButtonStyle.Primary)
+  );
+}
+
+function buildProfileBackRow(teamName) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
       .setCustomId(`profiles_back_team:${teamName}`)
       .setLabel('Back')
-      .setStyle(ButtonStyle.Primary)
+      .setStyle(ButtonStyle.Secondary)
   );
 }
 
@@ -843,7 +851,8 @@ function buildConfirmRow(action, discordId) {
 
 function buildProfileRows(profile, teamName) {
   return [
-    buildProfileActionRow(profile.agent.discord_id, teamName)
+    buildProfileActionRow(profile.agent.discord_id, teamName),
+    buildProfileBackRow(teamName)
   ];
 }
 
@@ -854,6 +863,46 @@ function buildConfigEmbed(title, description) {
     .setColor(0xF1C40F)
     .setFooter({ text: 'Aavgo Operations - Profile Actions' })
     .setTimestamp();
+}
+
+function buildHourHistoryEmbed(profile, monthHistory) {
+  const header = 'Date | Shift | Training | Total';
+  const rows = monthHistory.days.map(day => {
+    const date = String(day.day).padStart(2, '0');
+    return `${date} | ${formatHours(day.shiftHours)}h | ${formatHours(day.trainingHours)}h | ${formatHours(day.totalHours)}h`;
+  });
+
+  let calendarTable = `${header}\n${rows.join('\n')}`;
+  const maxChars = 1700;
+  if (calendarTable.length > maxChars) {
+    calendarTable = `${calendarTable.slice(0, maxChars).trimEnd()}\n[Trimmed for Discord limit]`;
+  }
+
+  return new EmbedBuilder()
+    .setTitle('Hour History Calendar')
+    .setDescription(
+      `## ${profile.shortName} - ${monthHistory.label}\n` +
+      `> Live Shift Total (Month): ${formatHours(monthHistory.monthShiftHours)} hrs\n` +
+      `> Training Total (Month): ${formatHours(monthHistory.monthTrainingHours)} hrs\n` +
+      `> Combined Total (Month): ${formatHours(monthHistory.monthTotalHours)} hrs\n\n` +
+      '```text\n' +
+      `${calendarTable}\n` +
+      '```'
+    )
+    .setColor(0x3498DB)
+    .setFooter({ text: 'Aavgo Operations - Monthly Hour History' })
+    .setTimestamp();
+}
+
+function buildHourHistoryRows(discordId, teamName) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`profiles_back_profile:${discordId}:${teamName}`)
+        .setLabel('Back')
+        .setStyle(ButtonStyle.Secondary)
+    )
+  ];
 }
 
 function summarizeHotelSelection(selectedHotels = []) {
@@ -1117,7 +1166,8 @@ async function showProfileCard(interaction, discordId, options = {}) {
               .setTimestamp()
           ],
           components: [
-            buildProfileActionRow(discordId, teamName || TEAM_APPLICANTS)
+            buildProfileActionRow(discordId, teamName || TEAM_APPLICANTS),
+            buildProfileBackRow(teamName || TEAM_APPLICANTS)
           ]
         });
       }
@@ -1351,6 +1401,27 @@ async function showMultiHotelPickerView(interaction, discordId, teamName, select
   });
 }
 
+async function showHourHistoryView(interaction, discordId, teamName) {
+  const profile = await getProfileContext(interaction.guild, discordId);
+  if (!profile) {
+    return sendComponentUpdate(interaction, {
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('Profile Not Found')
+          .setDescription('That user is not registered as an agent.')
+          .setColor(0xED4245)
+      ],
+      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
+    });
+  }
+
+  const monthHistory = getMonthDailyHourHistory(db, profile.agent.id);
+  return sendComponentUpdate(interaction, {
+    embeds: [buildHourHistoryEmbed(profile, monthHistory)],
+    components: buildHourHistoryRows(discordId, teamName)
+  });
+}
+
 async function handleKickOrBanConfirm(interaction, action, discordId) {
   const member = await interaction.guild.members.fetch(discordId).catch(() => null);
   if (!member) {
@@ -1434,6 +1505,11 @@ async function handleButton(interaction) {
   if (customId.startsWith('profiles_set_hotel_multi_save:')) {
     const { discordId, teamName, extra } = parseProfileActionContext(customId, 'profiles_set_hotel_multi_save:');
     return applyMultiHotelUpdate(interaction, discordId, parseHotelSelection(extra), teamName);
+  }
+
+  if (customId.startsWith('profiles_view_hours:')) {
+    const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_view_hours:');
+    return showHourHistoryView(interaction, discordId, teamName);
   }
 
   if (customId.startsWith('profiles_kick:')) {
