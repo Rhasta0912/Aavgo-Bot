@@ -57,6 +57,12 @@ function getMonthlyResetStartMs(nowInput = new Date()) {
   return startMs;
 }
 
+function getDayResetStartMs(nowInput = new Date()) {
+  const now = nowInput instanceof Date ? nowInput : new Date(nowInput);
+  const ph = getPhilippineParts(now);
+  return Date.UTC(ph.year, ph.month, ph.day, 0, 0, 0) - PH_OFFSET_MS;
+}
+
 function getOverlapMs(startMs, endMs, rangeStartMs, rangeEndMs) {
   const overlapStart = Math.max(startMs, rangeStartMs);
   const overlapEnd = Math.min(endMs, rangeEndMs);
@@ -83,6 +89,140 @@ function getMonthLabel(year, month) {
     year: 'numeric',
     timeZone: 'Asia/Manila'
   });
+}
+
+function getDateLabelFromMs(ms) {
+  return new Date(ms).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'Asia/Manila'
+  });
+}
+
+function getPeriodRangeMs(period, nowInput = new Date()) {
+  const normalized = String(period || 'month').toLowerCase();
+
+  if (normalized === 'day') {
+    const startMs = getDayResetStartMs(nowInput);
+    return {
+      period: 'day',
+      startMs,
+      endMs: startMs + DAY_MS,
+      label: getDateLabelFromMs(startMs)
+    };
+  }
+
+  if (normalized === 'week') {
+    const startMs = getWeeklyResetStartMs(nowInput);
+    return {
+      period: 'week',
+      startMs,
+      endMs: startMs + (7 * DAY_MS),
+      label: 'Current Week'
+    };
+  }
+
+  const startMs = getMonthlyResetStartMs(nowInput);
+  const ph = getPhilippineParts(nowInput);
+  const monthStartMs = Date.UTC(ph.year, ph.month, 1, 0, 0, 0) - PH_OFFSET_MS;
+  const nextMonthStartMs = Date.UTC(ph.year, ph.month + 1, 1, 0, 0, 0) - PH_OFFSET_MS;
+  return {
+    period: 'month',
+    startMs,
+    endMs: nextMonthStartMs,
+    label: getMonthLabel(ph.year, ph.month)
+  };
+}
+
+function buildPeriodHourHistory(db, agentId, period = 'month', nowInput = new Date()) {
+  const range = getPeriodRangeMs(period, nowInput);
+  const dayCount = Math.max(1, Math.ceil((range.endMs - range.startMs) / DAY_MS));
+
+  const daily = Array.from({ length: dayCount }, (_, index) => ({
+    dayStartMs: range.startMs + (index * DAY_MS),
+    shiftMs: 0,
+    trainingMs: 0
+  }));
+
+  const sessions = db.prepare(`
+    SELECT login_time, logout_time, status, session_kind
+    FROM sessions
+    WHERE agent_id = ?
+      AND login_time < datetime(?, 'unixepoch')
+      AND (logout_time IS NULL OR logout_time >= datetime(?, 'unixepoch'))
+  `).all(agentId, Math.floor(range.endMs / 1000), Math.floor(range.startMs / 1000));
+
+  for (const session of sessions) {
+    const loginMs = parseDbTimestamp(session.login_time, NaN);
+    if (!Number.isFinite(loginMs)) continue;
+    const rawLogoutMs = session.status === 'active' || !session.logout_time
+      ? parseDbTimestamp(nowInput, Date.now())
+      : parseDbTimestamp(session.logout_time, NaN);
+    if (!Number.isFinite(rawLogoutMs) || rawLogoutMs <= loginMs) continue;
+
+    const clippedStartMs = Math.max(loginMs, range.startMs);
+    const clippedEndMs = Math.min(rawLogoutMs, range.endMs);
+    if (clippedEndMs <= clippedStartMs) continue;
+
+    const isTraining = String(session.session_kind || 'shift').toLowerCase() === 'training';
+    let cursor = clippedStartMs;
+    while (cursor < clippedEndMs) {
+      const dayIndex = Math.floor((cursor - range.startMs) / DAY_MS);
+      if (dayIndex < 0 || dayIndex >= daily.length) break;
+
+      const dayStartMs = range.startMs + (dayIndex * DAY_MS);
+      const dayEndMs = dayStartMs + DAY_MS;
+      const sliceEndMs = Math.min(dayEndMs, clippedEndMs);
+      const sliceMs = Math.max(0, sliceEndMs - cursor);
+      if (sliceMs > 0) {
+        if (isTraining) daily[dayIndex].trainingMs += sliceMs;
+        else daily[dayIndex].shiftMs += sliceMs;
+      }
+      cursor = sliceEndMs;
+    }
+  }
+
+  const adjustments = db.prepare(`
+    SELECT hours, created_at
+    FROM hour_adjustments
+    WHERE agent_id = ?
+      AND created_at >= datetime(?, 'unixepoch')
+      AND created_at < datetime(?, 'unixepoch')
+  `).all(agentId, Math.floor(range.startMs / 1000), Math.floor(range.endMs / 1000));
+
+  for (const adjustment of adjustments) {
+    const createdMs = parseDbTimestamp(adjustment.created_at, NaN);
+    const hours = Number(adjustment.hours || 0);
+    if (!Number.isFinite(createdMs) || !Number.isFinite(hours) || hours === 0) continue;
+
+    const dayIndex = Math.floor((createdMs - range.startMs) / DAY_MS);
+    if (dayIndex < 0 || dayIndex >= daily.length) continue;
+    daily[dayIndex].shiftMs += hours * HOUR_MS;
+  }
+
+  const rows = daily.map((item, idx) => {
+    const shiftHours = item.shiftMs / HOUR_MS;
+    const trainingHours = item.trainingMs / HOUR_MS;
+    return {
+      dayStartMs: item.dayStartMs,
+      dateLabel: getDateLabelFromMs(item.dayStartMs),
+      shiftHours,
+      trainingHours,
+      totalHours: shiftHours + trainingHours
+    };
+  });
+
+  const totalShiftHours = rows.reduce((sum, row) => sum + row.shiftHours, 0);
+  const totalTrainingHours = rows.reduce((sum, row) => sum + row.trainingHours, 0);
+  return {
+    period: range.period,
+    label: range.label,
+    rows,
+    totalShiftHours,
+    totalTrainingHours,
+    totalHours: totalShiftHours + totalTrainingHours
+  };
 }
 
 function getMonthDailyHourHistory(db, agentId, monthOffset = 0, nowInput = new Date()) {
@@ -259,8 +399,10 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
 module.exports = {
   calculateAgentHourTotals,
   getMonthDailyHourHistory,
+  buildPeriodHourHistory,
   formatHours,
   getWeeklyResetStartMs,
   getMonthlyResetStartMs,
+  getPeriodRangeMs,
   parseDbTimestamp
 };

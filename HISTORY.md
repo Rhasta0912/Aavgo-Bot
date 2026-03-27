@@ -56,7 +56,7 @@ Working rules:
 
 ## Latest Changes
 - Add an Excel-friendly hours export command so staff can audit live shift and training logs in a spreadsheet.
-  - Summary: The new `/hours-export` command now generates a simple two-column CSV that Excel can open directly, with just agent name and total hours so the sheet stays readable.
+  - Summary: The new `/hours-export` command now generates a day/week/month timesheet CSV that Excel can open directly, with one row per date and just the date, name, and hours so the sheet stays readable and sorts cleanly.
   - Files touched:
     - src/commands.js
     - src/index.js

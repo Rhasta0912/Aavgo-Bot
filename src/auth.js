@@ -11,7 +11,7 @@ const {
   StringSelectMenuOptionBuilder 
 } = require('discord.js');
 const db = require('./database');
-const { calculateAgentHourTotals, formatHours } = require('./hours');
+const { calculateAgentHourTotals, buildPeriodHourHistory, formatHours } = require('./hours');
 const { execSync } = require('child_process');
 const fs = require('fs');
 
@@ -4397,6 +4397,7 @@ function escapeCsvValue(value) {
 
 function buildHoursExportCsvRows(agentRows) {
   const header = [
+    'Date',
     'Name',
     'Hours'
   ];
@@ -4405,6 +4406,7 @@ function buildHoursExportCsvRows(agentRows) {
 
   for (const row of agentRows) {
     lines.push([
+      row.date,
       row.displayName,
       row.hours
     ].map(escapeCsvValue).join(','));
@@ -4415,25 +4417,35 @@ function buildHoursExportCsvRows(agentRows) {
 
 async function handleHoursExport(interaction) {
   try {
-    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+    if (!interactionHasRoleAtLeast(interaction, 'team_leader')) {
       return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
 
+    const period = interaction.options.getString('period') || 'month';
     const agents = db.prepare(`
-      SELECT id, username, hotel_id
+      SELECT id, username
       FROM agents
       ORDER BY username COLLATE NOCASE ASC
     `).all();
 
-    const rows = agents.map(agent => {
-      const totals = calculateAgentHourTotals(db, agent.id);
+    const rows = [];
+    for (const agent of agents) {
+      const history = buildPeriodHourHistory(db, agent.id, period);
+      for (const day of history.rows) {
+        rows.push({
+          sortDateMs: day.dayStartMs || 0,
+          date: day.dateLabel,
+          displayName: agent.username || '',
+          hours: formatHours(day.totalHours || 0)
+        });
+      }
+    }
 
-      return {
-        displayName: agent.username || '',
-        hours: formatHours(totals.allHours || 0)
-      };
+    rows.sort((a, b) => {
+      if (a.sortDateMs !== b.sortDateMs) return a.sortDateMs - b.sortDateMs;
+      return String(a.displayName || '').localeCompare(String(b.displayName || ''));
     });
 
     const csv = buildHoursExportCsvRows(rows);
@@ -4441,7 +4453,7 @@ async function handleHoursExport(interaction) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 
     await interaction.editReply({
-      content: '📊 **Hours export ready.** Open the attached CSV in Excel for a simple hours list.',
+      content: `📊 **Hours export ready.** Open the attached CSV in Excel for a ${period} timesheet view.`,
       files: [{ attachment: buffer, name: `aavgo-hours-export-${stamp}.csv` }]
     });
   } catch (error) {
@@ -5577,7 +5589,7 @@ async function handleHelpStaff(interaction) {
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
-        '> `/hours-export`: Export a spreadsheet-friendly hours ledger for every agent.\n' +
+        '> `/hours-export period:day|week|month`: Export a date-ordered timesheet spreadsheet.\n' +
         '> `/see-all-pins`: Review which agents have a PIN set without revealing the PIN itself.\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +
