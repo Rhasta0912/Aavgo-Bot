@@ -1097,12 +1097,7 @@ async function showProfileCard(interaction, discordId, options = {}) {
               .setTimestamp()
           ],
           components: [
-            new ActionRowBuilder().addComponents(
-              new ButtonBuilder()
-                .setCustomId(`profiles_back_team:${teamName || TEAM_APPLICANTS}`)
-                .setLabel('Back')
-                .setStyle(ButtonStyle.Primary)
-            )
+            buildProfileActionRow(discordId, teamName || TEAM_APPLICANTS)
           ]
         });
       }
