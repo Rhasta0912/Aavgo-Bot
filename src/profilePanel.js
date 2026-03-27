@@ -17,18 +17,21 @@ const TEAM_AGENTS = 'Agents';
 const TEAM_SME = 'SME';
 const TEAM_TEAM_LEADER = 'Team Leader';
 const TEAM_TRAINEES = 'Trainees';
+const TEAM_APPLICANTS = 'Applicants';
 const TRAINEE_ROLE_ID = '1484705126026449029';
 const AGENT_ROLE_ID = '1482227287159078964';
 const SME_ROLE_ID = '1482382342621233153';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 const DEVELOPER_ROLE_ID = '1482312134875418737';
-const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES];
+const APPLICANTS_ROLE_ID = '1484919969689894912';
+const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES, TEAM_APPLICANTS];
 const ROLE_LABELS = {
   trainee: 'Trainee',
   agent: 'Agent',
   sme: 'Subject Matter Expert (SME)',
   team_leader: 'Team Leader',
-  operations_manager: 'Operations Manager'
+  operations_manager: 'Operations Manager',
+  applicant: 'Applicant'
 };
 const TEAM_ROLE_LOOKUPS = {
   [TEAM_1]: { names: ['team 1', 'team one'] },
@@ -63,6 +66,7 @@ function normalizeTeamName(value) {
   if (raw === 'sme' || raw === 'subject matter expert') return TEAM_SME;
   if (raw === 'team leader' || raw === 'teamlead' || raw === 'tl') return TEAM_TEAM_LEADER;
   if (raw === 'trainees' || raw === 'trainee') return TEAM_TRAINEES;
+  if (raw === 'applicants' || raw === 'applicant') return TEAM_APPLICANTS;
   return null;
 }
 
@@ -106,6 +110,7 @@ function statusLabel(status) {
   const normalized = String(status || '').toLowerCase();
   if (normalized === 'standby') return 'Standby';
   if (normalized === 'ready') return 'Ready';
+  if (normalized === 'pending') return 'Pending';
   return 'Ready';
 }
 
@@ -140,10 +145,13 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   const traineesDescription = normalizedSelected === TEAM_TRAINEES
     ? 'Browse trainees only (current)'
     : 'Browse trainees only';
+  const applicantsDescription = normalizedSelected === TEAM_APPLICANTS
+    ? 'Browse applicants only (current)'
+    : 'Browse applicants only';
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(customId)
-    .setPlaceholder('Select team')
+    .setPlaceholder('Select Profile')
     .addOptions(
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_1)
@@ -168,7 +176,11 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_TRAINEES)
         .setDescription(traineesDescription)
-        .setValue(TEAM_TRAINEES)
+        .setValue(TEAM_TRAINEES),
+      new StringSelectMenuOptionBuilder()
+        .setLabel(TEAM_APPLICANTS)
+        .setDescription(applicantsDescription)
+        .setValue(TEAM_APPLICANTS)
     );
 
   return new ActionRowBuilder().addComponents(menu);
@@ -193,16 +205,17 @@ function buildDashboardEmbed(activeTeam = null) {
       'This portal is built for fast team browsing, profile review, and developer actions.\n\n' +
       '──────────────────────────────\n' +
       '📋 **Protocol**\n' +
-      '1. Select a team below\n' +
+      '1. Select a profile below\n' +
       '2. Pick an agent profile\n' +
       '3. Run an approved action\n' +
       '4. Refresh team data if needed\n\n' +
       '──────────────────────────────\n' +
-      `🏨 **Current Team:** ${selected || 'Not selected'}\n` +
-      `👤 **Agents View:** Available in the team picker\n` +
-      `🎯 **SME View:** Available in the team picker\n` +
-      `🧭 **Team Leader View:** Available in the team picker\n` +
-      `🎓 **Trainees View:** Available in the team picker`
+      `🏨 **Current Profile:** ${selected || 'Not selected'}\n` +
+      `👤 **Agents View:** Available in the profile picker\n` +
+      `🎯 **SME View:** Available in the profile picker\n` +
+      `🧭 **Team Leader View:** Available in the profile picker\n` +
+      `🎓 **Trainees View:** Available in the profile picker\n` +
+      `📄 **Applicants View:** Available in the profile picker`
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations - Automated Access Control' })
@@ -481,6 +494,37 @@ async function fetchTeamMembers(guild, teamName) {
       roleNames: ['trainees', 'trainee']
     });
     return fetchAgentsByDiscordIds(guild, traineeRoleIds, 'trainee');
+  }
+
+  if (normalizedTeam === TEAM_APPLICANTS) {
+    const applicantIds = await getRoleMemberIds(guild, {
+      roleId: APPLICANTS_ROLE_ID,
+      roleNames: ['applicants', 'applicant']
+    });
+    const filtered = applicantIds.filter(discordId => {
+      const member = guild.members.cache.get(discordId);
+      if (!member) return false;
+      if (memberHasAnyRoleById(member, [AGENT_ROLE_ID, TRAINEE_ROLE_ID, SME_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID, DEVELOPER_ROLE_ID])) return false;
+      if (memberHasAnyRoleByName(member, [...SME_ROLE_NAMES, ...TEAM_LEADER_ROLE_NAMES, ...OPERATIONS_MANAGER_ROLE_NAMES, ...DEVELOPER_ROLE_NAMES, ...TEAM_ASSIGNMENT_ROLE_NAMES])) return false;
+      return true;
+    });
+
+    const rows = [];
+    for (const discordId of filtered) {
+      const member = guild.members.cache.get(discordId) || await guild.members.fetch(discordId).catch(() => null);
+      if (!member) continue;
+      rows.push({
+        id: null,
+        discord_id: discordId,
+        username: member.user.username,
+        role: 'applicant',
+        agent_status: 'pending',
+        team: TEAM_APPLICANTS,
+        effective_team: TEAM_APPLICANTS,
+        display_name: member.displayName
+      });
+    }
+    return rows;
   }
 
   return [];
@@ -1029,6 +1073,41 @@ async function applyMultiHotelUpdate(interaction, discordId, selectedHotels, tea
 async function showProfileCard(interaction, discordId, options = {}) {
   const profile = await getProfileContext(interaction.guild, discordId);
   if (!profile) {
+    const teamName = normalizeTeamName(options.teamName);
+    if (teamName === TEAM_APPLICANTS) {
+      const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+      if (member) {
+        return sendComponentUpdate(interaction, {
+          embeds: [
+            new EmbedBuilder()
+              .setTitle('📄 Applicant · Pending Review')
+              .setDescription(
+                `## 👤 ${trimToTwoWords(member.displayName || member.user.username)}\n` +
+                '────────────────────────\n' +
+                `> 🧑 Discord: <@${member.id}> (\`${member.id}\`)\n` +
+                `> 🏷️ Username: ${member.user.username}\n` +
+                `> 📌 Role: Applicant\n` +
+                `> 🟡 Status: Pending\n` +
+                '────────────────────────\n' +
+                '*This member is only in the Applicant pool right now.*'
+              )
+              .setColor(0xF1C40F)
+              .setThumbnail(member.displayAvatarURL({ size: 256, extension: 'png' }))
+              .setFooter({ text: 'Aavgo Operations - Applicant Review' })
+              .setTimestamp()
+          ],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId(`profiles_back_team:${teamName || TEAM_APPLICANTS}`)
+                .setLabel('Back')
+                .setStyle(ButtonStyle.Primary)
+            )
+          ]
+        });
+      }
+    }
+
     return sendComponentUpdate(interaction, {
       embeds: [
         new EmbedBuilder()

@@ -6125,6 +6125,10 @@ async function handleDbRemoveUser(interaction) {
       if (removableRoles.size > 0) {
         await member.roles.remove(removableRoles);
       }
+      const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(role => String(role.name || '').toLowerCase() === 'applicants');
+      if (applicantsRole && !member.roles.cache.has(applicantsRole.id)) {
+        await member.roles.add(applicantsRole).catch(() => {});
+      }
       remainingRoleNames = member.roles.cache
         .filter(role => role.id !== interaction.guild.id)
         .map(role => role.name);
