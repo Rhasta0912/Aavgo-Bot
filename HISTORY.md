@@ -282,6 +282,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added automatic deployment update logs to channel 1485584578927132863: on bot startup, if the deployed commit changed, the bot posts commit summary lines (feature/fix/remove updates) and stores the last posted commit in config to avoid duplicate posts.
 
 ## Latest Changes
+- Added weekly and monthly hour totals to profile cards and hours tracking, with Monday 1:00 AM Philippine Time weekly resets and first-of-month 1:00 AM Philippine Time monthly resets. Also added `/add-hours` for management to append manual hours into an agent’s hour history, and updated `/check-hours` plus `/clear-hours` so they use the new shared hour-adjustment system.
+  - Summary: Profiles now show `Total Weekly Hours` and `Total Monthly Hours` using the same shift-session math as `/check-hours`, and staff can manually correct totals with `/add-hours`.
+  - Files touched:
+    - src/hours.js
+    - src/profilePanel.js
+    - src/auth.js
+    - src/database.js
+    - src/commands.js
+    - src/index.js
+    - HISTORY.md
 - Renamed the Profiles member selector placeholder to `Select Member Profile` so the label matches the rest of the UI capitalization.
 - Updated the Profiles `Set Role` button so it can recreate a wiped DB record instead of showing `Agent not found in database.`. When management sets a role on a deleted user, the bot now bootstraps the agent row and syncs Discord roles from that fresh record.
 - Reverted the temporary Applicants auto-row sync so Discord `Applicants` no longer creates or updates an `agents` table row on role sync. Applicant onboarding now goes back to the normal promotion path, where management promotion creates the DB record instead of the role itself.

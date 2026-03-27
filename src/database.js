@@ -99,6 +99,16 @@ db.exec(`
     FOREIGN KEY (session_id) REFERENCES sessions(id)
   );
 
+  CREATE TABLE IF NOT EXISTS hour_adjustments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id INTEGER NOT NULL,
+    hours REAL NOT NULL,
+    note TEXT,
+    created_by TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS maintenance_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     hotel_id TEXT NOT NULL,
@@ -225,6 +235,20 @@ db.pragma('foreign_keys = ON');
     const sessionTableInfo = db.prepare("PRAGMA table_info(sessions)").all();
     if (!sessionTableInfo.find(col => col.name === 'session_kind')) {
       db.prepare("ALTER TABLE sessions ADD COLUMN session_kind TEXT DEFAULT 'shift'").run();
+    }
+    const hourAdjustmentsTableInfo = db.prepare("PRAGMA table_info(hour_adjustments)").all();
+    if (!hourAdjustmentsTableInfo || hourAdjustmentsTableInfo.length === 0) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS hour_adjustments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          agent_id INTEGER NOT NULL,
+          hours REAL NOT NULL,
+          note TEXT,
+          created_by TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+        );
+      `);
     }
     db.prepare("UPDATE sessions SET session_kind = 'shift' WHERE session_kind IS NULL OR session_kind = ''").run();
     db.prepare("UPDATE agents SET agent_status = 'standby' WHERE agent_status IS NULL").run();

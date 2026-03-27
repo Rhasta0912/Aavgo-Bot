@@ -8,6 +8,7 @@ const {
 } = require('discord.js');
 const db = require('./database');
 const auth = require('./auth');
+const { calculateAgentHourTotals, formatHours } = require('./hours');
 
 const PROFILES_CHANNEL_ID = '1485256962617643098';
 const PROFILE_PANEL_KEY_PREFIX = 'profiles_dashboard_msg_';
@@ -591,6 +592,7 @@ async function getProfileContext(guild, discordId) {
   const email = agent.email || pending?.email || 'Not set';
   const phone = agent.phone || pending?.phone || 'Not set';
   const appliedAt = pending?.requested_at || firstSession?.first_login;
+  const hourTotals = calculateAgentHourTotals(db, agent.id);
 
   return {
     agent,
@@ -601,18 +603,22 @@ async function getProfileContext(guild, discordId) {
     phone,
     appliedAt,
     pair,
-    activeSession
+    activeSession,
+    hourTotals
   };
 }
 
 function buildProfileEmbed(profile, reviewerTag, notice = null) {
-  const { agent, member, shortName, email, phone, appliedAt, pair, activeSession } = profile;
+  const { agent, member, shortName, email, phone, appliedAt, pair, activeSession, hourTotals } = profile;
   const pairText = pair
     ? `${hotelName(pair.primary_hotel_id)} + ${hotelName(pair.secondary_hotel_id)}`
     : 'Not set';
   const activeText = activeSession
     ? `${hotelName(activeSession.hotel_id)} since ${dateTag(activeSession.login_time)}`
     : 'Not on an active shift';
+  const weeklyHours = formatHours(hourTotals?.weeklyHours || 0);
+  const monthlyHours = formatHours(hourTotals?.monthlyHours || 0);
+  const totalHours = formatHours(hourTotals?.allHours || 0);
 
   const embed = new EmbedBuilder()
     .setTitle('✅ Active Agent · Verified')
@@ -628,6 +634,9 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
       `> 🏢 Primary Hotel: ${hotelName(agent.hotel_id)}\n` +
       `> 🔗 Hotel Pair: ${pairText}\n` +
       `> 🟢 Live Session: ${activeText}\n` +
+      `> ⏱️ Total Weekly Hours: ${weeklyHours} hrs (resets Monday 1:00 AM PH)\n` +
+      `> 🗓️ Total Monthly Hours: ${monthlyHours} hrs (resets 1st of month 1:00 AM PH)\n` +
+      `> 📊 Total All-Time Hours: ${totalHours} hrs\n` +
       '──────────────────────────────\n' +
       '*Review the profile below.*\n\n' +
       `**Reviewed by:** ${reviewerTag || 'System'}\n` +

@@ -11,6 +11,7 @@ const {
   StringSelectMenuOptionBuilder 
 } = require('discord.js');
 const db = require('./database');
+const { calculateAgentHourTotals, formatHours } = require('./hours');
 const { execSync } = require('child_process');
 const fs = require('fs');
 
@@ -4311,44 +4312,21 @@ async function handleCheckHours(interaction) {
       return interaction.editReply({ content: `**${targetUser.username}** is not a registered agent.` });
     }
 
-    const sessions = db.prepare("SELECT * FROM sessions WHERE agent_id = ?").all(agent.id);
-
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const dayOfWeek = now.getDay();
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek).getTime();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-
-    let msToday = 0;
-    let msWeek = 0;
-    let msMonth = 0;
-    let msTotal = 0;
-
-    for (const session of sessions) {
-      let lTime = session.login_time;
-      if (lTime && !lTime.includes('T') && !lTime.includes('Z')) {
-        lTime = lTime.replace(' ', 'T') + 'Z';
-      }
-      const loginTime = new Date(lTime || Date.now()).getTime();
-
-      let loTime = session.logout_time;
-      if (loTime && !loTime.includes('T') && !loTime.includes('Z')) {
-        loTime = loTime.replace(' ', 'T') + 'Z';
-      }
-      const logoutTime = loTime ? new Date(loTime).getTime() : Date.now();
-      
-      const duration = logoutTime - loginTime;
-
-      msTotal += duration;
-      if (loginTime >= startOfToday) msToday += duration;
-      if (loginTime >= startOfWeek) msWeek += duration;
-      if (loginTime >= startOfMonth) msMonth += duration;
-    }
+    const totals = calculateAgentHourTotals(db, agent.id);
 
     const nickname = await getAgentDisplayName(interaction.guild, targetUser.id);
     const embed = new EmbedBuilder()
       .setTitle('⏱️ Agent Hours Tracker')
-      .setDescription(`**Agent:** ${nickname} (<@${targetUser.id}>)\n\n**⏱️ Activity Breakdown:**\n> **Today:** \`${fmt(msToday)} hrs\`\n> **This Week:** \`${fmt(msWeek)} hrs\`\n> **This Month:** \`${fmt(msMonth)} hrs\`\n\n**Total All-Time:** \`${fmt(msTotal)} hrs\``)
+      .setDescription(
+        `**Agent:** ${nickname} (<@${targetUser.id}>)\n\n` +
+        `**⏱️ Activity Breakdown:**\n` +
+        `> **Weekly Hours:** \`${formatHours(totals.weeklyHours)} hrs\`\n` +
+        `> **Monthly Hours:** \`${formatHours(totals.monthlyHours)} hrs\`\n` +
+        `> **All-Time Hours:** \`${formatHours(totals.allHours)} hrs\`\n\n` +
+        `**Reset Windows:**\n` +
+        `> Weekly: Monday 1:00 AM Philippine Time\n` +
+        `> Monthly: 1st of each month at 1:00 AM Philippine Time`
+      )
       .setColor(0x0099FF)
       .setFooter({ text: '🔒 Confidential: Only visible to you.' })
       .setTimestamp();
@@ -4364,6 +4342,54 @@ async function handleCheckHours(interaction) {
   }
 }
 
+async function handleAddHours(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const targetUser = interaction.options.getUser('user');
+    const hours = interaction.options.getNumber('hours');
+    const note = interaction.options.getString('note') || 'Manual adjustment';
+
+    if (!Number.isFinite(hours) || hours === 0) {
+      return interaction.editReply({ content: '❌ Please provide a valid hour amount.' });
+    }
+
+    const agent = db.prepare('SELECT id, username FROM agents WHERE discord_id = ?').get(targetUser.id);
+    if (!agent) {
+      return interaction.editReply({ content: `❌ **${targetUser.username}** is not a registered agent.` });
+    }
+
+    db.prepare(`
+      INSERT INTO hour_adjustments (agent_id, hours, note, created_by)
+      VALUES (?, ?, ?, ?)
+    `).run(agent.id, hours, note, interaction.user.id);
+
+    const signedHours = hours > 0 ? `+${formatHours(hours)}` : formatHours(hours);
+    await interaction.editReply({
+      content: `✅ Added **${signedHours} hrs** to **${targetUser.username}**.\nNote: ${note}`
+    });
+
+    sendAuditLog(interaction.client, {
+      title: '⏱️ Manual Hours Added',
+      description: `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n**Hours:** ${signedHours} hrs\n**Note:** ${note}\n**Added By:** {{AGENT_NAME}}`,
+      color: 0x3498DB,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleAddHours:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Something went wrong while adding hours.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.editReply({ content: '❌ Something went wrong while adding hours.' }).catch(() => {});
+    }
+  }
+}
+
 // ─── /clear-hours (Admin) ─────────────────────────────
 async function handleClearHours(interaction) {
   try {
@@ -4374,18 +4400,21 @@ async function handleClearHours(interaction) {
       return interaction.reply({ content: `**${targetUser.username}** is not a registered agent.`, ephemeral: true });
     }
 
-    const result =         db.prepare("DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)").run(agent.id);
-        db.prepare("DELETE FROM sessions WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
+    db.transaction(() => {
+      db.prepare("DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)").run(agent.id);
+      db.prepare("DELETE FROM hour_adjustments WHERE agent_id = ?").run(agent.id);
+      db.prepare("DELETE FROM sessions WHERE agent_id = ?").run(agent.id);
+      db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
+      db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
+      db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
+      db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
+    })();
 
-    await interaction.reply({ content: `✅ Successfully cleared all **${result.changes}** sessions for **${targetUser.username}**.`, ephemeral: true });
+    await interaction.reply({ content: `✅ Successfully cleared all sessions and hour adjustments for **${targetUser.username}**.`, ephemeral: true });
 
     sendAuditLog(interaction.client, {
       title: '🗑️ Hours Cleared',
-      description: `**Admin:** {{AGENT_NAME}} (<@${interaction.user.id}>)\n**Target:** ${targetUser.username} (<@${targetUser.id}>)\n**Action:** All sessions deleted from database.`,
+      description: `**Admin:** {{AGENT_NAME}} (<@${interaction.user.id}>)\n**Target:** ${targetUser.username} (<@${targetUser.id}>)\n**Action:** All sessions and manual hour adjustments deleted from database.`,
       color: 0xED4245,
       userId: interaction.user.id,
       guild: interaction.guild
@@ -5481,6 +5510,7 @@ async function handleHelpStaff(interaction) {
         '> `/find-guest`: Search guest records by name or room.\n' +
         '> `/db-log-checkin`: Manually log a guest check-in to management tracking.\n' +
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
+        '> `/add-hours`: Add manual hours to an agent record.\n' +
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
@@ -6513,6 +6543,7 @@ module.exports = {
   handleAddAgent,
   handleRemoveAgentCommand,
   handleCheckHours,
+  handleAddHours,
   handleClearHours,
   handlePurge,
   handleModalSubmit,

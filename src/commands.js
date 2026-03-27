@@ -53,6 +53,12 @@ const commandData = [
     .setDescription('Check shift hours logged by an agent (Managers can check others)')
     .addUserOption(option => option.setName('user').setDescription('The user to check (Managers only)').setRequired(false)),
   new SlashCommandBuilder()
+    .setName('add-hours')
+    .setDescription('(Developer/Operations Manager) Add manual hours to an agent')
+    .addUserOption(option => option.setName('user').setDescription('The agent to update').setRequired(true))
+    .addNumberOption(option => option.setName('hours').setDescription('Hours to add (supports decimals)').setRequired(true).setMinValue(0.01))
+    .addStringOption(option => option.setName('note').setDescription('Reason or note').setRequired(false)),
+  new SlashCommandBuilder()
     .setName('end-shift')
     .setDescription('End your current shift'),
   new SlashCommandBuilder()
