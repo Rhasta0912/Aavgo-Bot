@@ -4397,17 +4397,8 @@ function escapeCsvValue(value) {
 
 function buildHoursExportCsvRows(agentRows) {
   const header = [
-    'DisplayName',
-    'PermanentHotel',
-    'LiveShiftWeeklyHours',
-    'LiveShiftMonthlyHours',
-    'LiveShiftAllTimeHours',
-    'TrainingWeeklyHours',
-    'TrainingMonthlyHours',
-    'TrainingAllTimeHours',
-    'CombinedWeeklyHours',
-    'CombinedMonthlyHours',
-    'CombinedAllTimeHours'
+    'Name',
+    'Hours'
   ];
 
   const lines = [header.join(',')];
@@ -4415,16 +4406,7 @@ function buildHoursExportCsvRows(agentRows) {
   for (const row of agentRows) {
     lines.push([
       row.displayName,
-      row.permanentHotel,
-      row.liveWeeklyHours,
-      row.liveMonthlyHours,
-      row.liveAllTimeHours,
-      row.trainingWeeklyHours,
-      row.trainingMonthlyHours,
-      row.trainingAllTimeHours,
-      row.combinedWeeklyHours,
-      row.combinedMonthlyHours,
-      row.combinedAllTimeHours
+      row.hours
     ].map(escapeCsvValue).join(','));
   }
 
@@ -4450,16 +4432,7 @@ async function handleHoursExport(interaction) {
 
       return {
         displayName: agent.username || '',
-        permanentHotel: agent.hotel_id ? getCombinedHotelLabel(agent.hotel_id) : '',
-        liveWeeklyHours: formatHours(totals.shift?.weeklyHours || 0),
-        liveMonthlyHours: formatHours(totals.shift?.monthlyHours || 0),
-        liveAllTimeHours: formatHours(totals.shift?.allHours || 0),
-        trainingWeeklyHours: formatHours(totals.training?.weeklyHours || 0),
-        trainingMonthlyHours: formatHours(totals.training?.monthlyHours || 0),
-        trainingAllTimeHours: formatHours(totals.training?.allHours || 0),
-        combinedWeeklyHours: formatHours(totals.weeklyHours || 0),
-        combinedMonthlyHours: formatHours(totals.monthlyHours || 0),
-        combinedAllTimeHours: formatHours(totals.allHours || 0)
+        hours: formatHours(totals.allHours || 0)
       };
     });
 
@@ -4468,7 +4441,7 @@ async function handleHoursExport(interaction) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 
     await interaction.editReply({
-      content: '📊 **Hours export ready.** Open the attached CSV in Excel for a spreadsheet view of the hours ledger.',
+      content: '📊 **Hours export ready.** Open the attached CSV in Excel for a simple hours list.',
       files: [{ attachment: buffer, name: `aavgo-hours-export-${stamp}.csv` }]
     });
   } catch (error) {
