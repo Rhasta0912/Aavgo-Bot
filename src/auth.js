@@ -6244,11 +6244,14 @@ function extractImpactLines(lines, keywords = [], limit = 8) {
 
 function readLatestHistoryEntryForUpdateLog() {
   try {
-    const historyPath = 'HISTORY.md';
+    const historyPath = path.resolve(__dirname, '..', 'HISTORY.md');
     if (!fs.existsSync(historyPath)) return null;
 
     const lines = fs.readFileSync(historyPath, 'utf8').split(/\r?\n/);
-    const latestHeaderIndex = lines.findIndex(line => line.trim().toLowerCase() === '## latest changes');
+    const latestHeaderIndex = lines
+      .map((line, index) => (line.trim().toLowerCase() === '## latest changes' ? index : -1))
+      .filter(index => index >= 0)
+      .pop();
     if (latestHeaderIndex === -1) return null;
 
     for (let i = latestHeaderIndex + 1; i < lines.length; i += 1) {

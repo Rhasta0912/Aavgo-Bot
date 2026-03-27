@@ -231,14 +231,17 @@ async function postToDiscord(embed) {
 function appendHistory(filePath, entry) {
   const current = readHistoryTail(filePath);
   const marker = '## Latest Changes\n';
+  const markerMatches = [...current.matchAll(/## Latest Changes\n/g)];
 
-  if (!current.includes(marker)) {
+  if (markerMatches.length === 0) {
     const fallback = `${current.trimEnd()}\n\n## Latest Changes\n${entry}\n`;
     fs.writeFileSync(filePath, fallback);
     return;
   }
 
-  const updated = current.replace(marker, `${marker}${entry}\n`);
+  const lastMatch = markerMatches[markerMatches.length - 1];
+  const insertAt = lastMatch.index + marker.length;
+  const updated = `${current.slice(0, insertAt)}${entry}\n${current.slice(insertAt)}`;
   fs.writeFileSync(filePath, updated);
 }
 
