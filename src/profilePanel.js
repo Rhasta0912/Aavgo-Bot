@@ -937,12 +937,21 @@ async function applyRoleUpdate(interaction, discordId, roleValue, teamName) {
   }
 
   const current = db.prepare('SELECT role, team FROM agents WHERE discord_id = ?').get(discordId);
+  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
+  const displayName = member?.displayName || member?.user?.username || 'Unknown';
+  const seededTeam = normalizeTeamName(teamName);
+  const resolvedTeam = [TEAM_1, TEAM_2].includes(seededTeam) ? seededTeam : current?.team || null;
+
   if (!current) {
-    return sendComponentUpdate(interaction, { content: 'Agent not found in database.', embeds: [], components: [] });
+    const bootstrapPin = String(Math.floor(100000 + Math.random() * 900000));
+    const bootstrapStatus = normalized === 'trainee' ? 'standby' : 'ready';
+    db.prepare(
+      'INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, team, hotel_compatibility) VALUES (?, ?, ?, 0, ?, ?, ?, ?)'
+    ).run(discordId, displayName, bootstrapPin, normalized, bootstrapStatus, resolvedTeam, '[]');
+  } else {
+    db.prepare('UPDATE agents SET role = ?, team = COALESCE(?, team) WHERE discord_id = ?').run(normalized, resolvedTeam, discordId);
   }
 
-  db.prepare('UPDATE agents SET role = ? WHERE discord_id = ?').run(normalized, discordId);
-  const member = await interaction.guild.members.fetch(discordId).catch(() => null);
   await syncBaseRoleDiscordRoles(member, normalized);
   await syncLeadershipDiscordRoles(member, normalized === 'trainee' ? 'agent' : normalized);
 
