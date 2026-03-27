@@ -1,13 +1,10 @@
 const {
   EmbedBuilder,
   ActionRowBuilder,
-  ModalBuilder,
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder,
   ButtonBuilder,
-  ButtonStyle,
-  TextInputBuilder,
-  TextInputStyle
+  ButtonStyle
 } = require('discord.js');
 const db = require('./database');
 const auth = require('./auth');
@@ -286,72 +283,8 @@ function buildMemberPickerRow(teamName, members) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildMemberSearchButtonRow(teamName) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`profiles_member_search:${teamName}`)
-      .setLabel('Select Member Profile')
-      .setStyle(ButtonStyle.Primary)
-  );
-}
-
-function buildMemberSearchModal(teamName) {
-  return new ModalBuilder()
-    .setCustomId(`profiles_member_search_modal:${teamName}`)
-    .setTitle(`Search ${teamName} Profiles`)
-    .addComponents(
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('search_term')
-          .setLabel('Member name, nickname, or username')
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Type a name to search')
-          .setRequired(true)
-          .setMaxLength(100)
-      )
-    );
-}
-
-function buildMemberSearchResultsEmbed(teamName, query, members) {
-  const preview = members.slice(0, 20).map((member, index) => {
-    const name = trimToTwoWords(member.display_name || member.username);
-    return `${index + 1}. ${name} - ${roleLabel(member.role)} - ${statusLabel(member.agent_status)}`;
-  });
-
-  return new EmbedBuilder()
-    .setTitle(`Search Results - ${teamName}`)
-    .setDescription(
-      `Search term: **${trimLabel(query || 'Unknown', 80)}**\n\n` +
-      (preview.length > 0 ? preview.join('\n') : 'No matching members found.')
-    )
-    .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations - Member Search' })
-    .setTimestamp();
-}
-
-function buildMemberSearchResultsRow(teamName, members) {
-  const options = members.slice(0, 25).map(member => {
-    const name = trimToTwoWords(member.display_name || member.username);
-    return new StringSelectMenuOptionBuilder()
-      .setLabel(trimLabel(name))
-      .setDescription(trimLabel(`${roleLabel(member.role)} | ${statusLabel(member.agent_status)}`))
-      .setValue(member.discord_id);
-  });
-
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(`profiles_agent_pick:${teamName}`)
-      .setPlaceholder('Select Member Profile')
-      .setOptions(options)
-  );
-}
-
 function buildTeamRosterPayload(teamName, members) {
-  const components = [
-    buildTeamPickerRow('profiles_team_pick_local', teamName),
-    buildMemberSearchButtonRow(teamName),
-    buildTeamRefreshRow(teamName)
-  ];
+  const components = [buildTeamPickerRow('profiles_team_pick_local', teamName), buildTeamRefreshRow(teamName)];
   if (members.length > 0) {
     components.splice(1, 0, buildMemberPickerRow(teamName, members));
   }
@@ -1291,54 +1224,6 @@ async function handleAgentPick(interaction) {
   return showProfileCard(interaction, discordId, { teamName });
 }
 
-async function handleMemberSearchButton(interaction) {
-  if (!canUsePanel(interaction)) {
-    return interaction.reply({ content: 'Developer access required.', ephemeral: true });
-  }
-
-  const teamNameRaw = interaction.customId.split(':')[1];
-  const teamName = normalizeTeamName(teamNameRaw) || TEAM_1;
-  return interaction.showModal(buildMemberSearchModal(teamName));
-}
-
-async function handleMemberSearchModal(interaction) {
-  if (!canUsePanel(interaction)) {
-    return interaction.reply({ content: 'Developer access required.', ephemeral: true });
-  }
-
-  const teamNameRaw = interaction.customId.split(':')[1];
-  const teamName = normalizeTeamName(teamNameRaw) || TEAM_1;
-  const query = String(interaction.fields.getTextInputValue('search_term') || '').trim();
-  const members = await fetchTeamMembers(interaction.guild, teamName);
-  const normalizedQuery = query.toLowerCase();
-  const matches = members.filter(member => {
-    const displayName = String(member.display_name || '').toLowerCase();
-    const username = String(member.username || '').toLowerCase();
-    const discordId = String(member.discord_id || '').toLowerCase();
-    return displayName.includes(normalizedQuery) || username.includes(normalizedQuery) || discordId.includes(normalizedQuery);
-  });
-
-  if (matches.length === 0) {
-    return interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setTitle(`Search Results - ${teamName}`)
-          .setDescription(`Search term: **${trimLabel(query || 'Unknown', 80)}**\n\nNo matching members found.`)
-          .setColor(0xF1C40F)
-          .setFooter({ text: 'Aavgo Operations - Member Search' })
-          .setTimestamp()
-      ],
-      ephemeral: true
-    });
-  }
-
-  return interaction.reply({
-    embeds: [buildMemberSearchResultsEmbed(teamName, query, matches)],
-    components: [buildMemberSearchResultsRow(teamName, matches)],
-    ephemeral: true
-  });
-}
-
 function parseProfileActionContext(customId, prefix) {
   const raw = String(customId || '').slice(prefix.length);
   const [discordId = '', rawTeam = TEAM_1, extra = ''] = raw.split(':');
@@ -1500,10 +1385,6 @@ async function handleButton(interaction) {
     return handleBackToTeam(interaction);
   }
 
-  if (customId.startsWith('profiles_member_search:')) {
-    return handleMemberSearchButton(interaction);
-  }
-
   if (customId.startsWith('profiles_back_profile:')) {
     const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_back_profile:');
     return showProfileCard(interaction, discordId, { teamName });
@@ -1637,6 +1518,5 @@ module.exports = {
   ensureProfilesDashboard,
   handleSetupProfiles,
   handleButton,
-  handleSelectMenu,
-  handleMemberSearchModal
+  handleSelectMenu
 };

@@ -497,8 +497,6 @@ client.on('interactionCreate', async interaction => {
       await auth.handleModalSubmit(interaction);
     } else if (interaction.customId.startsWith('newcomer_agent_pin_modal:')) {
       await auth.handleNewcomerAgentPinSubmit(interaction);
-    } else if (interaction.customId.startsWith('profiles_member_search_modal:')) {
-      await profilePanel.handleMemberSearchModal(interaction);
     }
   } else if (interaction.isButton()) {
     if (interaction.customId.startsWith('profiles_')) {
