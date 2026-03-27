@@ -397,7 +397,7 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
 
 async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentId) {
   const priorSessions = db.prepare(
-    "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC"
+    "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC"
   ).all(hotelId, currentAgentId);
 
   for (const priorSession of priorSessions) {
@@ -864,7 +864,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   if (hotelId !== 'TEAM_SHIFT') {
     const conflictingSession = db.prepare(
-      "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
+      "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1"
     ).get(hotelId, agent.id);
 
     if (conflictingSession && !isTakeover) {
@@ -979,7 +979,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   });
 
   if (isTakeover && hotelId !== 'TEAM_SHIFT') {
-    const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
+    const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
     if (priorSession) {
       const priorAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(priorSession.agent_id);
       db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed' WHERE id = ?").run(priorSession.id);
@@ -2579,8 +2579,8 @@ async function handleStartShiftClick(interaction) {
        }
 
        if (HOTEL_NAMES[agent.hotel_id]) {
-          const hotelSession = db.prepare(
-            "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
+         const hotelSession = db.prepare(
+            "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1"
           ).get(agent.hotel_id, agent.id);
 
           if (hotelSession) {
@@ -2690,7 +2690,7 @@ async function handleShiftHotelPickMenu(interaction) {
     }
 
     const hotelSession = db.prepare(
-      "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1"
+      "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1"
     ).get(hotelId, agent.id);
 
     if (hotelSession) {
@@ -3202,7 +3202,7 @@ async function handleConfirmHotelLink(interaction) {
     }
 
     // Check if another agent is already logged into this hotel
-    const hotelSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active'").get(hotelId);
+    const hotelSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training'").get(hotelId);
     if (hotelSession && hotelSession.agent_id !== agent.id) {
        const otherAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(hotelSession.agent_id);
        
@@ -3575,7 +3575,7 @@ async function handleModalSubmit(interaction) {
 
     // Handle takeover if applicable
     if (isTakeover && hotelId !== 'TEAM_SHIFT') {
-       const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
+       const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
        if (priorSession) {
           const priorAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(priorSession.agent_id);
           db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed' WHERE id = ?").run(priorSession.id);

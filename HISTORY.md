@@ -55,12 +55,16 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Allow multiple trainees to be logged in at the same time without tripping hotel conflict checks.
+  - Summary: Training sessions now skip the live-hotel takeover/conflict guard, so more than one person can train at once. Training still stays on the training board only and does not count as a live hotel shift.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Updated Profiles panel card and actions: removed the `Email` line from the profile embed, added a new blue `View Hour History` button, and built a monthly calendar-style hour history view that shows per-date `Shift` vs `Training` hours plus total monthly hours.
   - Summary: Staff can now open a profile and instantly view date-by-date monthly hours (training and live shift separated) from one button without exposing email on the card.
   - Files touched:
     - src/hours.js
     - src/profilePanel.js
-    - HISTORY.md
 - Add a developer-only PIN audit command so staff can see who has a PIN set without revealing any PIN values.
   - Summary: The new `/see-all-pins` command lists every agent with a clear PIN status, along with role, team, and hotel context, so developers can audit coverage safely without exposing secrets.
   - Files touched:
