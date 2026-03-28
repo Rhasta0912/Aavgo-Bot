@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Enforced team-assignment gate for SME/Team Leader shift initialization.
+  - Summary: Management route now mirrors agent restriction: if SME/TL has no assigned team in DB, shift initialization is blocked with the same team-required guidance embed instead of continuing into team-shift selection/start.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Updated non-login temp-message expiry to 1 minute for short command confirmations.
   - Summary: Non-login ephemeral temp messages now use a smart TTL split: short one-line command confirmation replies (for example success/deleted/updated style notices) auto-delete after 1 minute, while longer or richer non-login temp messages still use the 10-minute expiry. `/purge` success temp replies were aligned to 1 minute as part of this rule.
   - Files touched:

@@ -3328,6 +3328,13 @@ async function handleStartShiftClick(interaction) {
       });
     }
 
+    if (!agent.team) {
+      return sendPrivateFlowPayload(interaction, {
+        embeds: [buildAgentTeamRequiredEmbed()],
+        components: []
+      });
+    }
+
     // If the agent has multiple assigned grey hotel roles, let them pick the hotel for this shift.
     const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
       .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && interaction.member.roles.cache.has(roleId))
@@ -4005,6 +4012,13 @@ async function handleManagementTeamStart(interaction, teamName) {
       return sendPrivateFlowPayload(interaction, {
         content: 'Access denied. Team Leader or SME role required.',
         embeds: [],
+        components: []
+      });
+    }
+
+    if (!agent.team) {
+      return sendPrivateFlowPayload(interaction, {
+        embeds: [buildAgentTeamRequiredEmbed()],
         components: []
       });
     }
