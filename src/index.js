@@ -253,9 +253,18 @@ client.once('ready', async () => {
     setInterval(() => {
       auth.checkSchedules(client);
     }, 5 * 60000);
+
+    // Overtime enforcement loop (every 1 minute):
+    // warn at 8h, auto-logout after 5 minutes, cap recorded time to 8h.
+    setInterval(() => {
+      auth.monitorOvertimeSessions(client);
+    }, 60 * 1000);
     
     // Initial check on boot
     auth.checkSchedules(client);
+    auth.monitorOvertimeSessions(client).catch(error => {
+      console.warn('[OVERTIME] Initial monitor pass failed:', error.message);
+    });
     auth.broadcastUpdateLog(client).catch(error => {
       console.warn('[UPDATE-LOG] Startup broadcast failed:', error.message);
     });

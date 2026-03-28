@@ -56,6 +56,13 @@ Working rules:
 
 ## Latest Changes
 - Align the hotel map with the live context: keep AD1 separate, add Travelodge and Day Inns Bishop as distinct Team 1 hotels, and wire their status channels and roles into the bot.
+- Added overtime enforcement for active `agent` / `trainee` sessions.
+  - Summary: The bot now sends a warning DM at 8 hours, auto-logs out 5 minutes later if still active, and caps recorded session duration to exactly 8 hours for shift/training entries.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
+- Rename AD1 to Travelodge in the hotel catalog, add Day Inns Bishop as a new Team 1 hotel, and update the status/training/login surfaces so the new hotel names show consistently.
 - Update `/see-all-pins` so Operations Managers and Developers can view the stored PIN values in a safe audit view, along with role, team, and hotel context.
 - Add an Excel-friendly hours export command so staff can audit live shift and training logs in a spreadsheet.
   - Summary: The new `/hours-export` command now generates a day/week/month horizontal timesheet CSV that Excel can open directly, with one row per date and columns for name, in, out, shift hours, training hours, and total hours so the sheet stays readable and scrolls less.

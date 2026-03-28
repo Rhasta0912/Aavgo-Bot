@@ -111,6 +111,10 @@ const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
+const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
+const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
+const overtimeWarnedSessionIds = new Set();
+const overtimeAutoLogoutAgentIds = new Set();
 
 const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
@@ -140,6 +144,21 @@ const ROLE_HIERARCHY = {
   team_leader: 3,
   operations_manager: 5
 };
+
+function parseSessionTimestamp(value) {
+  if (!value) return Date.now();
+  if (String(value).includes('T') || String(value).includes('Z')) {
+    const ms = new Date(value).getTime();
+    return Number.isFinite(ms) ? ms : Date.now();
+  }
+  const ms = new Date(String(value).replace(' ', 'T') + 'Z').getTime();
+  return Number.isFinite(ms) ? ms : Date.now();
+}
+
+function getCappedLogoutIso(loginTimeValue) {
+  const loginMs = parseSessionTimestamp(loginTimeValue);
+  return new Date(loginMs + OVERTIME_WARNING_MS).toISOString();
+}
 
 function buildAuditFields(resolvedDescription) {
   const lines = String(resolvedDescription || '')
@@ -1673,6 +1692,114 @@ async function refreshOperationalBoards(client) {
     await updateTrainingStatusEmbed(client);
   } catch (error) {
     console.warn('[STATUS] Boot refresh failed:', error.message);
+  }
+}
+
+async function monitorOvertimeSessions(client) {
+  try {
+    const activeSessions = db.prepare(`
+      SELECT
+        sessions.id,
+        sessions.agent_id,
+        sessions.login_time,
+        COALESCE(sessions.session_kind, 'shift') AS session_kind,
+        agents.discord_id,
+        agents.username,
+        agents.role
+      FROM sessions
+      JOIN agents ON agents.id = sessions.agent_id
+      WHERE sessions.status = 'active'
+    `).all();
+
+    const activeSessionIdSet = new Set(activeSessions.map(session => String(session.id)));
+    for (const warnedId of [...overtimeWarnedSessionIds]) {
+      if (!activeSessionIdSet.has(warnedId)) {
+        overtimeWarnedSessionIds.delete(warnedId);
+      }
+    }
+
+    const nowMs = Date.now();
+    for (const session of activeSessions) {
+      const normalizedRole = String(session.role || '').toLowerCase();
+      if (!['agent', 'trainee'].includes(normalizedRole)) {
+        continue;
+      }
+
+      const loginMs = parseSessionTimestamp(session.login_time);
+      const elapsedMs = nowMs - loginMs;
+      const sessionIdKey = String(session.id);
+
+      if (elapsedMs >= OVERTIME_WARNING_MS && elapsedMs < OVERTIME_AUTO_LOGOUT_MS && !overtimeWarnedSessionIds.has(sessionIdKey)) {
+        overtimeWarnedSessionIds.add(sessionIdKey);
+        try {
+          const user = await client.users.fetch(session.discord_id).catch(() => null);
+          if (user) {
+            const modeLabel = session.session_kind === 'training' ? 'training' : 'shift';
+            await user.send(
+              `⚠️ Overtime Warning\n\n` +
+              `You have reached **8 hours** on your current ${modeLabel}.\n` +
+              `Please end your session now to avoid auto logout.\n\n` +
+              `If still active after **5 minutes**, the bot will auto logout and cap this record to **8 hours**.`
+            ).catch(() => {});
+          }
+        } catch (warnErr) {
+          console.warn('[OVERTIME] Failed to send warning DM:', warnErr.message);
+        }
+      }
+
+      if (elapsedMs >= OVERTIME_AUTO_LOGOUT_MS) {
+        const agentKey = String(session.agent_id);
+        if (overtimeAutoLogoutAgentIds.has(agentKey)) continue;
+        overtimeAutoLogoutAgentIds.add(agentKey);
+
+        try {
+          const agentSessions = db.prepare(`
+            SELECT id, login_time, COALESCE(session_kind, 'shift') AS session_kind
+            FROM sessions
+            WHERE agent_id = ? AND status = 'active'
+          `).all(session.agent_id);
+
+          if (agentSessions.length === 0) {
+            overtimeAutoLogoutAgentIds.delete(agentKey);
+            continue;
+          }
+
+          await closeAllActiveSessionsForAgent(session.agent_id, client);
+
+          for (const active of agentSessions) {
+            const cappedIso = getCappedLogoutIso(active.login_time);
+            db.prepare("UPDATE sessions SET logout_time = ? WHERE id = ?").run(cappedIso, active.id);
+            overtimeWarnedSessionIds.delete(String(active.id));
+          }
+
+          const user = await client.users.fetch(session.discord_id).catch(() => null);
+          if (user) {
+            await user.send(
+              `🛑 Auto Logout Applied\n\n` +
+              `Your session went beyond the 5-minute overtime grace window.\n` +
+              `The bot has logged you out automatically.\n\n` +
+              `Recorded time for this session is capped at **8 hours**.`
+            ).catch(() => {});
+          }
+
+          sendAuditLog(client, {
+            title: '⛔ Overtime Auto Logout',
+            description:
+              `**User:** ${session.username} (<@${session.discord_id}>)\n` +
+              `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
+              `**Rule:** Auto-logout at 8h + 5m grace, capped to 8h logged time`,
+            color: 0xED4245,
+            userId: session.discord_id
+          });
+        } catch (autoErr) {
+          console.error('[OVERTIME] Auto logout failed:', autoErr);
+        } finally {
+          overtimeAutoLogoutAgentIds.delete(agentKey);
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('[OVERTIME] Monitor tick failed:', error.message);
   }
 }
 
@@ -6705,6 +6832,7 @@ module.exports = {
   handleScheduleImport,
   handleMySchedule,
   handleAttendanceReport,
+  monitorOvertimeSessions,
   checkSchedules,
   isDeveloper,
   normalizeAgentRole,
