@@ -41,9 +41,6 @@ const commandData = [
     .addStringOption(option => option.setName('new_pin').setDescription('New PIN (4-6 digits)').setRequired(true))
     .addStringOption(option => option.setName('confirm_pin').setDescription('Confirm new PIN').setRequired(true)),
   new SlashCommandBuilder()
-    .setName('setup-security')
-    .setDescription('Post the security setup kiosk (PIN + phone)'),
-  new SlashCommandBuilder()
     .setName('setup-profiles')
     .setDescription('Post the profiles dashboard (Developer only)'),
   new SlashCommandBuilder()

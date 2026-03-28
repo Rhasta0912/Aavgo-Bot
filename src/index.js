@@ -406,8 +406,6 @@ client.on('interactionCreate', async interaction => {
       await auth.handleAddAgent(interaction);
     } else if (commandName === 'reset-pin') {
       await auth.handleResetPin(interaction);
-    } else if (commandName === 'setup-security') {
-      await auth.handleSetupSecurity(interaction);
     } else if (commandName === 'setup-profiles') {
       await profilePanel.handleSetupProfiles(interaction);
     } else if (commandName === 'remove-agent') {

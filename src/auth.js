@@ -6448,7 +6448,6 @@ async function handleHelpStaff(interaction) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/setup-login`: Rebuild or refresh the persistent agent login kiosk.\n' +
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
-        '> `/setup-security`: Deploy the security setup kiosk (PIN + phone form).\n' +
         '> `/setup-profiles`: Deploy the staff profiles dashboard panel.\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
@@ -6532,7 +6531,7 @@ async function handleHelpAgent(interaction) {
         '> If you have multiple assigned hotels, the bot will prompt you to pick one before PIN entry.\n' +
         '> `/status`: Review current staffing and shift coverage.\n' +
         '> `/reset-pin`: Change your own security PIN.\n' +
-        '> Security kiosk: click **Set Security PIN & Phone** when management posts `/setup-security`.\n' +
+        '> If your PIN is missing, the shift flow opens **Set Security PIN & Phone** automatically.\n' +
         '> `/check-hours`: Review your logged hours.\n' +
         '> `/end-shift` or `/logout`: End your current shift safely.\n\n' +
         '### 🧰 During Shift\n' +

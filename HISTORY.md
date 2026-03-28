@@ -55,6 +55,14 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Removed `/setup-security` from slash commands and staff guidance.
+  - Summary: Retired the standalone security kiosk slash command so onboarding no longer depends on a separate `/setup-security` post. PIN setup guidance now points to the built-in secure prompt in shift flow plus `/reset-pin`.
+  - Files touched:
+    - src/commands.js
+    - src/index.js
+    - src/auth.js
+    - SOP.md
+    - HISTORY.md
 - Fix same-hotel confirmation interaction routing in login flow.
   - Summary: The `same_hotel_confirm_*` handler was mistakenly wired under the string-select branch, so button clicks were not acknowledged and Discord showed `This interaction failed`. Routing is now corrected under the button branch, and the misplaced select-menu route was removed.
   - Files touched:
@@ -75,7 +83,6 @@ Working rules:
   - Summary: The overtime warning threshold now uses 3 minutes instead of 8 hours only when the active user has Discord role `1487369607772766208` (`test role`). This is meant for testing the limit-warning flow without waiting for a full shift.
   - Files touched:
     - src/auth.js
-    - HISTORY.md
 - Prevent trainee route from overwriting the public `/setup-login` kiosk message.
   - Summary: Training route now uses the private flow responder, so trainee `Initialize Shift` opens a private card instead of replacing the public kiosk message. Ephemeral trainee steps still update in-place for one-card flow.
   - Files touched:
