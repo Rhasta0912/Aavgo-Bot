@@ -2337,7 +2337,12 @@ async function handleSecuritySetupStart(interaction) {
 
 async function handleSecuritySetupSubmit(interaction) {
   try {
-    await interaction.deferReply({ ephemeral: true });
+    const canUpdateSourceMessage = Boolean(interaction.message) && typeof interaction.deferUpdate === 'function';
+    if (canUpdateSourceMessage) {
+      await interaction.deferUpdate();
+    } else {
+      await interaction.deferReply({ ephemeral: true });
+    }
 
     const pin = interaction.fields.getTextInputValue('security_pin').trim();
     const pinConfirm = interaction.fields.getTextInputValue('security_pin_confirm').trim();
@@ -2820,6 +2825,31 @@ async function handleStartShiftClick(interaction) {
        return await showPinModal(interaction, 'TEAM_SHIFT', false, allowMultiHotel);
     }
 
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
+
+    if (!agent.team) {
+      const teamRequiredEmbed = new EmbedBuilder()
+        .setTitle('🛡️ Aavgo Operations · Team Required')
+        .setDescription(
+          '### ⚠️ TEAM ASSIGNMENT REQUIRED\n' +
+          '────────────────────────\n' +
+          '🤖 Board: You cannot start a hotel shift yet.\n' +
+          '👤 Requirement: Your team must be assigned first.\n' +
+          '🧑‍💼 Ask: Team Leader or Operations Manager must set your team.\n' +
+          '────────────────────────'
+        )
+        .setColor(0xFEE75C)
+        .setFooter({ text: 'Aavgo Operations • Team Routing' })
+        .setTimestamp();
+
+      return sendPrivateFlowPayload(interaction, {
+        embeds: [teamRequiredEmbed],
+        components: []
+      });
+    }
+
     // If the agent has multiple assigned grey hotel roles, let them pick the hotel for this shift.
     const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
       .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && interaction.member.roles.cache.has(roleId))
@@ -2832,41 +2862,6 @@ async function handleStartShiftClick(interaction) {
       }
     })();
     const uniqueAssignedHotelIds = [...new Set([...assignedHotelIds, ...compatibilityHotelIds])];
-
-    // If DB team is missing, infer it from member role / linked hotel / compatibility before showing Team Selection.
-    if (!agent.team) {
-      let inferredTeam = null;
-
-      const roleSnapshotTeam = getDiscordRoleSyncSnapshot(interaction.member)?.team;
-      if (roleSnapshotTeam) {
-        inferredTeam = roleSnapshotTeam;
-      }
-
-      if (!inferredTeam && agent.hotel_id) {
-        inferredTeam = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(agent.hotel_id))?.team || null;
-      }
-
-      if (!inferredTeam && uniqueAssignedHotelIds.length > 0) {
-        const inferredTeams = [...new Set(
-          uniqueAssignedHotelIds
-            .map(hotelId => db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team)
-            .filter(Boolean)
-        )];
-        if (inferredTeams.length === 1) {
-          inferredTeam = inferredTeams[0];
-        }
-      }
-
-      // Team 2 is placeholder right now; default agent route to Team 1 to avoid dead-end selection loops.
-      if (!inferredTeam && normalizeAgentRole(agent.role) === 'agent') {
-        inferredTeam = 'Team 1';
-      }
-
-      if (inferredTeam) {
-        db.prepare('UPDATE agents SET team = ? WHERE id = ?').run(inferredTeam, agent.id);
-        agent.team = inferredTeam;
-      }
-    }
 
     if (uniqueAssignedHotelIds.length > 1) {
       return await showAssignedHotelShiftPicker(interaction, uniqueAssignedHotelIds, allowMultiHotel);
@@ -2917,30 +2912,6 @@ async function handleStartShiftClick(interaction) {
        }
     }
     
-    // Check if they are already in the system (linked to a team)
-    if (!agent.team) {
-       const embed = new EmbedBuilder()
-         .setTitle('👥 Team Selection')
-         .setDescription(
-           `### 🎮 WHICH TEAM ARE YOU?\n` +
-           `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-           `> Select your **assigned team** to see available hotel locations.\n` +
-           `> *First-time setup only. This links your account permanently.*\n` +
-           `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-         )
-         .setColor(0x5865F2);
-
-       const row = new ActionRowBuilder().addComponents(
-         new ButtonBuilder().setCustomId('team_btn_Team 1').setLabel('Team 1').setStyle(ButtonStyle.Primary).setEmoji('🧑‍💼'),
-         new ButtonBuilder().setCustomId('team_btn_Team 2').setLabel('Team 2').setStyle(ButtonStyle.Primary).setEmoji('🧑‍💻')
-       );
-
-       return sendPrivateFlowPayload(interaction, {
-         embeds: [embed],
-         components: [row]
-       });
-    }
-
     await showHotelSelection(interaction, agent.team, isEphemeralSourceInteraction(interaction));
 
   } catch (error) {
@@ -3177,9 +3148,11 @@ async function showTrainingHotelSelection(interaction, isUpdate = false) {
 
   const payload = { content: null, embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true };
 
+  const shouldUpdate = isUpdate || isEphemeralSourceInteraction(interaction);
+
   if (interaction.deferred || interaction.replied) {
     await interaction.editReply(payload);
-  } else if (isUpdate) {
+  } else if (shouldUpdate) {
     await interaction.update(payload);
   } else {
     await interaction.reply(payload);
@@ -3248,7 +3221,7 @@ async function handleShiftRolePrompt(interaction) {
 
     const routeKind = resolveShiftRouteKind(interaction, agent);
     if (routeKind === 'training') {
-      return await showTrainingHotelSelection(interaction);
+      return await showTrainingHotelSelection(interaction, isEphemeralSourceInteraction(interaction));
     }
 
     if (routeKind === 'agent') {
@@ -3441,7 +3414,7 @@ async function handleTrainingStartClick(interaction) {
       return;
     }
 
-    return await showTrainingHotelSelection(interaction);
+    return await showTrainingHotelSelection(interaction, isEphemeralSourceInteraction(interaction));
   } catch (error) {
     console.error('Error in handleTrainingStartClick:', error);
     if (error?.code === 10062) return;
@@ -3449,6 +3422,47 @@ async function handleTrainingStartClick(interaction) {
       await interaction.editReply({ content: '❌ Failed to open the training selector.', embeds: [], components: [] }).catch(() => {});
     } else {
       await interaction.reply({ content: '❌ Failed to open the training selector.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleAgentShiftStartConfirm(interaction) {
+  try {
+    if (interaction.customId === 'agent_shift_confirm_no') {
+      return sendPrivateFlowPayload(interaction, {
+        content: '✅ No problem. Shift start cancelled.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    const payload = String(interaction.customId || '').replace('agent_shift_confirm_yes:', '');
+    const [hotelIdRaw, takeoverRaw = '0', multiRaw = '0'] = payload.split(':');
+    const hotelId = normalizeCombinedHotelId(hotelIdRaw);
+    const isTakeover = takeoverRaw === '1';
+    const allowMultiHotel = multiRaw === '1';
+
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return sendPrivateFlowPayload(interaction, {
+        content: '❌ You are not registered as an agent.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
+
+    await safeDeferComponentUpdate(interaction);
+    await finalizeShiftLogin(interaction, agent, hotelId, isTakeover, allowMultiHotel, 'shift');
+  } catch (error) {
+    console.error('Error in handleAgentShiftStartConfirm:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to start your shift.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to start your shift.', ephemeral: true }).catch(() => {});
     }
   }
 }
@@ -3798,6 +3812,37 @@ async function handleModalSubmit(interaction) {
     if (hotelId === 'TEAM_SHIFT' && managementTeamOverride) {
       db.prepare('UPDATE agents SET team = ? WHERE id = ?').run(managementTeamOverride, agent.id);
       agent = db.prepare('SELECT * FROM agents WHERE id = ?').get(agent.id);
+    }
+
+    const normalizedRole = normalizeAgentRole(agent.role);
+    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && normalizedRole === 'agent') {
+      const confirmEmbed = new EmbedBuilder()
+        .setTitle('🛡️ Aavgo Operations · Agent Route')
+        .setDescription(
+          '### ✅ READY TO START SHIFT\n' +
+          '────────────────────────\n' +
+          `🏨 Hotel: **${getCombinedHotelLabel(hotelId)}**\n` +
+          '🤖 Board: Do you want to start your shift?\n' +
+          '────────────────────────'
+        )
+        .setColor(0x57F287)
+        .setFooter({ text: 'Aavgo Operations • Shift Confirmation' })
+        .setTimestamp();
+
+      const yesButton = new ButtonBuilder()
+        .setCustomId(`agent_shift_confirm_yes:${hotelId}:${isTakeover ? '1' : '0'}:${allowMultiHotel ? '1' : '0'}`)
+        .setLabel('✅ Yes')
+        .setStyle(ButtonStyle.Primary);
+
+      const noButton = new ButtonBuilder()
+        .setCustomId('agent_shift_confirm_no')
+        .setLabel('❌ No')
+        .setStyle(ButtonStyle.Secondary);
+
+      return interaction.editReply({
+        embeds: [confirmEmbed],
+        components: [new ActionRowBuilder().addComponents(yesButton, noButton)]
+      });
     }
 
     await finalizeShiftLogin(interaction, agent, hotelId, isTakeover, allowMultiHotel, sessionMode);
@@ -7105,6 +7150,7 @@ module.exports = {
   handleConfirmHotelLink,
   handleCancelHotelLink,
   handleHotelSelectMenu,
+  handleAgentShiftStartConfirm,
   handleTrainingStartClick,
   handleTrainingHotelSelectMenu,
   handleDbRemoveAll,

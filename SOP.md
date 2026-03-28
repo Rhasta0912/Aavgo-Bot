@@ -68,6 +68,8 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 ## Login Flow SOP
 - The first thing the bot checks on any shift/login entry is whether the user has a security PIN set.
 - If the PIN is missing, show the PIN setup prompt first and do not route them deeper into the login flow yet.
+- For `agent` hotel-shift entry, team must already be assigned manually by a Team Leader or Operations Manager.
+- Do not show agent self-team selection during live shift initialization.
 - After PIN confirmation, detect the user role automatically from DB/Discord state:
   - `agent` opens the Agent Route
   - `team_leader` / `sme` opens the Management Route
@@ -79,6 +81,7 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
   - avoid Discord jargon
   - use labels like `Live -> Hotel Shift` and `Practice -> Training`
   - keep the route cards short, scannable, and clearly separated
+  - each temporary login step should replace the previous temporary step when possible (avoid stacked ephemeral flow cards)
 
 ## AD1 Calls-Only SOP
 - AD1 is calls-only operations.

@@ -532,6 +532,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'training_start_btn') {
       await auth.handleTrainingStartClick(interaction);
+    } else if (interaction.customId.startsWith('agent_shift_confirm_yes:') || interaction.customId === 'agent_shift_confirm_no') {
+      await auth.handleAgentShiftStartConfirm(interaction);
     } else if (interaction.customId === 'training_end_btn') {
       await auth.handleLogout(interaction);
     } else if (interaction.customId === 'kiosk_end_shift_btn') {

@@ -55,6 +55,18 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Add a final "start shift" confirmation step for agents after PIN check.
+  - Summary: In the agent hotel-shift flow, after PIN is verified, the bot now asks one clear final question: "Do you want to start your shift?" with `Yes` and `No` buttons. `Yes` continues to shift login, and `No` cancels cleanly. This keeps the flow clearer for users who are still learning Discord.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
+- Enforce team assignment requirement for agent hotel shifts and reduce stacked temporary flow cards.
+  - Summary: Agent hotel-shift flow now blocks if no team is assigned and clearly tells users that a Team Leader or Operations Manager must set the team first. Removed the old agent team-selection fallback from shift initialization. Also improved training-route step updates so the next temporary card replaces the previous one more reliably instead of stacking.
+  - Files touched:
+    - src/auth.js
+    - SOP.md
+    - HISTORY.md
 - Streamline PIN-first login and stop agent team-selection loops.
   - Summary: When PIN is missing, the login flow now opens the security setup modal directly instead of posting an extra temporary PIN card. Also added stronger team inference for agents (Discord team role, linked hotel, compatibility, then Team 1 default) so users are not bounced back to Team Selection unexpectedly.
   - Files touched:
