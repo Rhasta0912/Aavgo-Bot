@@ -409,9 +409,9 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO', warni
   const warningEmbed = new EmbedBuilder()
     .setTitle('⚠️ Overtime Warning')
     .setDescription(
-      `You have reached the **${warningThresholdLabel}** on your current ${modeLabel}.\n\n` +
+      `You have reached **${warningThresholdLabel}** on your current ${modeLabel}.\n\n` +
       `If you need to continue, tap **Confirm Overtime** below to acknowledge that you want to go beyond 8 hours.\n\n` +
-      `If still in active after **5 minutes**, the bot will auto logout. If you had already reached the limit, the record will be capped at **${warningThresholdLabel}**.`
+      `If still inactive after **5 minutes**, the bot will auto logout. If you had already reached the limit without confirming overtime, the record will be capped at **${warningThresholdLabel}**.`
     )
     .addFields(
       { name: 'Mode', value: modeLabel === 'training' ? 'Training' : 'Shift', inline: true },

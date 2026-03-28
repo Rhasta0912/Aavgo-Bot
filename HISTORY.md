@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Corrected overtime warning sentence wording exactly to latest copy.
+  - Summary: Updated overtime warning embed text to the exact phrasing requested (`reached 8 hours`, `still inactive`, and `without confirming overtime`) while keeping the same warning behavior and buttons.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Reworded overtime warning copy and added one-click `End Shift` action beside `Confirm Overtime`.
   - Summary: Updated overtime warning embed wording to the softer phrasing requested and removed the pressuring line. Also added an `End Shift` button directly in the overtime warning card, so any active user can end session instantly from the warning DM without returning to the login channel.
   - Files touched:
