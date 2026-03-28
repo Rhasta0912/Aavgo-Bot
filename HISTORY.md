@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Make overtime warnings private ("Only you can see") for the warned user.
+  - Summary: Overtime warning delivery is now DM-only to the warned user, including the `Confirm Overtime` button and TTS notification. Public warning posts in server channels were removed so only the warned user sees the warning prompt.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Fix `InteractionNotReplied` crash in agent shift-confirm button flow.
   - Summary: Hardened shift-finalization responses so they can safely reply even when the interaction was not deferred yet. Also improved button acknowledgment in `agent_shift_confirm_yes` by falling back to `deferReply` if `deferUpdate` fails. This prevents shift start from crashing after role swap.
   - Files touched:
