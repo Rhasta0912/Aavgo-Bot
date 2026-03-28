@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fix same-hotel confirmation interaction routing in login flow.
+  - Summary: The `same_hotel_confirm_*` handler was mistakenly wired under the string-select branch, so button clicks were not acknowledged and Discord showed `This interaction failed`. Routing is now corrected under the button branch, and the misplaced select-menu route was removed.
+  - Files touched:
+    - src/index.js
+    - HISTORY.md
 - Fix the same-hotel confirmation buttons for multi-hotel shift login.
   - Summary: The `Yes, Continue` button now continues into the normal shift PIN/login flow, and `Choose Another Hotel` now returns the user to the existing assigned-hotel picker embed instead of posting a dead-end reply. This keeps the confirmation step inside the same private flow.
   - Files touched:

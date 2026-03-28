@@ -594,6 +594,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleCancelTakeover(interaction);
     } else if (interaction.customId === 'start_shift_multi_cancel_btn') {
       await auth.handleCancelMultiHotelStart(interaction);
+    } else if (interaction.customId.startsWith('same_hotel_confirm_')) {
+      await auth.handleSameHotelConfirm(interaction);
     } else if (interaction.customId.startsWith('dev_approve_')) {
       await auth.handleDevApprove(interaction);
     } else if (interaction.customId.startsWith('dev_deny_')) {
@@ -610,12 +612,10 @@ client.on('interactionCreate', async interaction => {
       await profilePanel.handleSelectMenu(interaction);
     } else if (interaction.customId === 'tl_call_select_agent') {
       await tools.handleAgentCallStart(interaction);
-  } else if (interaction.customId.startsWith('shift_hotel_pick_menu')) {
-    await auth.handleShiftHotelPickMenu(interaction);
-  } else if (interaction.customId.startsWith('same_hotel_confirm_')) {
-    await auth.handleSameHotelConfirm(interaction);
-  } else if (interaction.customId === 'hotel_select_menu') {
-    await auth.handleHotelSelectMenu(interaction);
+    } else if (interaction.customId.startsWith('shift_hotel_pick_menu')) {
+      await auth.handleShiftHotelPickMenu(interaction);
+    } else if (interaction.customId === 'hotel_select_menu') {
+      await auth.handleHotelSelectMenu(interaction);
     } else if (interaction.customId === 'training_hotel_select_menu') {
       await auth.handleTrainingHotelSelectMenu(interaction);
     }
