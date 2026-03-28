@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fix `InteractionNotReplied` crash in agent shift-confirm button flow.
+  - Summary: Hardened shift-finalization responses so they can safely reply even when the interaction was not deferred yet. Also improved button acknowledgment in `agent_shift_confirm_yes` by falling back to `deferReply` if `deferUpdate` fails. This prevents shift start from crashing after role swap.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Stop `/setup-login` public kiosk message from being overwritten by private flow steps.
   - Summary: Hardened private-flow response routing so `start_shift_btn` always replies ephemerally and never updates the public setup kiosk message. Added fallback behavior so deferred public interactions send ephemeral follow-ups instead of editing the source message.
   - Files touched:

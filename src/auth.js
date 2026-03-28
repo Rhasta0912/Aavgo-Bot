@@ -1052,10 +1052,17 @@ async function showShiftInitModal(interaction, agent) {
 }
 
 async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
+  const respond = async (payload) => {
+    if (interaction.deferred || interaction.replied) {
+      return interaction.editReply(payload);
+    }
+    return interaction.reply({ ...payload, ephemeral: true });
+  };
+
   const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
   const recentSession = db.prepare("SELECT id FROM sessions WHERE agent_id = ? AND hotel_id = ? AND login_time >= ?").get(agent.id, hotelId, fiveSecondsAgo);
   if (recentSession) {
-    return interaction.editReply({ content: '⚠️ You just logged in! Please wait a moment for the status to update.' });
+    return respond({ content: '⚠️ You just logged in! Please wait a moment for the status to update.' });
   }
 
   if (!allowMultiHotel) {
@@ -1080,7 +1087,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
         .setLabel('⬅️ Cancel')
         .setStyle(ButtonStyle.Secondary);
 
-      return interaction.editReply({
+      return respond({
         embeds: [promptEmbed],
         components: [new ActionRowBuilder().addComponents(takeoverBtn, cancelBtn)]
       });
@@ -1172,7 +1179,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   const hotelName = getCombinedHotelLabel(hotelId);
   const sessionLabel = sessionMode === 'training' ? 'training session' : 'shift';
-  await interaction.editReply({
+  await respond({
     content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}`,
     embeds: [],
     components: []
@@ -3481,7 +3488,13 @@ async function handleAgentShiftStartConfirm(interaction) {
       return;
     }
 
-    await safeDeferComponentUpdate(interaction);
+    if (!interaction.deferred && !interaction.replied) {
+      try {
+        await interaction.deferUpdate();
+      } catch (_) {
+        await interaction.deferReply({ ephemeral: true }).catch(() => {});
+      }
+    }
     await finalizeShiftLogin(interaction, agent, hotelId, isTakeover, allowMultiHotel, 'shift');
   } catch (error) {
     console.error('Error in handleAgentShiftStartConfirm:', error);
