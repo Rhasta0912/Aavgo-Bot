@@ -67,6 +67,8 @@ Working rules:
     - HISTORY.md
 - Keep agent shift flow on a single temporary card when pressing `Live -> Hotel`.
   - Summary: Clicking `Live -> Hotel` now updates the existing Agent Route card into `READY TO START SHIFT` instead of sending a second temporary message. This keeps one-card flow behavior in the agent route UI.
+- Add a consolidated hotel status board in a single embed.
+  - Summary: The bot now posts one combined hotel-status embed in `1487355252398100601`, showing all hotels in one clean view while still keeping the existing individual hotel boards updated in the background.
   - Files touched:
     - src/auth.js
     - HISTORY.md

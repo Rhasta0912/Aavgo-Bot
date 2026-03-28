@@ -146,12 +146,14 @@ const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
+const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
 const overtimeWarnedSessionIds = new Set();
 const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
+let combinedHotelStatusRefreshTimer = null;
 
 const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
@@ -195,6 +197,16 @@ function parseSessionTimestamp(value) {
 function getCappedLogoutIso(loginTimeValue) {
   const loginMs = parseSessionTimestamp(loginTimeValue);
   return new Date(loginMs + OVERTIME_WARNING_MS).toISOString();
+}
+
+function scheduleCombinedHotelStatusRefresh(client) {
+  if (combinedHotelStatusRefreshTimer) clearTimeout(combinedHotelStatusRefreshTimer);
+  combinedHotelStatusRefreshTimer = setTimeout(() => {
+    updateAllHotelStatusEmbed(client).catch(error => {
+      console.warn('[STATUS] Combined hotel refresh failed:', error.message);
+    });
+  }, 750);
+  combinedHotelStatusRefreshTimer.unref?.();
 }
 
 async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
@@ -1520,9 +1532,128 @@ async function updateHotelStatusEmbed(client, hotelId) {
       const newMsg = await channel.send({ embeds: [embed], components });
       db.prepare("INSERT OR REPLACE INTO hotel_status (hotel_id, message_id) VALUES (?, ?)").run(statusKey, newMsg.id);
     }
+    scheduleCombinedHotelStatusRefresh(client);
 
   } catch (e) {
     console.warn('[STATUS] Failed to update hotel status embed:', e.message);
+  }
+}
+
+async function updateAllHotelStatusEmbed(client) {
+  try {
+    if (combinedHotelStatusRefreshTimer) {
+      clearTimeout(combinedHotelStatusRefreshTimer);
+      combinedHotelStatusRefreshTimer = null;
+    }
+
+    const channel = await client.channels.fetch(HOTEL_STATUS_CHANNEL_ID).catch(() => null);
+    if (!channel || !channel.isTextBased()) return;
+
+    const hotelGroups = [
+      { key: 'BW_TO', label: 'Indianhead/Magnuson' },
+      { key: 'RMDA', label: 'Ramada / Super 8' },
+      { key: 'GICP', label: 'The Garden Inn At Campsite' },
+      { key: 'AD1', label: 'AD1' },
+      { key: 'TRVL', label: 'Travelodge' },
+      { key: 'DIBS', label: 'Day Inns Bishop' }
+    ];
+
+    const allActiveSessions = db.prepare(`
+      SELECT s1.*, agents.discord_id, agents.username
+      FROM sessions s1
+      JOIN agents ON s1.agent_id = agents.id
+      WHERE s1.status = 'active'
+      AND COALESCE(s1.session_kind, 'shift') != 'training'
+      AND s1.id = (
+        SELECT MAX(s2.id)
+        FROM sessions s2
+        WHERE s2.agent_id = s1.agent_id AND s2.status = 'active'
+      )
+      ORDER BY s1.login_time DESC
+    `).all();
+
+    const groupedSessions = new Map(hotelGroups.map(group => [group.key, []]));
+    for (const session of allActiveSessions) {
+      const group = getHotelStatusGroup(session.hotel_id);
+      if (!groupedSessions.has(group.key)) continue;
+      groupedSessions.get(group.key).push(session);
+    }
+
+    const activeCount = allActiveSessions.length;
+    const hotelCount = hotelGroups.length;
+    const embed = new EmbedBuilder()
+      .setTitle('🏨 Aavgo Operations · Hotel Status')
+      .setDescription(
+        `### ${activeCount > 0 ? '✅ LIVE HOTEL PRESENCE' : '⚠️ NO ACTIVE HOTEL LOGINS'}\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `> 🏨 **Hotels Tracked:** ${hotelCount}\n` +
+        `> 👤 **Active Hotel Sessions:** ${activeCount}\n` +
+        `> 📍 **Scope:** All Team 1 hotel boards in one view\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+      )
+      .setColor(activeCount > 0 ? 0x57F287 : 0x2C2F33)
+      .setFooter({ text: 'Aavgo Operations • Consolidated Hotel Status' })
+      .setTimestamp();
+
+    for (const group of hotelGroups) {
+      const sessions = groupedSessions.get(group.key) || [];
+      if (sessions.length === 0) {
+        embed.addFields({
+          name: `🏨 ${group.label}`,
+          value: '• No active agent',
+          inline: false
+        });
+        continue;
+      }
+
+      const lines = [];
+      for (const session of sessions) {
+        let cleanTime = session.login_time;
+        if (cleanTime && !cleanTime.includes('T') && !cleanTime.includes('Z')) {
+          cleanTime = cleanTime.replace(' ', 'T') + 'Z';
+        }
+        const loginTime = new Date(cleanTime || Date.now()).getTime();
+        const loginUnix = Math.floor(loginTime / 1000);
+        const agentLabel = `<@${session.discord_id}>`;
+        const statusParts = [agentLabel, `Since: <t:${loginUnix}:R>`];
+
+        if (session.break_status) {
+          statusParts.push(`Break: ${session.break_status}`);
+        }
+        if (session.break_covering_id) {
+          statusParts.push(`Covering TL: <@${session.break_covering_id}>`);
+        }
+        lines.push(`• ${statusParts.join(' | ')}`);
+      }
+
+      embed.addFields({
+        name: `🏨 ${group.label}`,
+        value: lines.join('\n'),
+        inline: false
+      });
+    }
+
+    const configKey = 'hotel_status_board_msg';
+    const stored = db.prepare("SELECT value FROM config WHERE key = ?").get(configKey);
+    let existingMsg = null;
+    if (stored?.value) {
+      try {
+        existingMsg = await channel.messages.fetch(stored.value);
+      } catch (e) {
+        existingMsg = null;
+      }
+    }
+
+    if (existingMsg) {
+      await existingMsg.edit({ embeds: [embed] });
+    } else {
+      const newMsg = await channel.send({ embeds: [embed] });
+      db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(configKey, newMsg.id);
+    }
+  } catch (error) {
+    console.warn('[STATUS] Failed to update combined hotel status embed:', error.message);
+  } finally {
+    combinedHotelStatusRefreshTimer = null;
   }
 }
 
@@ -1915,6 +2046,7 @@ async function refreshOperationalBoards(client) {
     for (const hotel of hotels) {
       await updateHotelStatusEmbed(client, hotel.id);
     }
+    await updateAllHotelStatusEmbed(client);
     await updateTeamStatusEmbed(client, 'Team 1');
     await updateTeamStatusEmbed(client, 'Team 2');
     await updateTrainingStatusEmbed(client);
@@ -7347,6 +7479,7 @@ module.exports = {
   broadcastUpdateLog,
   ensureAgentKioskMessage,
   updateHotelStatusEmbed,
+  updateAllHotelStatusEmbed,
   handleSetupLogin, 
   handleSetupRegister,
   handleSetupSecurity,
