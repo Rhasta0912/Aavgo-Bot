@@ -44,6 +44,31 @@ const commandData = [
     .setName('setup-profiles')
     .setDescription('Post the profiles dashboard (Developer only)'),
   new SlashCommandBuilder()
+    .setName('setup-dev-todo')
+    .setDescription('(Developer) Deploy or refresh the shared developer to-do board'),
+  new SlashCommandBuilder()
+    .setName('todo-add')
+    .setDescription('(Developer) Add a task to the shared developer board')
+    .addStringOption(option => option.setName('title').setDescription('Task summary').setRequired(true))
+    .addUserOption(option => option.setName('owner').setDescription('Task owner').setRequired(false))
+    .addStringOption(option => option.setName('eta').setDescription('ETA text, e.g. 45m or today 9 PM').setRequired(false))
+    .addStringOption(option => option.setName('risk').setDescription('Risk or note').setRequired(false)),
+  new SlashCommandBuilder()
+    .setName('todo-move')
+    .setDescription('(Developer) Move a task to a different status')
+    .addStringOption(option => option.setName('task').setDescription('Task code, e.g. DEV-012').setRequired(true))
+    .addStringOption(option => option.setName('status').setDescription('New status').setRequired(true)
+      .addChoices(
+        { name: 'Backlog', value: 'backlog' },
+        { name: 'In Progress', value: 'in_progress' },
+        { name: 'Blocked', value: 'blocked' },
+        { name: 'Ready to Deploy', value: 'ready_deploy' },
+        { name: 'Done Today', value: 'done' }
+      )),
+  new SlashCommandBuilder()
+    .setName('todo-refresh')
+    .setDescription('(Developer) Refresh the shared developer to-do board'),
+  new SlashCommandBuilder()
     .setName('remove-agent')
     .setDescription('(Admin) Remove a user as an agent')
     .addUserOption(option => option.setName('user').setDescription('The user to remove').setRequired(true)),

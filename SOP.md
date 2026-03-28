@@ -29,6 +29,16 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
   - Summarize local-only changes if any.
   - If none, respond `No updates`.
 
+## Developer To-Do Board
+- Centralized developer board channel:
+  - `1483404968684818483`
+- Shared ownership rule:
+  - any approved developer can add tasks
+  - any approved developer can move/check off/reopen tasks (not owner-locked)
+- Task identity:
+  - use `DEV-###` IDs for updates and handoffs
+- Keep launch communication in the board/thread flow, not VC-only memory.
+
 ## Permission Model (DB-First)
 - Do not use Discord role visibility as authority for sensitive actions.
 - Authority is determined by database role/status:

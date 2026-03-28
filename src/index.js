@@ -6,6 +6,7 @@ const db = require('./database');
 const auth = require('./auth');
 const tools = require('./tools');
 const profilePanel = require('./profilePanel');
+const devTodo = require('./devTodo');
 const { upsertBotStatusCard } = require('./botStatus');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
@@ -317,6 +318,9 @@ client.once('ready', async () => {
     profilePanel.ensureProfilesDashboard(client).catch(error => {
       console.warn('[PROFILES] Failed to restore profiles dashboard on boot:', error.message);
     });
+    devTodo.ensureDevTodoBoard(client).catch(error => {
+      console.warn('[DEV-TODO] Failed to restore dev to-do board on boot:', error.message);
+    });
     
     // Start Scheduler Loop (Every 5 minutes)
     setInterval(() => {
@@ -477,6 +481,14 @@ client.on('interactionCreate', async interaction => {
       await auth.handleResetPin(interaction);
     } else if (commandName === 'setup-profiles') {
       await profilePanel.handleSetupProfiles(interaction);
+    } else if (commandName === 'setup-dev-todo') {
+      await devTodo.handleSetupDevTodo(interaction);
+    } else if (commandName === 'todo-add') {
+      await devTodo.handleTodoAddCommand(interaction);
+    } else if (commandName === 'todo-move') {
+      await devTodo.handleTodoMoveCommand(interaction);
+    } else if (commandName === 'todo-refresh') {
+      await devTodo.handleTodoRefreshCommand(interaction);
     } else if (commandName === 'remove-agent') {
       await auth.handleRemoveAgentCommand(interaction);
     } else if (commandName === 'check-hours') {
@@ -579,9 +591,13 @@ client.on('interactionCreate', async interaction => {
       await auth.handleModalSubmit(interaction);
     } else if (interaction.customId.startsWith('newcomer_agent_pin_modal:')) {
       await auth.handleNewcomerAgentPinSubmit(interaction);
+    } else if (interaction.customId === 'devtodo_add_modal') {
+      await devTodo.handleModalSubmit(interaction);
     }
   } else if (interaction.isButton()) {
-    if (interaction.customId.startsWith('profiles_')) {
+    if (interaction.customId.startsWith('devtodo_')) {
+      await devTodo.handleButton(interaction);
+    } else if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleButton(interaction);
     } else if (interaction.customId === 'start_shift_btn') {
       await auth.handleShiftRolePrompt(interaction);
@@ -677,7 +693,9 @@ client.on('interactionCreate', async interaction => {
       await auth.handleActivityClick(interaction);
     }
   } else if (interaction.isStringSelectMenu()) {
-    if (interaction.customId.startsWith('profiles_')) {
+    if (interaction.customId.startsWith('devtodo_move_select:')) {
+      await devTodo.handleSelectMenu(interaction);
+    } else if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleSelectMenu(interaction);
     } else if (interaction.customId === 'tl_call_select_agent') {
       await tools.handleAgentCallStart(interaction);

@@ -6775,6 +6775,8 @@ async function handleHelpStaff(interaction) {
         '> `/setup-login`: Rebuild or refresh the persistent agent login kiosk.\n' +
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
         '> `/setup-profiles`: Deploy the staff profiles dashboard panel.\n' +
+        '> `/setup-dev-todo`: Deploy or refresh the shared developer launch board.\n' +
+        '> `/todo-add`, `/todo-move`, `/todo-refresh`: Manage centralized developer tasks.\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
         '### 👥 Agent Lifecycle Controls\n' +
