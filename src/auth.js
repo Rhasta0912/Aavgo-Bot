@@ -5316,6 +5316,7 @@ function formatPinAuditLine(agent) {
   const roleLabel = getRoleLabel(agent.role);
   const teamLabel = agent.team || 'No team';
   const hotelLabel = agent.hotel_id ? getCombinedHotelLabel(agent.hotel_id) : 'Unlinked';
+  const pinLabel = hasConfiguredPin(agent) && agent.pin ? `PIN: \`${agent.pin}\`` : 'PIN: not set';
   let compatibilityIds = [];
   try {
     compatibilityIds = JSON.parse(agent.hotel_compatibility || '[]');
@@ -5324,19 +5325,19 @@ function formatPinAuditLine(agent) {
   }
   const compatibilityLabel = formatHotelCompatibilityLabel(compatibilityIds);
 
-  return `• ${agent.username} | ${roleLabel} | ${teamLabel} | ${hotelLabel} | ${pinStatus}${compatibilityLabel !== 'none' ? ` | Access: ${compatibilityLabel}` : ''}`;
+  return `• ${agent.username} | ${roleLabel} | ${teamLabel} | ${hotelLabel} | ${pinStatus} | ${pinLabel}${compatibilityLabel !== 'none' ? ` | Access: ${compatibilityLabel}` : ''}`;
 }
 
 async function handleSeeAllPins(interaction) {
   try {
     if (!isDeveloper(interaction)) {
-      return interaction.reply({ content: '❌ Access Denied: Developer Only.', ephemeral: true });
+      return interaction.reply({ content: '❌ Access Denied: Operations Manager or Developer only.', ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
 
     const agents = db.prepare(`
-      SELECT discord_id, username, role, team, hotel_id, pin_is_set, hotel_compatibility
+      SELECT discord_id, username, role, team, hotel_id, pin, pin_is_set, hotel_compatibility
       FROM agents
       ORDER BY pin_is_set DESC, username COLLATE NOCASE ASC
     `).all();
@@ -5361,7 +5362,7 @@ async function handleSeeAllPins(interaction) {
         `**📊 Total Agents:** ${agents.length}\n` +
         `**✅ PIN Set:** ${withPins.length}\n` +
         `**⚪ PIN Missing:** ${missingPins.length}\n` +
-        `**🛡️ Scope:** Read-only audit of PIN flags and access coverage.\n` +
+        `**🛡️ Scope:** Read-only audit of stored PIN values and access coverage.\n` +
         '───────────────────'
       )
       .setColor(withPins.length > 0 ? 0x57F287 : 0xFEE75C)
