@@ -40,6 +40,7 @@ db.exec(`
     status TEXT DEFAULT 'active',
     overtime_warning_at DATETIME,
     overtime_confirmed INTEGER DEFAULT 0,
+    overtime_next_warning_at DATETIME,
     break_status TEXT,
     break_covering_id TEXT,
     break_start_time DATETIME,
@@ -249,6 +250,9 @@ db.pragma('foreign_keys = ON');
     }
     if (!sessionTableInfo.find(col => col.name === 'overtime_confirmed')) {
       db.prepare("ALTER TABLE sessions ADD COLUMN overtime_confirmed INTEGER DEFAULT 0").run();
+    }
+    if (!sessionTableInfo.find(col => col.name === 'overtime_next_warning_at')) {
+      db.prepare("ALTER TABLE sessions ADD COLUMN overtime_next_warning_at DATETIME").run();
     }
     const hourAdjustmentsTableInfo = db.prepare("PRAGMA table_info(hour_adjustments)").all();
     if (!hourAdjustmentsTableInfo || hourAdjustmentsTableInfo.length === 0) {

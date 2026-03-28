@@ -361,6 +361,13 @@ function getCappedLogoutIso(loginTimeValue, capMs = OVERTIME_WARNING_MS) {
   return new Date(loginMs + capMs).toISOString();
 }
 
+function getSessionNextWarningDueMs(session, warningThresholdMs = OVERTIME_WARNING_MS) {
+  if (session?.overtime_next_warning_at) {
+    return parseSessionTimestamp(session.overtime_next_warning_at);
+  }
+  return parseSessionTimestamp(session?.login_time) + warningThresholdMs;
+}
+
 function getOvertimeWarningThresholdMs(session, guild) {
   const roleName = String(session?.role || '').toLowerCase();
   if (roleName === 'test role') return OVERTIME_TEST_WARNING_MS;
@@ -422,7 +429,7 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO', warni
 
   db.prepare(`
     UPDATE sessions
-    SET overtime_warning_at = ?, overtime_confirmed = 0
+    SET overtime_warning_at = ?, overtime_confirmed = 0, overtime_next_warning_at = NULL
     WHERE id = ? AND status = 'active'
   `).run(warningIso, session.id);
 
@@ -682,7 +689,7 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
   const hasTeamShift = activeSessions.some(s => s.hotel_id === 'TEAM_SHIFT');
 
   // 2. Close in DB
-  const result = db.prepare("UPDATE sessions SET status = 'closed', logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0 WHERE agent_id = ? AND status = 'active'").run(nowIso, agentId);
+  const result = db.prepare("UPDATE sessions SET status = 'closed', logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0, overtime_next_warning_at = NULL WHERE agent_id = ? AND status = 'active'").run(nowIso, agentId);
   console.log(`[AUTH-MAINT] Closed ${result.changes} session(s) for agent ${agentId}`);
 
   // 3. Trigger refreshes
@@ -735,7 +742,7 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
 
   for (const priorSession of priorSessions) {
     const priorAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(priorSession.agent_id);
-    db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed', overtime_warning_at = NULL, overtime_confirmed = 0 WHERE id = ?").run(priorSession.id);
+    db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed', overtime_warning_at = NULL, overtime_confirmed = 0, overtime_next_warning_at = NULL WHERE id = ?").run(priorSession.id);
 
     if (!priorAgent) continue;
 
@@ -1449,7 +1456,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
     if (priorSession) {
       const priorAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(priorSession.agent_id);
-      db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed', overtime_warning_at = NULL, overtime_confirmed = 0 WHERE id = ?").run(priorSession.id);
+      db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed', overtime_warning_at = NULL, overtime_confirmed = 0, overtime_next_warning_at = NULL WHERE id = ?").run(priorSession.id);
       try {
         const oldMember = await interaction.guild.members.fetch(priorAgent.discord_id);
         if (oldMember) {
@@ -2255,6 +2262,7 @@ async function monitorOvertimeSessions(client) {
         sessions.agent_id,
         sessions.login_time,
         sessions.overtime_warning_at,
+        sessions.overtime_next_warning_at,
         COALESCE(sessions.overtime_confirmed, 0) AS overtime_confirmed,
         COALESCE(sessions.session_kind, 'shift') AS session_kind,
         agents.discord_id,
@@ -2274,21 +2282,15 @@ async function monitorOvertimeSessions(client) {
 
     const nowMs = Date.now();
     for (const session of activeSessions) {
-      const normalizedRole = String(session.role || '').toLowerCase();
-      if (!['agent', 'trainee'].includes(normalizedRole)) {
-        continue;
-      }
-
       const warningThresholdMs = getOvertimeWarningThresholdMs(session, client.guilds.cache.first());
-      const loginMs = parseSessionTimestamp(session.login_time);
-      const elapsedMs = nowMs - loginMs;
+      const nextWarningDueMs = getSessionNextWarningDueMs(session, warningThresholdMs);
       const sessionIdKey = String(session.id);
-      const overtimeConfirmed = Number(session.overtime_confirmed || 0) === 1;
       const warningMs = session.overtime_warning_at ? parseSessionTimestamp(session.overtime_warning_at) : null;
       const warningElapsedMs = warningMs ? nowMs - warningMs : null;
       const warningExpired = warningElapsedMs !== null && warningElapsedMs >= (5 * 60 * 1000);
+      const reachedWarningThreshold = nowMs >= nextWarningDueMs;
 
-      if (!overtimeConfirmed && !warningMs && elapsedMs >= warningThresholdMs && !overtimeWarnedSessionIds.has(sessionIdKey)) {
+      if (!warningMs && reachedWarningThreshold && !overtimeWarnedSessionIds.has(sessionIdKey)) {
         overtimeWarnedSessionIds.add(sessionIdKey);
         try {
           await sendOvertimeWarningNotice(client, session, 'AUTO', warningThresholdMs);
@@ -2297,7 +2299,7 @@ async function monitorOvertimeSessions(client) {
         }
       }
 
-      if (!overtimeConfirmed && warningMs && warningExpired) {
+      if (warningMs && warningExpired) {
         const agentKey = String(session.agent_id);
         if (overtimeAutoLogoutAgentIds.has(agentKey)) continue;
         overtimeAutoLogoutAgentIds.add(agentKey);
@@ -2316,24 +2318,25 @@ async function monitorOvertimeSessions(client) {
 
           await closeAllActiveSessionsForAgent(session.agent_id, client);
 
+          const primarySessionOverLimit = nowMs >= nextWarningDueMs;
           for (const active of agentSessions) {
-            const activeLoginMs = parseSessionTimestamp(active.login_time);
-            const wasOverLimit = nowMs >= (activeLoginMs + warningThresholdMs);
+            const activeThresholdMs = getOvertimeWarningThresholdMs(active, client.guilds.cache.first());
+            const activeDueMs = getSessionNextWarningDueMs(active, activeThresholdMs);
+            const wasOverLimit = nowMs >= activeDueMs;
             const cappedIso = wasOverLimit
-              ? getCappedLogoutIso(active.login_time, warningThresholdMs)
+              ? new Date(activeDueMs).toISOString()
               : new Date(nowMs).toISOString();
-            db.prepare("UPDATE sessions SET logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0 WHERE id = ?").run(cappedIso, active.id);
+            db.prepare("UPDATE sessions SET logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0, overtime_next_warning_at = NULL WHERE id = ?").run(cappedIso, active.id);
             overtimeWarnedSessionIds.delete(String(active.id));
             overtimeConfirmedSessionIds.delete(String(active.id));
           }
 
           const user = await client.users.fetch(session.discord_id).catch(() => null);
           if (user) {
-            const wasOverLimit = nowMs >= (parseSessionTimestamp(session.login_time) + warningThresholdMs);
-            const reasonText = wasOverLimit
+            const reasonText = primarySessionOverLimit
               ? `You reached the **${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minute test' : '8 hour'}** limit and did not confirm overtime in time.`
               : 'You did not click **Confirm Overtime** before the 5-minute grace window ended.';
-            const capText = wasOverLimit
+            const capText = primarySessionOverLimit
               ? `This record is capped at **${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8 hours'}**.`
               : 'This record was closed at the end of the grace window.';
             const autoLogoutEmbed = new EmbedBuilder()
@@ -2356,7 +2359,7 @@ async function monitorOvertimeSessions(client) {
               description:
                 `**User:** ${session.username} (<@${session.discord_id}>)\n` +
                 `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
-              `**Rule:** Auto-logout after warning + 5 minute grace window${wasOverLimit ? `, capped to ${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8h'} logged time` : ''}`,
+              `**Rule:** Auto-logout after warning + 5 minute grace window${primarySessionOverLimit ? `, capped to ${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8h'} logged time` : ''}`,
               color: 0xED4245,
               userId: session.discord_id
             });
@@ -4682,7 +4685,7 @@ async function handleModalSubmit(interaction) {
        const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
        if (priorSession) {
           const priorAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(priorSession.agent_id);
-          db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed' WHERE id = ?").run(priorSession.id);
+          db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed', overtime_warning_at = NULL, overtime_confirmed = 0, overtime_next_warning_at = NULL WHERE id = ?").run(priorSession.id);
           try {
              const oldMember = await interaction.guild.members.fetch(priorAgent.discord_id);
              if (oldMember) {
@@ -6809,9 +6812,12 @@ async function handleOvertimeConfirm(interaction) {
       SELECT
         sessions.id,
         sessions.agent_id,
+        sessions.login_time,
+        sessions.overtime_next_warning_at,
         COALESCE(sessions.session_kind, 'shift') AS session_kind,
         agents.discord_id,
-        agents.username
+        agents.username,
+        agents.role
       FROM sessions
       JOIN agents ON agents.id = sessions.agent_id
       WHERE sessions.id = ? AND sessions.status = 'active'
@@ -6822,12 +6828,17 @@ async function handleOvertimeConfirm(interaction) {
       return interaction.reply({ content: '⚠️ This session is no longer active.', ephemeral: true });
     }
 
+    const warningThresholdMs = getOvertimeWarningThresholdMs(session, interaction.guild);
+    const nextWarningIso = new Date(Date.now() + warningThresholdMs).toISOString();
     overtimeConfirmedSessionIds.add(String(session.id));
+    overtimeWarnedSessionIds.delete(String(session.id));
     db.prepare(`
       UPDATE sessions
-      SET overtime_confirmed = 1
+      SET overtime_confirmed = 1,
+          overtime_warning_at = NULL,
+          overtime_next_warning_at = ?
       WHERE id = ? AND status = 'active'
-    `).run(session.id);
+    `).run(nextWarningIso, session.id);
 
     const confirmedRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -6838,7 +6849,9 @@ async function handleOvertimeConfirm(interaction) {
     );
 
     await interaction.update({
-      content: `✅ Overtime confirmed for your current ${session.session_kind === 'training' ? 'training' : 'shift'}. Auto logout is bypassed for this session.`,
+      content:
+        `✅ Overtime confirmed for your current ${session.session_kind === 'training' ? 'training' : 'shift'}.\n` +
+        `Another warning will appear in **${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8 hours'}** if your session is still active.`,
       components: [confirmedRow]
     });
 
@@ -6847,7 +6860,7 @@ async function handleOvertimeConfirm(interaction) {
       description:
         `**User:** ${session.username} (<@${session.discord_id}>)\n` +
         `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
-        `**Action:** User confirmed overtime; auto-logout bypass enabled for this session.`,
+        `**Action:** User confirmed overtime; next warning cycle scheduled in ${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8 hours'}.`,
       color: 0x57F287,
       userId: interaction.user.id,
       guild: interaction.guild
@@ -6890,11 +6903,6 @@ async function handleLimitWarning(interaction) {
 
     if (!session) {
       return interaction.editReply({ content: `❌ **${targetUser.username}** has no active shift/training session right now.` });
-    }
-
-    const normalizedRole = String(session.role || '').toLowerCase();
-    if (!['agent', 'trainee'].includes(normalizedRole)) {
-      return interaction.editReply({ content: `❌ **${targetUser.username}** is active, but not in Agent/Trainee role.` });
     }
 
     const warningThresholdMs = getOvertimeWarningThresholdMs(session, interaction.guild);
