@@ -3274,6 +3274,48 @@ async function handleShiftHotelPickMenu(interaction) {
       });
     }
 
+    const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
+      .filter(([assignedHotelId, roleId]) => HOTEL_NAMES[assignedHotelId] && interaction.member.roles.cache.has(roleId))
+      .map(([assignedHotelId]) => normalizeCombinedHotelId(assignedHotelId));
+    const compatibilityHotelIds = (() => {
+      try {
+        return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
+      } catch {
+        return [];
+      }
+    })();
+    const uniqueAssignedHotelIds = [...new Set(assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds)];
+    const lastSession = db.prepare(
+      "SELECT hotel_id, session_kind FROM sessions WHERE agent_id = ? ORDER BY id DESC LIMIT 1"
+    ).get(agent.id);
+    const lastSessionHotelId = normalizeCombinedHotelId(lastSession?.hotel_id);
+
+    if (uniqueAssignedHotelIds.length > 1 && lastSessionHotelId && lastSessionHotelId === hotelId) {
+      const confirmEmbed = new EmbedBuilder()
+        .setTitle('🏨 Same Hotel Confirm')
+        .setDescription(
+          `You selected **${getCombinedHotelLabel(hotelId)}** again.\n\n` +
+          `Your previous session also used this hotel.\n\n` +
+          `Do you want to continue with the **same hotel** from your last session?`
+        )
+        .setColor(0xFEE75C);
+
+      const yesBtn = new ButtonBuilder()
+        .setCustomId(`same_hotel_confirm_yes:${hotelId}:${allowMultiHotel ? '1' : '0'}`)
+        .setLabel('Yes, Continue')
+        .setStyle(ButtonStyle.Success);
+
+      const noBtn = new ButtonBuilder()
+        .setCustomId('same_hotel_confirm_no')
+        .setLabel('Choose Another Hotel')
+        .setStyle(ButtonStyle.Secondary);
+
+      return interaction.update({
+        embeds: [confirmEmbed],
+        components: [new ActionRowBuilder().addComponents(yesBtn, noBtn)]
+      });
+    }
+
     await showPinModal(interaction, hotelId, false, allowMultiHotel);
   } catch (error) {
     console.error('Error in handleShiftHotelPickMenu:', error);
@@ -3285,6 +3327,45 @@ async function handleShiftHotelPickMenu(interaction) {
       await interaction.editReply({ content: '❌ Failed to select hotel for shift.', embeds: [], components: [] }).catch(() => {});
     } else {
       await interaction.reply({ content: '❌ Failed to select hotel for shift.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleSameHotelConfirm(interaction) {
+  try {
+    if (interaction.customId === 'same_hotel_confirm_no') {
+      return sendPrivateFlowPayload(interaction, {
+        content: '✅ No problem. Pick a different hotel for this shift.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    const payload = String(interaction.customId || '').replace('same_hotel_confirm_yes:', '');
+    const [hotelIdRaw, multiRaw = '0'] = payload.split(':');
+    const hotelId = normalizeCombinedHotelId(hotelIdRaw);
+    const allowMultiHotel = multiRaw === '1';
+
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return sendPrivateFlowPayload(interaction, {
+        content: '❌ You are not registered as an agent.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
+
+    await showPinModal(interaction, hotelId, false, allowMultiHotel);
+  } catch (error) {
+    console.error('Error in handleSameHotelConfirm:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to continue with this hotel.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to continue with this hotel.', ephemeral: true }).catch(() => {});
     }
   }
 }
@@ -7606,6 +7687,7 @@ module.exports = {
   handleAgentShiftStartConfirm,
   handleTrainingStartClick,
   handleTrainingHotelSelectMenu,
+  handleSameHotelConfirm,
   handleDbRemoveAll,
   handlePurgeConfirm,
   handlePurgeDeny

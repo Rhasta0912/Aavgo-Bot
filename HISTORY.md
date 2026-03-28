@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Add a confirmation step when a multi-hotel agent reselects their previous hotel.
+  - Summary: If an agent has more than one assigned hotel and picks the same hotel they used in their last session, the bot now pauses with a private confirmation prompt before opening PIN entry. This helps prevent accidental repeat check-ins while keeping the normal single-hotel flow unchanged.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Temporarily shorten overtime warnings to 3 minutes for the `test role`.
   - Summary: The overtime warning threshold now uses 3 minutes instead of 8 hours only when the active user has Discord role `1487369607772766208` (`test role`). This is meant for testing the limit-warning flow without waiting for a full shift.
   - Files touched:
