@@ -304,6 +304,7 @@ const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
+const LOGIN_CHANNEL_ID = '1482228169485582446';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const AGENT_ROLE_ID = '1482227287159078964';
 const TRAINEE_ROLE_ID = '1484705126026449029';
@@ -7003,13 +7004,26 @@ async function handleOvertimeEndShift(interaction) {
       return interaction.reply({ content: '⚠️ This session is no longer active.', ephemeral: true });
     }
 
-    return handleLogout(interaction);
+    const guildId = interaction.client.guilds.cache.first()?.id || '1482220918355922974';
+    const loginChannelUrl = `https://discord.com/channels/${guildId}/${LOGIN_CHANNEL_ID}`;
+    const redirectRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setStyle(ButtonStyle.Link)
+        .setLabel('Open Log-in Channel')
+        .setURL(loginChannelUrl)
+    );
+
+    return interaction.update({
+      content: '📍 Please continue in the log-in channel.',
+      embeds: [],
+      components: [redirectRow]
+    });
   } catch (error) {
     console.error('Error in handleOvertimeEndShift:', error);
     if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content: '❌ Failed to end shift from overtime warning.', ephemeral: true }).catch(() => {});
+      await interaction.followUp({ content: '❌ Failed to redirect to the log-in channel.', ephemeral: true }).catch(() => {});
     } else {
-      await interaction.reply({ content: '❌ Failed to end shift from overtime warning.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: '❌ Failed to redirect to the log-in channel.', ephemeral: true }).catch(() => {});
     }
   }
 }

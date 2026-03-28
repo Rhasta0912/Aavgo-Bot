@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Changed overtime-warning `End Shift` button behavior to redirect into the log-in channel.
+  - Summary: Pressing `End Shift` from the overtime warning no longer logs out immediately. It now updates the warning card with a direct `Open Log-in Channel` button that routes the user to `1482228169485582446` so they continue from the main login flow.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Corrected overtime warning sentence wording exactly to latest copy.
   - Summary: Updated overtime warning embed text to the exact phrasing requested (`reached 8 hours`, `still inactive`, and `without confirming overtime`) while keeping the same warning behavior and buttons.
   - Files touched:
