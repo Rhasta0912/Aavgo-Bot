@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Keep login route cards private so public kiosks are not overwritten.
+  - Summary: Agent and management route prompts now reply as ephemeral flow cards when started from the public kiosk, instead of editing the public setup message. This keeps the temporary route steps visible only to the user who clicked.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Revert the Agent Route card back to the simpler layout while keeping PIN-first routing.
   - Summary: The login flow still checks for a saved PIN first and auto-routes by role, but the agent route card is back to the simpler wording and button labels so the UI does not feel unexpectedly changed.
   - Files touched:

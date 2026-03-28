@@ -45,6 +45,26 @@ function sendComponentReply(interaction, payload) {
   return interaction.reply(payload);
 }
 
+function isEphemeralSourceInteraction(interaction) {
+  try {
+    return Boolean(interaction?.message?.flags?.has?.(MessageFlags.Ephemeral));
+  } catch (_) {
+    return false;
+  }
+}
+
+function sendPrivateFlowPayload(interaction, payload) {
+  if (interaction.deferred || interaction.replied) {
+    return interaction.editReply(payload);
+  }
+
+  if (isEphemeralSourceInteraction(interaction) && typeof interaction.update === 'function') {
+    return interaction.update(payload);
+  }
+
+  return interaction.reply({ ...payload, ephemeral: true });
+}
+
 // ─── Constants ───────────────────────────────────────
 const ROLE_NAMES = {
   ON_SHIFT: 'On-Shift',
@@ -3233,7 +3253,7 @@ async function handleAgentRoutePick(interaction) {
     }
 
     if (isTraineeMember(interaction)) {
-      return await showTrainingHotelSelection(interaction, true);
+      return await showTrainingHotelSelection(interaction, isEphemeralSourceInteraction(interaction));
     }
 
     const embed = new EmbedBuilder()
@@ -3257,7 +3277,7 @@ async function handleAgentRoutePick(interaction) {
       .setLabel('Training')
       .setStyle(ButtonStyle.Secondary);
 
-    return sendComponentUpdate(interaction, {
+    return sendPrivateFlowPayload(interaction, {
       embeds: [embed],
       components: [new ActionRowBuilder().addComponents(hotelBtn, trainingBtn)]
     });
@@ -3282,7 +3302,7 @@ async function handleManagementRoutePick(interaction, roleLabel) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
     }
     if (!interactionHasRoleAtLeast(interaction, 'sme')) {
-      return sendComponentUpdate(interaction, {
+      return sendPrivateFlowPayload(interaction, {
         content: 'Access denied. Team Leader or SME role required.',
         embeds: [],
         components: []
@@ -3317,7 +3337,7 @@ async function handleManagementRoutePick(interaction, roleLabel) {
       .setLabel('🧑‍💼 Team 2 Shift')
       .setStyle(ButtonStyle.Secondary);
 
-    return sendComponentUpdate(interaction, {
+    return sendPrivateFlowPayload(interaction, {
       embeds: [embed],
       components: [new ActionRowBuilder().addComponents(team1Btn, team2Btn)]
     });
@@ -3338,7 +3358,7 @@ async function handleManagementTeamStart(interaction, teamName) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
     }
     if (!interactionHasRoleAtLeast(interaction, 'sme')) {
-      return sendComponentUpdate(interaction, {
+      return sendPrivateFlowPayload(interaction, {
         content: 'Access denied. Team Leader or SME role required.',
         embeds: [],
         components: []
