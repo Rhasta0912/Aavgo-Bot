@@ -738,3 +738,11 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - UI-only update for consistency.
     - No permission, routing, or PIN-handling behavior changed.
+- Expanded the hotel-link workflow refresh so all visible cards now share the same cleaner structure and emoji placement.
+  - Summary: Updated the hotel selection, hotel confirmation, hotel-linked success, later/save, and team-return cards so the full journey reads like one consistent flow instead of a single refreshed step. Tightened button labels and footer copy for cleaner scannability.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+  - Notes:
+    - UI-only consistency pass.
+    - No routing, permissions, or PIN behavior changed.

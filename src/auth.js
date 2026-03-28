@@ -3773,7 +3773,7 @@ async function showHotelSelection(interaction, teamName, isUpdate = false) {
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId('hotel_select_menu')
-    .setPlaceholder('🏨 Choose your hotel assignment...')
+    .setPlaceholder('Select your hotel assignment...')
     .addOptions(
       hotels.map(hotel =>
         new StringSelectMenuOptionBuilder()
@@ -3789,12 +3789,14 @@ async function showHotelSelection(interaction, teamName, isUpdate = false) {
     .setDescription(
       `### 📍 ASSIGNMENT SELECTION — ${teamName}\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `> Use the **dropdown** below to select your hotel.\n\n` +
-      `> ⚠️ **Permanent choice.** You cannot switch hotels\n` +
-      `> without contacting a Developer or Team Leader.\n` +
+      `> Choose the hotel from the dropdown below.\n\n` +
+      `> ⚠️ This is a permanent choice.\n` +
+      `> Only a Developer or Team Leader can change it later.\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
     )
-    .setColor(0x57F287);
+    .setColor(0x57F287)
+    .setFooter({ text: 'Aavgo Operations • Hotel Assignment' })
+    .setTimestamp();
 
   const payload = { content: null, embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true };
 
@@ -3816,34 +3818,125 @@ async function handleHotelSelect(interaction) {
       return interaction.reply({ content: '❌ You are not registered as an agent. Use `/register` to apply.', ephemeral: true });
     }
 
-    const hotelName = getCombinedHotelLabel(hotelId);
-
-    const confirmEmbed = new EmbedBuilder()
-      .setTitle('🏨 Permanent Hotel Selection')
-      .setDescription(`### ⚠️ FINAL CONFIRMATION\n` +
-                      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-                      `Are you sure you want to select **${hotelName}** as your assigned hotel?\n\n` +
-                      `> **NOTICE:** Once selected, you **CANNOT** switch hotels later regardless of channel. You will be permanently locked into this location unless a Developer or Team Leader manually reassigns you.\n` +
-                      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-                      `*Click below to confirm your permanent assignment.*`)
-      .setColor(0xFEE75C);
-
-    const confirmBtn = new ButtonBuilder()
-      .setCustomId(`confirm_hotel_${hotelId}`)
-      .setLabel('Confirm & Link Hotel')
-      .setStyle(ButtonStyle.Success);
-
-    const cancelBtn = new ButtonBuilder()
-      .setCustomId('cancel_hotel_link')
-      .setLabel('Cancel')
-      .setStyle(ButtonStyle.Secondary);
-
-    const row = new ActionRowBuilder().addComponents(confirmBtn, cancelBtn);
-
-    await interaction.update({ embeds: [confirmEmbed], components: [row] });
+    return sendComponentUpdate(interaction, buildHotelAssignmentConfirmPayload(hotelId));
   } catch (error) {
     console.error('Error in handleHotelSelect:', error);
   }
+}
+
+function buildHotelAssignmentConfirmPayload(hotelId) {
+  const hotelName = getCombinedHotelLabel(hotelId);
+
+  const confirmEmbed = new EmbedBuilder()
+    .setTitle('🏨 Confirm Your Hotel Assignment')
+    .setDescription(
+      `### ⚠️ PERMANENT SELECTION\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `You are about to permanently link your account to:\n` +
+      `## 🏨 ${hotelName}\n\n` +
+      `> This cannot be undone.\n` +
+      `> Only a Developer or Team Leader can change it later.\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    )
+    .setColor(0xFEE75C)
+    .setFooter({ text: 'Aavgo Operations • Hotel Assignment' })
+    .setTimestamp();
+
+  const confirmBtn = new ButtonBuilder()
+    .setCustomId(`confirm_hotel_${hotelId}`)
+    .setLabel('Link Hotel')
+    .setStyle(ButtonStyle.Success);
+
+  const cancelBtn = new ButtonBuilder()
+    .setCustomId('cancel_hotel_link')
+    .setLabel('Cancel')
+    .setStyle(ButtonStyle.Secondary);
+
+  return {
+    embeds: [confirmEmbed],
+    components: [new ActionRowBuilder().addComponents(confirmBtn, cancelBtn)]
+  };
+}
+
+function buildHotelLinkSuccessPayload(hotelId) {
+  const hotelName = getCombinedHotelLabel(hotelId);
+
+  const successEmbed = new EmbedBuilder()
+    .setTitle('✅ Hotel Successfully Linked')
+    .setDescription(
+      `### 📍 ASSIGNMENT COMPLETE\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `**Hotel:** ${hotelName}\n` +
+      `**Status:** Linked and ready\n\n` +
+      `> Your shift is not live yet.\n` +
+      `> Press **Start Shift** below to continue now,\n` +
+      `> or choose **Later** to return here from your hotel channel.\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    )
+    .setColor(0x57F287)
+    .setFooter({ text: 'Aavgo Operations • Hotel Assignment' })
+    .setTimestamp();
+
+  const startNowBtn = new ButtonBuilder()
+    .setCustomId('hotel_link_start_yes_btn')
+    .setLabel('Start Shift')
+    .setStyle(ButtonStyle.Primary);
+
+  const startLaterBtn = new ButtonBuilder()
+    .setCustomId('hotel_link_start_no_btn')
+    .setLabel('Later')
+    .setStyle(ButtonStyle.Secondary);
+
+  return {
+    embeds: [successEmbed],
+    components: [new ActionRowBuilder().addComponents(startNowBtn, startLaterBtn)]
+  };
+}
+
+function buildHotelLinkSavedPayload(hotelId) {
+  const hotelName = getCombinedHotelLabel(hotelId);
+
+  const savedEmbed = new EmbedBuilder()
+    .setTitle('🏨 Hotel Link Saved')
+    .setDescription(
+      `### ⏳ READY WHEN YOU ARE\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `Your hotel assignment is saved for **${hotelName}**.\n` +
+      `When you are ready, open your hotel channel and press **Start Shift**.\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    )
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Aavgo Operations • Hotel Assignment' })
+    .setTimestamp();
+
+  return {
+    embeds: [savedEmbed],
+    components: []
+  };
+}
+
+function buildTeamSelectionPromptPayload() {
+  const embed = new EmbedBuilder()
+    .setTitle('👥 Choose Your Team')
+    .setDescription(
+      `### TEAM ASSIGNMENT REQUIRED\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `Pick the team assigned to you so we can show the correct hotel list.\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    )
+    .setColor(0xFEE75C)
+    .setFooter({ text: 'Aavgo Operations • Team Setup' })
+    .setTimestamp();
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId('team_btn_Team 1').setLabel('Team 1').setStyle(ButtonStyle.Primary).setEmoji('👥'),
+    new ButtonBuilder().setCustomId('team_btn_Team 2').setLabel('Team 2').setStyle(ButtonStyle.Primary).setEmoji('👥')
+  );
+
+  return {
+    embeds: [embed],
+    components: [row]
+  };
 }
 
 async function showTrainingHotelSelection(interaction, isUpdate = false) {
@@ -4244,34 +4337,7 @@ async function handleHotelSelectMenu(interaction) {
       });
     }
 
-    const hotelName = getCombinedHotelLabel(hotelId);
-
-    const confirmEmbed = new EmbedBuilder()
-      .setTitle('🏨 Confirm Your Hotel Assignment')
-      .setDescription(
-        `### ⚠️ PERMANENT SELECTION\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `You are about to permanently link your account to:\n` +
-        `## 🏨 ${hotelName}\n\n` +
-        `> **This cannot be undone.** Once confirmed, you will\n` +
-        `> need a **Developer or Team Leader** to change this.\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `*Are you 100% sure this is your correct hotel?*`
-      )
-      .setColor(0xFEE75C);
-
-    const confirmBtn = new ButtonBuilder()
-      .setCustomId(`confirm_hotel_${hotelId}`)
-      .setLabel('✅ Yes, Link This Hotel')
-      .setStyle(ButtonStyle.Success);
-
-    const cancelBtn = new ButtonBuilder()
-      .setCustomId('cancel_hotel_link')
-      .setLabel('❌ Cancel')
-      .setStyle(ButtonStyle.Secondary);
-
-    const row = new ActionRowBuilder().addComponents(confirmBtn, cancelBtn);
-    await interaction.update({ embeds: [confirmEmbed], components: [row] });
+    return sendComponentUpdate(interaction, buildHotelAssignmentConfirmPayload(hotelId));
   } catch (error) {
     console.error('Error in handleHotelSelectMenu:', error);
   }
@@ -4333,34 +4399,7 @@ async function handleConfirmHotelLink(interaction) {
        console.warn('[ROLES] Failed to assign initial Grey role:', roleErr.message);
     }
 
-    // Hotel linked confirmation + optional start-now prompt
-    const linkedEmbed = new EmbedBuilder()
-      .setTitle('Hotel Successfully Linked')
-      .setDescription(
-        '### ASSIGNMENT COMPLETE\n' +
-        '---------------------------\n' +
-        `You have been permanently linked to **${getCombinedHotelLabel(hotelId)}**.\n\n` +
-        '> Your shift is not live yet.\n' +
-        '> Press **Start Shift** below to continue now,\n' +
-        '> or choose **Later** and start from your hotel channel.\n' +
-        '---------------------------'
-      )
-      .setColor(0x57F287);
-
-    const startNowBtn = new ButtonBuilder()
-      .setCustomId('hotel_link_start_yes_btn')
-      .setLabel('Start Shift')
-      .setStyle(ButtonStyle.Primary);
-
-    const startLaterBtn = new ButtonBuilder()
-      .setCustomId('hotel_link_start_no_btn')
-      .setLabel('Later')
-      .setStyle(ButtonStyle.Secondary);
-
-    await sendComponentUpdate(interaction, {
-      embeds: [linkedEmbed],
-      components: [new ActionRowBuilder().addComponents(startNowBtn, startLaterBtn)]
-    });
+    return sendComponentUpdate(interaction, buildHotelLinkSuccessPayload(hotelId));
 
   } catch (error) {
     console.error('Error in handleConfirmHotelLink:', error);
@@ -4376,23 +4415,10 @@ async function handleConfirmHotelLink(interaction) {
 async function handleCancelHotelLink(interaction) {
   try {
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
-    if (!agent) return interaction.update({ content: '❌ Registration required.', embeds: [], components: [] });
+    if (!agent) return interaction.update({ content: '? Registration required.', embeds: [], components: [] });
 
-    // Show team selection again
     if (!agent.team) {
-       const embed = new EmbedBuilder()
-         .setTitle('👥 Team Selection')
-         .setDescription('### 👥 SELECT YOUR TEAM\n' +
-                         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
-                         '> Pick your assigned team to view available hotels.\n' +
-                         '━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-         .setColor(0xFEE75C);
-
-       const row = new ActionRowBuilder().addComponents(
-         new ButtonBuilder().setCustomId('team_btn_Team 1').setLabel('Team 1').setStyle(ButtonStyle.Primary).setEmoji('👥'),
-         new ButtonBuilder().setCustomId('team_btn_Team 2').setLabel('Team 2').setStyle(ButtonStyle.Primary).setEmoji('👥')
-       );
-       return await interaction.update({ embeds: [embed], components: [row] });
+      return await interaction.update(buildTeamSelectionPromptPayload());
     }
 
     // Show hotel selection for their team
@@ -4404,14 +4430,6 @@ async function handleCancelHotelLink(interaction) {
 
 async function handleHotelLinkStartChoice(interaction) {
   try {
-    if (interaction.customId === 'hotel_link_start_no_btn') {
-      return sendPrivateFlowPayload(interaction, {
-        content: '✅ No problem. You can start later from your hotel channel.',
-        embeds: [],
-        components: []
-      });
-    }
-
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'HOTEL LINK START CHOICE');
@@ -4419,10 +4437,14 @@ async function handleHotelLinkStartChoice(interaction) {
     }
     if (!agent) {
       return sendPrivateFlowPayload(interaction, {
-        content: '❌ You are not registered as an agent.',
+        content: '? You are not registered as an agent.',
         embeds: [],
         components: []
       });
+    }
+
+    if (interaction.customId === 'hotel_link_start_no_btn') {
+      return sendPrivateFlowPayload(interaction, buildHotelLinkSavedPayload(agent.hotel_id));
     }
 
     if (await guardShiftPinFirst(interaction, agent, 'shift')) {
@@ -4445,14 +4467,13 @@ async function handleHotelLinkStartChoice(interaction) {
   } catch (error) {
     console.error('Error in handleHotelLinkStartChoice:', error);
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: '❌ Failed to open shift start flow.', embeds: [], components: [] }).catch(() => {});
+      await interaction.editReply({ content: '? Failed to open shift start flow.', embeds: [], components: [] }).catch(() => {});
     } else {
-      await interaction.reply({ content: '❌ Failed to open shift start flow.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: '? Failed to open shift start flow.', ephemeral: true }).catch(() => {});
     }
   }
 }
 
-// ─── Shift Takeover Functions ────────────────────────
 async function handleCancelTakeover(interaction) {
   try {
     await interaction.deferUpdate();
@@ -8220,46 +8241,18 @@ async function handleHotelSelectMenu(interaction) {
     const hotelId = interaction.values[0];
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
-      return sendComponentReply(interaction, { content: '❌ You are not registered as an agent.', ephemeral: true });
+      return sendComponentReply(interaction, { content: '? You are not registered as an agent.', ephemeral: true });
     }
 
     if (agent.hotel_id) {
       return sendComponentUpdate(interaction, {
-        content: '🔒 **Hotel Already Linked.** Your account is permanently assigned. Contact a Developer to change it.',
+        content: '?? **Hotel Already Linked.** Your account is permanently assigned. Contact a Developer to change it.',
         embeds: [],
         components: []
       });
     }
 
-    const hotelName = getCombinedHotelLabel(hotelId);
-    const confirmEmbed = new EmbedBuilder()
-      .setTitle('🏨 Confirm Hotel Assignment')
-      .setDescription(
-        '### ASSIGNMENT CONFIRMATION\n' +
-        '────────────────────────\n' +
-        `You are about to link your account to **${hotelName}**.\n\n` +
-        '> ⚠ This is a permanent choice unless changed by\n' +
-        '> a Developer or Team Leader.\n' +
-        '────────────────────────'
-      )
-      .setColor(0xFEE75C)
-      .setFooter({ text: 'Aavgo Operations • Assignment Lock-In' })
-      .setTimestamp();
-
-    const confirmBtn = new ButtonBuilder()
-      .setCustomId(`confirm_hotel_${hotelId}`)
-      .setLabel('Link This Hotel')
-      .setStyle(ButtonStyle.Success);
-
-    const cancelBtn = new ButtonBuilder()
-      .setCustomId('cancel_hotel_link')
-      .setLabel('Cancel')
-      .setStyle(ButtonStyle.Secondary);
-
-    return sendComponentUpdate(interaction, {
-      embeds: [confirmEmbed],
-      components: [new ActionRowBuilder().addComponents(confirmBtn, cancelBtn)]
-    });
+    return sendComponentUpdate(interaction, buildHotelAssignmentConfirmPayload(hotelId));
   } catch (error) {
     if (error?.code === 10062) {
       console.warn('[HOTEL-SELECT] Interaction expired before response (10062).');
@@ -8267,13 +8260,12 @@ async function handleHotelSelectMenu(interaction) {
     }
     console.error('Error in handleHotelSelectMenu:', error);
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: '❌ Failed to open hotel assignment confirmation.', embeds: [], components: [] }).catch(() => {});
+      await interaction.editReply({ content: '? Failed to open hotel assignment confirmation.', embeds: [], components: [] }).catch(() => {});
     } else {
-      await interaction.reply({ content: '❌ Failed to open hotel assignment confirmation.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: '? Failed to open hotel assignment confirmation.', ephemeral: true }).catch(() => {});
     }
   }
 }
-
 module.exports = {
   HOTEL_NAMES,
   HOTEL_LOGIN_CHANNELS,
@@ -8386,6 +8378,7 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
+
 
 
 
