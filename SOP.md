@@ -59,14 +59,24 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
 6. Validate affected commands/features in Discord.
 
 ## Shift Safety SOP
-- Use `/training-mode action:on` during training blocks.
-- With training mode ON:
-  - regular agents are blocked from Initialize Shift
-  - management/developer pathways remain available
-- Use `/training-mode action:off` before live shift windows.
-- Per-agent readiness remains controlled by:
-  - `/db-agent-ready`
-  - `/db-agent-standby`
+- Training is controlled through the login flow and the training status board, not by a separate manual toggle.
+- Trainees should be routed into Training only and should never appear on the live hotel board.
+- Live hotel sessions still keep takeover/conflict protection.
+- Multiple trainees may be active at the same time without blocking each other.
+- The login flow should keep management/developer paths available while still enforcing PIN-first entry.
+
+## Login Flow SOP
+- The first thing the bot checks on any shift/login entry is whether the user has a security PIN set.
+- If the PIN is missing, show the PIN setup prompt first and do not route them deeper into the login flow yet.
+- After PIN confirmation, detect the user role automatically from DB/Discord state:
+  - `agent` opens the Agent Route
+  - `team_leader` / `sme` opens the Management Route
+  - `trainee` opens the Training Route
+- Keep every login card UI-friendly and beginner-friendly:
+  - use plain language
+  - avoid Discord jargon
+  - use labels like `Live -> Hotel Shift` and `Practice -> Training`
+  - keep the route cards short, scannable, and clearly separated
 
 ## AD1 Calls-Only SOP
 - AD1 is calls-only operations.

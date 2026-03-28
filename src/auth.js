@@ -498,6 +498,68 @@ async function showPinModal(interaction, hotelId, isTakeover = false, allowMulti
   }
 }
 
+function resolveShiftRouteKind(interaction, agent) {
+  const normalizedRole = normalizeAgentRole(agent?.role);
+
+  if (isTraineeMember(interaction) || normalizedRole === 'trainee') {
+    return 'training';
+  }
+
+  if (interactionHasRoleAtLeast(interaction, 'sme') || hasAgentRoleAtLeast(normalizedRole, 'sme')) {
+    return 'management';
+  }
+
+  if (normalizedRole === 'agent' || interactionHasRoleAtLeast(interaction, 'agent')) {
+    return 'agent';
+  }
+
+  return 'unknown';
+}
+
+function buildInitializeShiftFallbackPayload() {
+  const embed = new EmbedBuilder()
+    .setTitle('🛡️ Aavgo Operations · Initialize Shift')
+    .setDescription(
+      '### ✅ ACCESS ROUTE READY\n' +
+      '────────────────────────\n' +
+      '🤖 Board: Pick the shift lane that matches your role.\n' +
+      '👤 Agent: Hotel Shift or Training.\n' +
+      '🧑‍💼 Team Leader / SME: Team shift login.\n' +
+      '────────────────────────'
+    )
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Aavgo Operations • Role Routing' })
+    .setTimestamp();
+
+  const agentBtn = new ButtonBuilder()
+    .setCustomId('shift_role_agent_btn')
+    .setLabel('👤 Agent')
+    .setStyle(ButtonStyle.Primary);
+
+  const tlBtn = new ButtonBuilder()
+    .setCustomId('shift_role_team_leader_btn')
+    .setLabel('🧑‍💼 Team Leader')
+    .setStyle(ButtonStyle.Secondary);
+
+  const smeBtn = new ButtonBuilder()
+    .setCustomId('shift_role_sme_btn')
+    .setLabel('🧠 SME')
+    .setStyle(ButtonStyle.Secondary);
+
+  return {
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(agentBtn, tlBtn, smeBtn)]
+  };
+}
+
+async function guardShiftPinFirst(interaction, agent, sessionMode = 'shift') {
+  if (agent && !hasConfiguredPin(agent)) {
+    await promptForPinSetup(interaction, 'Shift', sessionMode);
+    return true;
+  }
+  return false;
+}
+
 function normalizeTeamInput(input) {
   const cleaned = (input || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (cleaned === 'team 1' || cleaned === '1' || cleaned === 'team1') return 'Team 1';
@@ -1308,11 +1370,11 @@ function buildAgentKioskPayload() {
       'This portal monitors and logs all active sessions in real-time. Please follow the protocol below to initialize your shift.\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 📋 Protocol\n' +
-      '> **1.** Click **Initialize Shift** below\n' +
-      '> **2.** Choose your **Role** (Agent / Team Leader / SME)\n' +
-      '> **3.** Agent route: choose **Hotel Shift** or **Training**\n' +
-      '> **4.** Team Leader / SME route: choose **Team 1** or **Team 2** shift\n' +
-      '> **5.** Verify your **Secure PIN**\n\n' +
+      '> **1.** Make sure your **PIN** is already set\n' +
+      '> **2.** Click **Initialize Shift** below\n' +
+      '> **3.** The bot will detect your role automatically\n' +
+      '> **4.** Agent route: choose **Live -> Hotel Shift** or **Practice -> Training**\n' +
+      '> **5.** Team Leader / SME route: choose **Team 1 Shift** or **Team 2 Shift**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
       '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`'
@@ -1813,7 +1875,7 @@ async function promptForPinSetup(interaction, hotelName = 'Shift', sessionMode =
     .setDescription(
       `Oh no, you have not set your PIN yet.\n\n` +
       `To continue with **${hotelName}**, please set your security PIN first.\n\n` +
-      `Click the button below to open the security setup form.`
+      `This is always checked first, so the bot can send you to the right route automatically once your PIN is saved.`
     )
     .setColor(0xFEE75C)
     .setFooter({ text: sessionMode === 'training' ? 'Training access requires a security PIN' : 'Shift access requires a security PIN' })
@@ -2996,12 +3058,17 @@ async function showTrainingHotelSelection(interaction, isUpdate = false) {
     );
 
   const embed = new EmbedBuilder()
-    .setTitle('Training Session Setup')
+    .setTitle('🛡️ Aavgo Operations · Training Route')
     .setDescription(
-      'Choose the hotel you are training for.\n' +
-      'Training sessions are tracked separately from live shifts.'
+      '### 🟪 PRACTICE MODE READY\n' +
+      '────────────────────────\n' +
+      '🤖 Board: Choose the hotel you are training for.\n' +
+      '🟪 Practice sessions are tracked separately from live shifts.\n' +
+      '────────────────────────'
     )
-    .setColor(0x5865F2);
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Aavgo Operations • Training Routing' })
+    .setTimestamp();
 
   const payload = { content: null, embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true };
 
@@ -3061,49 +3128,39 @@ async function handleShiftModePrompt(interaction) {
 
 async function handleShiftRolePrompt(interaction) {
   try {
-    if (isTraineeMember(interaction)) {
-      return await showTrainingHotelSelection(interaction);
-    }
-
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'SHIFT ROUTE PROMPT');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    }
     if (!agent) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle('🛡️ Aavgo Operations · Initialize Shift')
-      .setDescription(
-        '### ✅ ACCESS ROUTE READY\n' +
-        '────────────────────────\n' +
-        '**🤖 Board:** Pick the shift lane that matches your role.\n' +
-        '**👤 Agent:** Hotel Shift or Training.\n' +
-        '**🧑‍💼 Team Leader / SME:** Team shift login.\n' +
-        '────────────────────────'
-      )
-      .setColor(0x5865F2)
-      .setFooter({ text: 'Aavgo Operations • Role Routing' })
-      .setTimestamp();
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
 
-    const agentBtn = new ButtonBuilder()
-      .setCustomId('shift_role_agent_btn')
-      .setLabel('Agent')
-      .setStyle(ButtonStyle.Primary);
+    const routeKind = resolveShiftRouteKind(interaction, agent);
+    if (routeKind === 'training') {
+      return await showTrainingHotelSelection(interaction);
+    }
 
-    const tlBtn = new ButtonBuilder()
-      .setCustomId('shift_role_team_leader_btn')
-      .setLabel('Team Leader')
-      .setStyle(ButtonStyle.Secondary);
+    if (routeKind === 'agent') {
+      return await handleAgentRoutePick(interaction);
+    }
 
-    const smeBtn = new ButtonBuilder()
-      .setCustomId('shift_role_sme_btn')
-      .setLabel('SME')
-      .setStyle(ButtonStyle.Secondary);
+    if (routeKind === 'management') {
+      const role = normalizeAgentRole(agent.role);
+      const managementLabel = role === 'operations_manager'
+        ? 'Operations Manager'
+        : role === 'team_leader'
+          ? 'Team Leader'
+          : 'SME';
+      return await handleManagementRoutePick(interaction, managementLabel);
+    }
 
-    await interaction.reply({
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(agentBtn, tlBtn, smeBtn)],
-      ephemeral: true
-    });
+    await interaction.reply({ ...buildInitializeShiftFallbackPayload(), ephemeral: true });
   } catch (error) {
     console.error('Error in handleShiftRolePrompt:', error);
     if (interaction.deferred || interaction.replied) {
@@ -3116,13 +3173,21 @@ async function handleShiftRolePrompt(interaction) {
 
 async function handleAgentRoutePick(interaction) {
   try {
-    if (isTraineeMember(interaction)) {
-      return await showTrainingHotelSelection(interaction, true);
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'AGENT ROUTE');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     }
-
-    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
+    }
+
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
+
+    if (isTraineeMember(interaction)) {
+      return await showTrainingHotelSelection(interaction, true);
     }
 
     const embed = new EmbedBuilder()
@@ -3130,9 +3195,9 @@ async function handleAgentRoutePick(interaction) {
       .setDescription(
         '### ✅ SESSION TYPE SELECTED\n' +
         '────────────────────────\n' +
-        '**🤖 Board:** Choose how this session should run.\n' +
-        '**🟦 Live:** Hotel Shift for normal operations.\n' +
-        '**🟪 Practice:** Training for trainee sessions.\n' +
+        '🤖 Board: Choose how this session should run.\n' +
+        '🟦 Live: Hotel Shift for normal operations.\n' +
+        '🟪 Practice: Training for trainee sessions.\n' +
         '────────────────────────'
       )
       .setColor(0x5865F2)
@@ -3141,12 +3206,12 @@ async function handleAgentRoutePick(interaction) {
 
     const hotelBtn = new ButtonBuilder()
       .setCustomId('shift_mode_hotel_btn')
-      .setLabel('Hotel Shift')
+      .setLabel('🟦 Live -> Hotel Shift')
       .setStyle(ButtonStyle.Primary);
 
     const trainingBtn = new ButtonBuilder()
       .setCustomId('training_start_btn')
-      .setLabel('🧭 Training')
+      .setLabel('🟪 Practice -> Training')
       .setStyle(ButtonStyle.Secondary);
 
     return sendComponentUpdate(interaction, {
@@ -3165,7 +3230,11 @@ async function handleAgentRoutePick(interaction) {
 
 async function handleManagementRoutePick(interaction, roleLabel) {
   try {
-    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'MANAGEMENT ROUTE');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    }
     if (!agent) {
       return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
     }
@@ -3177,26 +3246,32 @@ async function handleManagementRoutePick(interaction, roleLabel) {
       });
     }
 
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
+
     const embed = new EmbedBuilder()
-      .setTitle(`Aavgo Operations - ${roleLabel} Route`)
+      .setTitle(`🛡️ Aavgo Operations · ${roleLabel} Route`)
       .setDescription(
-        '# Management Shift Route\n' +
-        '### Select Team Shift\n\n' +
-        '──────────────────────────────\n' +
-        '- **Team 1 Shift**\n' +
-        '- **Team 2 Shift**\n' +
-        '──────────────────────────────'
+        '### ✅ TEAM SHIFT SELECTED\n' +
+        '────────────────────────\n' +
+        '🤖 Board: Choose which team shift to open.\n' +
+        '🧑‍💼 Team 1: Team 1 shift login.\n' +
+        '🧑‍💼 Team 2: Team 2 shift login.\n' +
+        '────────────────────────'
       )
-      .setColor(0x57F287);
+      .setColor(0x57F287)
+      .setFooter({ text: 'Aavgo Operations • Team Routing' })
+      .setTimestamp();
 
     const team1Btn = new ButtonBuilder()
       .setCustomId('shift_mgmt_team_1_btn')
-      .setLabel('Team 1 Shift')
+      .setLabel('🧑‍💼 Team 1 Shift')
       .setStyle(ButtonStyle.Primary);
 
     const team2Btn = new ButtonBuilder()
       .setCustomId('shift_mgmt_team_2_btn')
-      .setLabel('Team 2 Shift')
+      .setLabel('🧑‍💼 Team 2 Shift')
       .setStyle(ButtonStyle.Secondary);
 
     return sendComponentUpdate(interaction, {
@@ -3246,6 +3321,19 @@ async function handleManagementTeamStart(interaction, teamName) {
 
 async function handleTrainingStartClick(interaction) {
   try {
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'TRAINING ROUTE');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    }
+    if (!agent) {
+      return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
+    }
+
+    if (await guardShiftPinFirst(interaction, agent, 'training')) {
+      return;
+    }
+
     return await showTrainingHotelSelection(interaction);
   } catch (error) {
     console.error('Error in handleTrainingStartClick:', error);

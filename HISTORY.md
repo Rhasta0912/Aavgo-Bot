@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Make the login flow pin-first and auto-route users by role with simpler UI copy.
+  - Summary: The shift entry flow now checks for a saved security PIN before anything else, then automatically routes agents to the Agent Route, team leaders/SMEs to the Management Route, and trainees to the Training Route. The route cards now use clearer beginner-friendly labels like `Live -> Hotel Shift` and `Practice -> Training`.
+  - Files touched:
+    - src/auth.js
+    - SOP.md
+    - HISTORY.md
 - Align the hotel map with the live context: keep AD1 separate, add Travelodge and Day Inns Bishop as distinct Team 1 hotels, and wire their status channels and roles into the bot.
 - Added overtime enforcement for active `agent` / `trainee` sessions.
   - Summary: The bot now sends a warning DM at 8 hours, auto-logs out 5 minutes later if still active, and caps recorded session duration to exactly 8 hours for shift/training entries.
