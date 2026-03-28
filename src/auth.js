@@ -315,6 +315,7 @@ const TEST_ROLE_ID = '1487369607772766208';
 const overtimeWarnedSessionIds = new Set();
 const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
+const offlineAutoLogoutAgentIds = new Set();
 let combinedHotelStatusRefreshTimer = null;
 
 const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
@@ -733,6 +734,29 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
   }
 
   return hotelIds;
+}
+
+async function applyLoggedOutRolesForMember(guild, member, hotelIds = []) {
+  try {
+    if (!guild || !member) return;
+
+    const onShiftRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
+    const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+    const rolesToRemove = [onShiftRole].filter(Boolean);
+    const rolesToAdd = [loggedOutRole].filter(Boolean);
+
+    for (const hId of hotelIds) {
+      const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hId]);
+      const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hId]);
+      if (greenRole) rolesToRemove.push(greenRole);
+      if (greyRole) rolesToAdd.push(greyRole);
+    }
+
+    if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove).catch(() => {});
+    if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd).catch(() => {});
+  } catch (error) {
+    console.warn('[ROLES] Could not apply logged-out role state:', error.message);
+  }
 }
 
 async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentId) {
@@ -2281,6 +2305,7 @@ async function monitorOvertimeSessions(client) {
     }
 
     const nowMs = Date.now();
+    const guild = client.guilds.cache.first();
     for (const session of activeSessions) {
       const warningThresholdMs = getOvertimeWarningThresholdMs(session, client.guilds.cache.first());
       const nextWarningDueMs = getSessionNextWarningDueMs(session, warningThresholdMs);
@@ -2289,6 +2314,67 @@ async function monitorOvertimeSessions(client) {
       const warningElapsedMs = warningMs ? nowMs - warningMs : null;
       const warningExpired = warningElapsedMs !== null && warningElapsedMs >= (5 * 60 * 1000);
       const reachedWarningThreshold = nowMs >= nextWarningDueMs;
+
+      const member = guild?.members?.cache?.get(session.discord_id) || null;
+      const presenceStatus = member?.presence?.status || null;
+      if (presenceStatus === 'offline') {
+        const agentKey = String(session.agent_id);
+        if (offlineAutoLogoutAgentIds.has(agentKey)) continue;
+        offlineAutoLogoutAgentIds.add(agentKey);
+
+        try {
+          const agentSessions = db.prepare(`
+            SELECT id, hotel_id
+            FROM sessions
+            WHERE agent_id = ? AND status = 'active'
+          `).all(session.agent_id);
+
+          if (agentSessions.length === 0) {
+            offlineAutoLogoutAgentIds.delete(agentKey);
+            continue;
+          }
+
+          await closeAllActiveSessionsForAgent(session.agent_id, client);
+          const hotelIds = [...new Set(agentSessions.map(row => row.hotel_id).filter(Boolean))];
+          if (member) {
+            await applyLoggedOutRolesForMember(guild, member, hotelIds);
+          }
+
+          for (const active of agentSessions) {
+            overtimeWarnedSessionIds.delete(String(active.id));
+            overtimeConfirmedSessionIds.delete(String(active.id));
+          }
+
+          const user = await client.users.fetch(session.discord_id).catch(() => null);
+          if (user) {
+            const offlineEmbed = new EmbedBuilder()
+              .setTitle('🛑 Shift Ended: Offline Status')
+              .setDescription(
+                'Your active shift/training was ended automatically because your account went offline while on session.\n\n' +
+                'You can start a new shift when you are back online.'
+              )
+              .setColor(0xED4245)
+              .setFooter({ text: 'Aavgo Operations - Session Safety' })
+              .setTimestamp();
+            await user.send({ embeds: [offlineEmbed] }).catch(() => {});
+          }
+
+          sendAuditLog(client, {
+            title: '🛑 Offline Auto Logout',
+            description:
+              `**User:** ${session.username} (<@${session.discord_id}>)\n` +
+              `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
+              `**Rule:** Session ended automatically because user presence became Offline.`,
+            color: 0xED4245,
+            userId: session.discord_id
+          });
+        } catch (offlineErr) {
+          console.error('[OFFLINE] Auto logout failed:', offlineErr);
+        } finally {
+          offlineAutoLogoutAgentIds.delete(agentKey);
+        }
+        continue;
+      }
 
       if (!warningMs && reachedWarningThreshold && !overtimeWarnedSessionIds.has(sessionIdKey)) {
         overtimeWarnedSessionIds.add(sessionIdKey);
@@ -2306,8 +2392,9 @@ async function monitorOvertimeSessions(client) {
 
         try {
           const agentSessions = db.prepare(`
-            SELECT id, login_time, COALESCE(session_kind, 'shift') AS session_kind
+            SELECT id, hotel_id, login_time, COALESCE(session_kind, 'shift') AS session_kind, agents.discord_id, agents.role
             FROM sessions
+            JOIN agents ON agents.id = sessions.agent_id
             WHERE agent_id = ? AND status = 'active'
           `).all(session.agent_id);
 
@@ -2317,6 +2404,11 @@ async function monitorOvertimeSessions(client) {
           }
 
           await closeAllActiveSessionsForAgent(session.agent_id, client);
+          const overtimeMember = guild?.members?.cache?.get(session.discord_id) || null;
+          const overtimeHotelIds = [...new Set(agentSessions.map(row => row.hotel_id).filter(Boolean))];
+          if (overtimeMember) {
+            await applyLoggedOutRolesForMember(guild, overtimeMember, overtimeHotelIds);
+          }
 
           const primarySessionOverLimit = nowMs >= nextWarningDueMs;
           for (const active of agentSessions) {
@@ -6829,7 +6921,12 @@ async function handleOvertimeConfirm(interaction) {
     }
 
     const warningThresholdMs = getOvertimeWarningThresholdMs(session, interaction.guild);
-    const nextWarningIso = new Date(Date.now() + warningThresholdMs).toISOString();
+    const currentDueMs = getSessionNextWarningDueMs(session, warningThresholdMs);
+    let nextWarningMs = currentDueMs + warningThresholdMs;
+    if (nextWarningMs <= Date.now()) {
+      nextWarningMs = Date.now() + warningThresholdMs;
+    }
+    const nextWarningIso = new Date(nextWarningMs).toISOString();
     overtimeConfirmedSessionIds.add(String(session.id));
     overtimeWarnedSessionIds.delete(String(session.id));
     db.prepare(`

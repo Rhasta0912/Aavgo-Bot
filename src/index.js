@@ -84,6 +84,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildPresences,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildVoiceStates
   ]
@@ -322,8 +323,8 @@ client.once('ready', async () => {
       auth.checkSchedules(client);
     }, 5 * 60000);
 
-    // Overtime enforcement loop (every 1 minute):
-    // warn at 8h, auto-logout after 5 minutes, cap recorded time to 8h.
+    // Overtime/session enforcement loop (every 1 minute):
+    // warning cycles, overtime auto-end, and offline auto-end checks.
     setInterval(() => {
       auth.monitorOvertimeSessions(client);
     }, 60 * 1000);

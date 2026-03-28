@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Extended overtime cycle accounting and added offline session auto-end safety.
+  - Summary: Overtime confirmations now extend from cycle checkpoints (8h -> 16h -> 24h...) instead of drifting from confirm-click time, so manual logout after confirming overtime keeps real extended time while auto-end caps at the correct cycle limit. Also added offline protection: if a member goes Offline while in an active shift/training session, the bot now auto-ends the session, swaps them back to logged-out role state, and sends DM/audit notices.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Expanded overtime enforcement to all active shift roles (including SME and Team Leader) with repeating 8-hour confirmation cycles.
   - Summary: Overtime monitoring now applies to any active shift/training session (not only agent/trainee). Once a user hits the limit, they receive the warning; if they confirm overtime, the next warning is scheduled again after another full limit window (8 hours, or 3-minute test-role window), repeating until shift end. If they ignore the warning for 5 minutes, shift auto-ends and logged time is capped to the current cycle limit point.
   - Files touched:
