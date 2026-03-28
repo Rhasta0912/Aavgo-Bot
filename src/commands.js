@@ -5,7 +5,8 @@ const HOTEL_CHOICES = [
   { name: 'The Garden Inn At Campsite', value: 'GICP' },
   { name: 'Super 8', value: 'SUP8' },
   { name: 'Ramada', value: 'RMDA' },
-  { name: 'Travelodge', value: 'AD1' },
+  { name: 'AD1', value: 'AD1' },
+  { name: 'Travelodge', value: 'TRVL' },
   { name: 'Day Inns Bishop', value: 'DIBS' }
 ];
 

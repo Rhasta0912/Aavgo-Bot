@@ -57,7 +57,9 @@ const ROLE_NAMES = {
     'GICP': '1484531060699168778',
     'SUP8': '1482227848440971408',
     'RMDA': '1483418491464843345',
-    'AD1': '1483418531180843049'
+    'AD1': '1483418531180843049',
+    'TRVL': '1484858995150684170',
+    'DIBS': '1482227230343041115'
   },
   // Grey (Permanent / Assignment) Roles
   GREY: {
@@ -65,7 +67,9 @@ const ROLE_NAMES = {
     'GICP': '1484531611549831189',
     'SUP8': '1483430096013623427',
     'RMDA': '1483430118016684135',
-    'AD1': '1483430144449187923'
+    'AD1': '1483430144449187923',
+    'TRVL': '1484859243671847114',
+    'DIBS': '1483430045153362012'
   }
 };
 
@@ -75,7 +79,8 @@ const HOTEL_NAMES = {
   'GICP': 'The Garden Inn At Campsite',
   'SUP8': 'Super 8',
   'RMDA': 'Ramada',
-  'AD1': 'Travelodge',
+  'AD1': 'AD1',
+  'TRVL': 'Travelodge',
   'DIBS': 'Day Inns Bishop'
 };
 const HOTEL_SELECT_EMOJIS = {
@@ -83,7 +88,8 @@ const HOTEL_SELECT_EMOJIS = {
   GICP: '🏨',
   SUP8: '✴️',
   RMDA: '🛖',
-  AD1: '🏩',
+  AD1: '📞',
+  TRVL: '🏩',
   DIBS: '🏨'
 };
 // Map hotel IDs to log-in channel IDs
@@ -92,7 +98,8 @@ const HOTEL_LOGIN_CHANNELS = {
   'GICP': '1484531330308903005',
   'SUP8': '1483417977859870881',
   'RMDA': '1483417977859870881',
-  'AD1': '1483418055538376735',
+  'AD1': '1487252636959772702',
+  'TRVL': '1483418055538376735',
   'DIBS': '1487250154099703839'
 };
 
@@ -105,13 +112,14 @@ const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 
-const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'DIBS'];
+const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
 const TRAINING_HOTEL_GROUPS = [
   { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
   { label: 'Ramada / Super 8', hotelIds: ['RMDA', 'SUP8'] },
   { label: 'The Garden Inn At Campsite', hotelIds: ['GICP'] },
-  { label: 'Travelodge', hotelIds: ['AD1'] },
+  { label: 'AD1', hotelIds: ['AD1'] },
+  { label: 'Travelodge', hotelIds: ['TRVL'] },
   { label: 'Day Inns Bishop', hotelIds: ['DIBS'] }
 ];
 const AGENT_STATUS_LABELS = {
@@ -502,8 +510,9 @@ function normalizeHotelInput(input) {
     SUPER8: 'SUP8',
     RMDA: 'RMDA',
     RAMADA: 'RMDA',
-    TRAVELODGE: 'AD1',
-    TRAVELLODGE: 'AD1',
+    AD1: 'AD1',
+    TRAVELODGE: 'TRVL',
+    TRAVELLODGE: 'TRVL',
     DAYINNSBISHOP: 'DIBS',
     DAYINNS: 'DIBS',
     BISHOP: 'DIBS'
@@ -837,7 +846,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Ramada / Super 8, Travelodge, Day Inns Bishop)');
+    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Ramada / Super 8, AD1, Travelodge, Day Inns Bishop)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
