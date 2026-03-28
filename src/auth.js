@@ -150,6 +150,8 @@ const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
+const OVERTIME_TEST_WARNING_MS = 3 * 60 * 1000;
+const TEST_ROLE_ID = '1487369607772766208';
 const overtimeWarnedSessionIds = new Set();
 const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
@@ -194,9 +196,32 @@ function parseSessionTimestamp(value) {
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
-function getCappedLogoutIso(loginTimeValue) {
+function getCappedLogoutIso(loginTimeValue, capMs = OVERTIME_WARNING_MS) {
   const loginMs = parseSessionTimestamp(loginTimeValue);
-  return new Date(loginMs + OVERTIME_WARNING_MS).toISOString();
+  return new Date(loginMs + capMs).toISOString();
+}
+
+function getOvertimeWarningThresholdMs(session, guild) {
+  const roleName = String(session?.role || '').toLowerCase();
+  if (roleName === 'test role') return OVERTIME_TEST_WARNING_MS;
+
+  if (guild && session?.discord_id) {
+    const member = guild.members.cache.get(session.discord_id);
+    const testRole = member?.roles?.cache?.has(TEST_ROLE_ID);
+    if (testRole) return OVERTIME_TEST_WARNING_MS;
+  }
+
+  return OVERTIME_WARNING_MS;
+}
+
+function isTestRoleSession(session, guild) {
+  const roleName = String(session?.role || '').toLowerCase();
+  if (roleName === 'test role') return true;
+  if (guild && session?.discord_id) {
+    const member = guild.members.cache.get(session.discord_id);
+    return !!member?.roles?.cache?.has(TEST_ROLE_ID);
+  }
+  return false;
 }
 
 function scheduleCombinedHotelStatusRefresh(client) {
@@ -209,20 +234,21 @@ function scheduleCombinedHotelStatusRefresh(client) {
   combinedHotelStatusRefreshTimer.unref?.();
 }
 
-async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
+async function sendOvertimeWarningNotice(client, session, source = 'AUTO', warningThresholdMs = OVERTIME_WARNING_MS) {
   const modeLabel = session.session_kind === 'training' ? 'training' : 'shift';
   const sessionId = String(session.id);
+  const warningThresholdLabel = warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8 hours';
   const warningEmbed = new EmbedBuilder()
     .setTitle('⚠️ Overtime Warning')
     .setDescription(
-      `You have reached **8 hours** on your current ${modeLabel}.\n\n` +
+      `You have reached the **${warningThresholdLabel}** limit on your current ${modeLabel}.\n\n` +
       `Please end your session now to avoid auto logout.\n\n` +
       `If you need to continue, tap **Confirm Overtime** below to acknowledge that you want to go beyond 8 hours.\n\n` +
-      `If still active after **5 minutes**, the bot will auto logout. If you had already reached 8 hours, the record will be capped at **8 hours**.`
+      `If still active after **5 minutes**, the bot will auto logout. If you had already reached the limit, the record will be capped at **${warningThresholdLabel}**.`
     )
     .addFields(
       { name: 'Mode', value: modeLabel === 'training' ? 'Training' : 'Shift', inline: true },
-      { name: 'Time Limit', value: '8 hours', inline: true },
+      { name: 'Time Limit', value: warningThresholdLabel, inline: true },
       { name: 'Grace Window', value: '5 minutes', inline: true }
     )
     .setColor(0xFEE75C)
@@ -2087,6 +2113,7 @@ async function monitorOvertimeSessions(client) {
         continue;
       }
 
+      const warningThresholdMs = getOvertimeWarningThresholdMs(session, client.guilds.cache.first());
       const loginMs = parseSessionTimestamp(session.login_time);
       const elapsedMs = nowMs - loginMs;
       const sessionIdKey = String(session.id);
@@ -2095,10 +2122,10 @@ async function monitorOvertimeSessions(client) {
       const warningElapsedMs = warningMs ? nowMs - warningMs : null;
       const warningExpired = warningElapsedMs !== null && warningElapsedMs >= (5 * 60 * 1000);
 
-      if (!overtimeConfirmed && !warningMs && elapsedMs >= OVERTIME_WARNING_MS && !overtimeWarnedSessionIds.has(sessionIdKey)) {
+      if (!overtimeConfirmed && !warningMs && elapsedMs >= warningThresholdMs && !overtimeWarnedSessionIds.has(sessionIdKey)) {
         overtimeWarnedSessionIds.add(sessionIdKey);
         try {
-          await sendOvertimeWarningNotice(client, session, 'AUTO');
+          await sendOvertimeWarningNotice(client, session, 'AUTO', warningThresholdMs);
         } catch (warnErr) {
           console.warn('[OVERTIME] Failed to send warning notice:', warnErr.message);
         }
@@ -2125,9 +2152,9 @@ async function monitorOvertimeSessions(client) {
 
           for (const active of agentSessions) {
             const activeLoginMs = parseSessionTimestamp(active.login_time);
-            const wasOverEightHours = nowMs >= (activeLoginMs + OVERTIME_WARNING_MS);
-            const cappedIso = wasOverEightHours
-              ? getCappedLogoutIso(active.login_time)
+            const wasOverLimit = nowMs >= (activeLoginMs + warningThresholdMs);
+            const cappedIso = wasOverLimit
+              ? getCappedLogoutIso(active.login_time, warningThresholdMs)
               : new Date(nowMs).toISOString();
             db.prepare("UPDATE sessions SET logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0 WHERE id = ?").run(cappedIso, active.id);
             overtimeWarnedSessionIds.delete(String(active.id));
@@ -2136,12 +2163,12 @@ async function monitorOvertimeSessions(client) {
 
           const user = await client.users.fetch(session.discord_id).catch(() => null);
           if (user) {
-            const wasOverEightHours = nowMs >= (parseSessionTimestamp(session.login_time) + OVERTIME_WARNING_MS);
-            const reasonText = wasOverEightHours
-              ? 'You reached **8 hours** and did not confirm overtime in time.'
+            const wasOverLimit = nowMs >= (parseSessionTimestamp(session.login_time) + warningThresholdMs);
+            const reasonText = wasOverLimit
+              ? `You reached the **${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minute test' : '8 hour'}** limit and did not confirm overtime in time.`
               : 'You did not click **Confirm Overtime** before the 5-minute grace window ended.';
-            const capText = wasOverEightHours
-              ? 'This record is capped at **8 hours**.'
+            const capText = wasOverLimit
+              ? `This record is capped at **${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8 hours'}**.`
               : 'This record was closed at the end of the grace window.';
             const autoLogoutEmbed = new EmbedBuilder()
               .setTitle('🛑 Overtime Auto Logout')
@@ -2158,15 +2185,15 @@ async function monitorOvertimeSessions(client) {
             await user.send({ embeds: [autoLogoutEmbed] }).catch(() => {});
           }
 
-          sendAuditLog(client, {
-            title: '⛔ Overtime Auto Logout',
-            description:
-              `**User:** ${session.username} (<@${session.discord_id}>)\n` +
-              `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
-              `**Rule:** Auto-logout after warning + 5 minute grace window${nowMs >= (parseSessionTimestamp(session.login_time) + OVERTIME_WARNING_MS) ? ', capped to 8h logged time' : ''}`,
-            color: 0xED4245,
-            userId: session.discord_id
-          });
+            sendAuditLog(client, {
+              title: '⛔ Overtime Auto Logout',
+              description:
+                `**User:** ${session.username} (<@${session.discord_id}>)\n` +
+                `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
+              `**Rule:** Auto-logout after warning + 5 minute grace window${wasOverLimit ? `, capped to ${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8h'} logged time` : ''}`,
+              color: 0xED4245,
+              userId: session.discord_id
+            });
         } catch (autoErr) {
           console.error('[OVERTIME] Auto logout failed:', autoErr);
         } finally {
@@ -6523,8 +6550,9 @@ async function handleLimitWarning(interaction) {
       return interaction.editReply({ content: `❌ **${targetUser.username}** is active, but not in Agent/Trainee role.` });
     }
 
+    const warningThresholdMs = getOvertimeWarningThresholdMs(session, interaction.guild);
     overtimeWarnedSessionIds.add(String(session.id));
-    const result = await sendOvertimeWarningNotice(interaction.client, session, 'MANUAL');
+    const result = await sendOvertimeWarningNotice(interaction.client, session, 'MANUAL', warningThresholdMs);
 
     sendAuditLog(interaction.client, {
       title: '📢 Manual Limit Warning Triggered',
@@ -6541,7 +6569,7 @@ async function handleLimitWarning(interaction) {
       content:
         `✅ Overtime warning sent to **${session.username}**.\n` +
         `Warning DM: **${result.dmSent ? 'Sent' : 'Failed'}** | Confirm Button DM: **${result.buttonDmSent ? 'Sent' : 'Failed'}** | ` +
-        `TTS DM: **${result.ttsSent ? 'Sent' : 'Failed'}**`
+        `TTS DM: **${result.ttsSent ? 'Sent' : 'Failed'}** | Limit: **${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8 hours'}**`
     });
   } catch (error) {
     console.error('Error in handleLimitWarning:', error);

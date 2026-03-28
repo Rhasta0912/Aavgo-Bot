@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Temporarily shorten overtime warnings to 3 minutes for the `test role`.
+  - Summary: The overtime warning threshold now uses 3 minutes instead of 8 hours only when the active user has Discord role `1487369607772766208` (`test role`). This is meant for testing the limit-warning flow without waiting for a full shift.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Prevent trainee route from overwriting the public `/setup-login` kiosk message.
   - Summary: Training route now uses the private flow responder, so trainee `Initialize Shift` opens a private card instead of replacing the public kiosk message. Ephemeral trainee steps still update in-place for one-card flow.
   - Files touched:
