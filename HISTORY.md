@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Streamline PIN-first login and stop agent team-selection loops.
+  - Summary: When PIN is missing, the login flow now opens the security setup modal directly instead of posting an extra temporary PIN card. Also added stronger team inference for agents (Discord team role, linked hotel, compatibility, then Team 1 default) so users are not bounced back to Team Selection unexpectedly.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Turn the login flow into a single temporary wizard card and add team fallback from existing assignments.
   - Summary: Shift routing steps now reuse the same ephemeral message (replace old step with next step) instead of stacking multiple temporary cards. Added a fallback that infers team from existing hotel assignment roles/data when DB team is missing, so users do not get bounced back to Team Selection unexpectedly.
   - Files touched:

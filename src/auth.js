@@ -616,7 +616,16 @@ function buildInitializeShiftFallbackPayload() {
 
 async function guardShiftPinFirst(interaction, agent, sessionMode = 'shift') {
   if (agent && !hasConfiguredPin(agent)) {
-    await promptForPinSetup(interaction, 'Shift', sessionMode);
+    const canShowModal =
+      (typeof interaction.isButton === 'function' && interaction.isButton()) ||
+      (typeof interaction.isStringSelectMenu === 'function' && interaction.isStringSelectMenu());
+
+    // Keep the flow clean: open setup modal directly instead of posting another temporary card.
+    if (canShowModal) {
+      await handleSecuritySetupStart(interaction);
+    } else {
+      await promptForPinSetup(interaction, 'Shift', sessionMode);
+    }
     return true;
   }
   return false;
@@ -2824,16 +2833,38 @@ async function handleStartShiftClick(interaction) {
     })();
     const uniqueAssignedHotelIds = [...new Set([...assignedHotelIds, ...compatibilityHotelIds])];
 
-    // If DB team is missing but hotel assignments exist, infer team automatically to avoid re-showing Team Selection.
-    if (!agent.team && uniqueAssignedHotelIds.length > 0) {
-      const inferredTeams = [...new Set(
-        uniqueAssignedHotelIds
-          .map(hotelId => db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team)
-          .filter(Boolean)
-      )];
-      if (inferredTeams.length === 1) {
-        db.prepare('UPDATE agents SET team = ? WHERE id = ?').run(inferredTeams[0], agent.id);
-        agent.team = inferredTeams[0];
+    // If DB team is missing, infer it from member role / linked hotel / compatibility before showing Team Selection.
+    if (!agent.team) {
+      let inferredTeam = null;
+
+      const roleSnapshotTeam = getDiscordRoleSyncSnapshot(interaction.member)?.team;
+      if (roleSnapshotTeam) {
+        inferredTeam = roleSnapshotTeam;
+      }
+
+      if (!inferredTeam && agent.hotel_id) {
+        inferredTeam = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(agent.hotel_id))?.team || null;
+      }
+
+      if (!inferredTeam && uniqueAssignedHotelIds.length > 0) {
+        const inferredTeams = [...new Set(
+          uniqueAssignedHotelIds
+            .map(hotelId => db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team)
+            .filter(Boolean)
+        )];
+        if (inferredTeams.length === 1) {
+          inferredTeam = inferredTeams[0];
+        }
+      }
+
+      // Team 2 is placeholder right now; default agent route to Team 1 to avoid dead-end selection loops.
+      if (!inferredTeam && normalizeAgentRole(agent.role) === 'agent') {
+        inferredTeam = 'Team 1';
+      }
+
+      if (inferredTeam) {
+        db.prepare('UPDATE agents SET team = ? WHERE id = ?').run(inferredTeam, agent.id);
+        agent.team = inferredTeam;
       }
     }
 
