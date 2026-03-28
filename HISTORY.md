@@ -738,3 +738,4 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - UI-only update for consistency.
     - No permission, routing, or PIN-handling behavior changed.
+- Rolled back the broader hotel-link workflow revamp after the user asked to revert it, so the selection, confirmation, success, save-for-later, and cancel flow cards are back to the previous behavior.
