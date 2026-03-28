@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fix the same-hotel confirmation buttons for multi-hotel shift login.
+  - Summary: The `Yes, Continue` button now continues into the normal shift PIN/login flow, and `Choose Another Hotel` now returns the user to the existing assigned-hotel picker embed instead of posting a dead-end reply. This keeps the confirmation step inside the same private flow.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Add a confirmation step when a multi-hotel agent reselects their previous hotel.
   - Summary: If an agent has more than one assigned hotel and picks the same hotel they used in their last session, the bot now pauses with a private confirmation prompt before opening PIN entry. This helps prevent accidental repeat check-ins while keeping the normal single-hotel flow unchanged.
   - Files touched:

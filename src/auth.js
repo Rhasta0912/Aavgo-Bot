@@ -3333,19 +3333,6 @@ async function handleShiftHotelPickMenu(interaction) {
 
 async function handleSameHotelConfirm(interaction) {
   try {
-    if (interaction.customId === 'same_hotel_confirm_no') {
-      return sendPrivateFlowPayload(interaction, {
-        content: '✅ No problem. Pick a different hotel for this shift.',
-        embeds: [],
-        components: []
-      });
-    }
-
-    const payload = String(interaction.customId || '').replace('same_hotel_confirm_yes:', '');
-    const [hotelIdRaw, multiRaw = '0'] = payload.split(':');
-    const hotelId = normalizeCombinedHotelId(hotelIdRaw);
-    const allowMultiHotel = multiRaw === '1';
-
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return sendPrivateFlowPayload(interaction, {
@@ -3354,6 +3341,59 @@ async function handleSameHotelConfirm(interaction) {
         components: []
       });
     }
+
+    const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
+      .filter(([assignedHotelId, roleId]) => HOTEL_NAMES[assignedHotelId] && interaction.member.roles.cache.has(roleId))
+      .map(([assignedHotelId]) => normalizeCombinedHotelId(assignedHotelId));
+    const compatibilityHotelIds = (() => {
+      try {
+        return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
+      } catch {
+        return [];
+      }
+    })();
+    const uniqueAssignedHotelIds = [...new Set(assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds)];
+
+    if (interaction.customId === 'same_hotel_confirm_no') {
+      if (uniqueAssignedHotelIds.length === 0) {
+        return sendPrivateFlowPayload(interaction, {
+          content: '❌ No assigned hotels were found for your account.',
+          embeds: [],
+          components: []
+        });
+      }
+
+      const hotelOptions = buildAssignedHotelSelectionOptions(uniqueAssignedHotelIds);
+      const pickMenu = new StringSelectMenuBuilder()
+        .setCustomId('shift_hotel_pick_menu_multi')
+        .setPlaceholder('Pick your hotel for this shift')
+        .addOptions(
+          hotelOptions.map(hotel =>
+            new StringSelectMenuOptionBuilder()
+              .setLabel(hotel.label)
+              .setValue(hotel.id)
+              .setDescription(hotel.description)
+          )
+        );
+
+      const embed = new EmbedBuilder()
+        .setTitle('🏨 Select Hotel For This Shift')
+        .setDescription(
+          'You have multiple assigned hotel roles.\n' +
+          'Choose which hotel you are handling right now.'
+        )
+        .setColor(0xF1C40F);
+
+      return interaction.update({
+        embeds: [embed],
+        components: [new ActionRowBuilder().addComponents(pickMenu)]
+      });
+    }
+
+    const payload = String(interaction.customId || '').replace('same_hotel_confirm_yes:', '');
+    const [hotelIdRaw, multiRaw = '0'] = payload.split(':');
+    const hotelId = normalizeCombinedHotelId(hotelIdRaw);
+    const allowMultiHotel = multiRaw === '1';
 
     if (await guardShiftPinFirst(interaction, agent, 'shift')) {
       return;
