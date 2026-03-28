@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Tightened SME/TL team gating to require active team-role alignment before showing management shift picker.
+  - Summary: Fixed a gap where SME/TL route could still show `TEAM SHIFT SELECTED` even when team assignment state was inconsistent. Management route and management start now check effective team assignment using current Discord team roles plus DB team alignment before allowing shift flow.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Enforced team-assignment gate for SME/Team Leader shift initialization.
   - Summary: Management route now mirrors agent restriction: if SME/TL has no assigned team in DB, shift initialization is blocked with the same team-required guidance embed instead of continuing into team-shift selection/start.
   - Files touched:

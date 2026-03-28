@@ -2485,6 +2485,23 @@ function formatHotelCompatibilityLabel(hotelIds) {
   return labels.length > 0 ? labels.join(', ') : 'none';
 }
 
+function resolveTeamFromMemberRoles(member) {
+  if (!member?.roles?.cache) return null;
+  const hasTeam1 = member.roles.cache.some(role => normalizeDiscordRoleName(role?.name) === 'team 1');
+  if (hasTeam1) return 'Team 1';
+  const hasTeam2 = member.roles.cache.some(role => normalizeDiscordRoleName(role?.name) === 'team 2');
+  if (hasTeam2) return 'Team 2';
+  return null;
+}
+
+function hasEffectiveTeamAssignment(agent, member) {
+  const dbTeam = normalizeTeamInput(agent?.team);
+  const roleTeam = normalizeTeamInput(resolveTeamFromMemberRoles(member));
+  if (!dbTeam && !roleTeam) return false;
+  if (dbTeam && roleTeam && dbTeam !== roleTeam) return false;
+  return true;
+}
+
 async function syncNoPinRoleForMember(member, guild, agentRecord, contextLabel = 'ROLE SYNC') {
   try {
     if (!member || !guild) return;
@@ -3309,7 +3326,7 @@ async function handleStartShiftClick(interaction) {
 
     // TL/SME manual TL button click (Management Portal)
     if (isTLButton) {
-       if (!agent.team) {
+       if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
           return sendPrivateFlowPayload(interaction, {
             content: '⚠️ **Team Assignment Missing.** Please contact a developer to assign your team (Team 1 or Team 2) before logging into management.',
           });
@@ -3321,14 +3338,7 @@ async function handleStartShiftClick(interaction) {
       return;
     }
 
-    if (!agent.team) {
-      return sendPrivateFlowPayload(interaction, {
-        embeds: [buildAgentTeamRequiredEmbed()],
-        components: []
-      });
-    }
-
-    if (!agent.team) {
+    if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
       return sendPrivateFlowPayload(interaction, {
         embeds: [buildAgentTeamRequiredEmbed()],
         components: []
@@ -3964,6 +3974,13 @@ async function handleManagementRoutePick(interaction, roleLabel) {
       return;
     }
 
+    if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
+      return sendPrivateFlowPayload(interaction, {
+        embeds: [buildAgentTeamRequiredEmbed()],
+        components: []
+      });
+    }
+
     const embed = new EmbedBuilder()
       .setTitle(`🛡️ Aavgo Operations · ${roleLabel} Route`)
       .setDescription(
@@ -4016,7 +4033,7 @@ async function handleManagementTeamStart(interaction, teamName) {
       });
     }
 
-    if (!agent.team) {
+    if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
       return sendPrivateFlowPayload(interaction, {
         embeds: [buildAgentTeamRequiredEmbed()],
         components: []
