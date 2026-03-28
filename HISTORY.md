@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Prioritize live Discord hotel role changes during Initialize Shift.
+  - Summary: Shift start now refreshes from Discord role state each time and prioritizes current hotel ghost-role assignments over stale DB compatibility. If TL/OM reassigns a user from one hotel role to another (for example Garden Inn to Travelodge), Initialize Shift now follows the new role immediately and syncs `hotel_id` in DB.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Keep agent shift flow on a single temporary card when pressing `Live -> Hotel`.
   - Summary: Clicking `Live -> Hotel` now updates the existing Agent Route card into `READY TO START SHIFT` instead of sending a second temporary message. This keeps one-card flow behavior in the agent route UI.
   - Files touched:

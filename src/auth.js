@@ -2899,6 +2899,11 @@ async function handleStartShiftClick(interaction) {
       });
     }
 
+    // Always refresh DB snapshot from current Discord roles so TL/OM role changes
+    // are honored immediately during Initialize Shift.
+    await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'SHIFT START SYNC');
+    agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId) || agent;
+
     const role = normalizeAgentRole(agent.role);
     const isTLOrSME = interactionHasRoleAtLeast(interaction, 'sme');
 
@@ -2967,7 +2972,17 @@ async function handleStartShiftClick(interaction) {
         return [];
       }
     })();
-    const uniqueAssignedHotelIds = [...new Set([...assignedHotelIds, ...compatibilityHotelIds])];
+    // Prioritize live Discord roles over stale DB compatibility.
+    const preferredHotelIds = assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds;
+    const uniqueAssignedHotelIds = [...new Set(preferredHotelIds)];
+
+    if (assignedHotelIds.length === 1) {
+      const roleAssignedHotelId = assignedHotelIds[0];
+      if (normalizeCombinedHotelId(agent.hotel_id) !== roleAssignedHotelId) {
+        db.prepare("UPDATE agents SET hotel_id = ? WHERE discord_id = ?").run(roleAssignedHotelId, discordId);
+        agent.hotel_id = roleAssignedHotelId;
+      }
+    }
 
     if (uniqueAssignedHotelIds.length > 1) {
       return await showAssignedHotelShiftPicker(interaction, uniqueAssignedHotelIds, allowMultiHotel);
@@ -4016,7 +4031,7 @@ async function handleModalSubmit(interaction) {
       return interaction.editReply(buildReadyToStartShiftPayload(hotelId, isTakeover, allowMultiHotel));
     }
 
-    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && !autoStartAfterPin) {
+    if (false && sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && !autoStartAfterPin) {
       const confirmEmbed = new EmbedBuilder()
         .setTitle('🛡️ Aavgo Operations · Agent Route')
         .setDescription(
