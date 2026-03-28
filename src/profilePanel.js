@@ -867,9 +867,11 @@ function buildConfigEmbed(title, description) {
 
 function buildHourHistoryEmbed(profile, monthHistory) {
   const header = 'Date | Shift | Training | Total';
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const rows = monthHistory.days.map(day => {
     const date = String(day.day).padStart(2, '0');
-    return `${date} | ${formatHours(day.shiftHours)}h | ${formatHours(day.trainingHours)}h | ${formatHours(day.totalHours)}h`;
+    const weekday = dayNames[new Date(Date.UTC(monthHistory.year, monthHistory.month, day.day, 12, 0, 0)).getUTCDay()];
+    return `${weekday} ${date} | ${formatHours(day.shiftHours)}h | ${formatHours(day.trainingHours)}h | ${formatHours(day.totalHours)}h`;
   });
 
   let calendarTable = `${header}\n${rows.join('\n')}`;
@@ -894,9 +896,13 @@ function buildHourHistoryEmbed(profile, monthHistory) {
     .setTimestamp();
 }
 
-function buildHourHistoryRows(discordId, teamName) {
+function buildHourHistoryRowsForOffset(discordId, teamName, monthOffset = 0) {
   return [
     new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`profiles_view_hours_prev:${discordId}:${teamName}:${monthOffset - 1}`)
+        .setLabel('Previous Records')
+        .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId(`profiles_back_profile:${discordId}:${teamName}`)
         .setLabel('Back')
@@ -1407,7 +1413,7 @@ async function showMultiHotelPickerView(interaction, discordId, teamName, select
   });
 }
 
-async function showHourHistoryView(interaction, discordId, teamName) {
+async function showHourHistoryView(interaction, discordId, teamName, monthOffset = 0) {
   const profile = await getProfileContext(interaction.guild, discordId);
   if (!profile) {
     return sendComponentUpdate(interaction, {
@@ -1421,10 +1427,10 @@ async function showHourHistoryView(interaction, discordId, teamName) {
     });
   }
 
-  const monthHistory = getMonthDailyHourHistory(db, profile.agent.id);
+  const monthHistory = getMonthDailyHourHistory(db, profile.agent.id, monthOffset);
   return sendComponentUpdate(interaction, {
     embeds: [buildHourHistoryEmbed(profile, monthHistory)],
-    components: buildHourHistoryRows(discordId, teamName)
+    components: buildHourHistoryRowsForOffset(discordId, teamName, monthOffset)
   });
 }
 
@@ -1515,7 +1521,13 @@ async function handleButton(interaction) {
 
   if (customId.startsWith('profiles_view_hours:')) {
     const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_view_hours:');
-    return showHourHistoryView(interaction, discordId, teamName);
+    return showHourHistoryView(interaction, discordId, teamName, 0);
+  }
+
+  if (customId.startsWith('profiles_view_hours_prev:')) {
+    const { discordId, teamName, extra } = parseProfileActionContext(customId, 'profiles_view_hours_prev:');
+    const monthOffset = Number.parseInt(extra, 10);
+    return showHourHistoryView(interaction, discordId, teamName, Number.isFinite(monthOffset) ? monthOffset : -1);
   }
 
   if (customId.startsWith('profiles_kick:')) {

@@ -68,6 +68,10 @@ Working rules:
   - Summary: Training sessions now skip the live-hotel takeover/conflict guard, so more than one person can train at once. Training still stays on the training board only and does not count as a live hotel shift.
   - Files touched:
     - src/auth.js
+- Extended `View Hour History` with month navigation and weekday labels.
+  - Summary: Added a blue `Previous Records` button to view last month (and keep stepping back), and prefixed each date row with weekday labels (`Sun`, `Mon`, `Tue`, etc.) for easier reading.
+  - Files touched:
+    - src/profilePanel.js
     - HISTORY.md
 - Updated Profiles panel card and actions: removed the `Email` line from the profile embed, added a new blue `View Hour History` button, and built a monthly calendar-style hour history view that shows per-date `Shift` vs `Training` hours plus total monthly hours.
   - Summary: Staff can now open a profile and instantly view date-by-date monthly hours (training and live shift separated) from one button without exposing email on the card.
