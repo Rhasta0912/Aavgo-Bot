@@ -2497,8 +2497,10 @@ function resolveTeamFromMemberRoles(member) {
 function hasEffectiveTeamAssignment(agent, member) {
   const dbTeam = normalizeTeamInput(agent?.team);
   const roleTeam = normalizeTeamInput(resolveTeamFromMemberRoles(member));
-  if (!dbTeam && !roleTeam) return false;
-  if (dbTeam && roleTeam && dbTeam !== roleTeam) return false;
+  // Require active Discord team-role assignment as the gate source of truth.
+  if (!roleTeam) return false;
+  // If DB team exists too, it must align with the live Discord team role.
+  if (dbTeam && dbTeam !== roleTeam) return false;
   return true;
 }
 

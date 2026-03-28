@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Made SME/TL team-gate strictly require live Discord Team role assignment.
+  - Summary: Effective team validation now requires `Team 1` or `Team 2` role on Discord before management shift flow can open. A stale DB team value alone no longer passes the gate; DB and Discord must align when both exist.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Tightened SME/TL team gating to require active team-role alignment before showing management shift picker.
   - Summary: Fixed a gap where SME/TL route could still show `TEAM SHIFT SELECTED` even when team assignment state was inconsistent. Management route and management start now check effective team assignment using current Discord team roles plus DB team alignment before allowing shift flow.
   - Files touched:
