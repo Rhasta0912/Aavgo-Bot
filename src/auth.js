@@ -2343,8 +2343,6 @@ async function handleSecuritySetupSubmit(interaction) {
       console.warn('[SECURITY] Could not remove Unverified role after PIN setup:', roleError.message);
     }
 
-    await interaction.editReply({ content: '✅ Security profile updated. Your PIN and phone number are now saved.' });
-
     sendAuditLog(interaction.client, {
       title: '🔐 Security Setup Updated',
       description: `**Agent:** ${interaction.user.username} (<@${interaction.user.id}>)\n**Action:** Updated PIN and phone via security kiosk`,
@@ -2352,6 +2350,16 @@ async function handleSecuritySetupSubmit(interaction) {
       userId: interaction.user.id,
       guild: interaction.guild
     });
+
+    // Replace the setup flow with the next route card instead of adding a separate confirmation message.
+    try {
+      await handleShiftRolePrompt(interaction);
+      return;
+    } catch (routeErr) {
+      console.warn('[SECURITY] Could not open next route after PIN setup:', routeErr.message);
+    }
+
+    await interaction.editReply({ content: '✅ Security profile updated. Your PIN and phone number are now saved.' });
   } catch (error) {
     console.error('Error in handleSecuritySetupSubmit:', error);
     if (interaction.deferred || interaction.replied) {
@@ -3193,7 +3201,12 @@ async function handleShiftRolePrompt(interaction) {
       return await handleManagementRoutePick(interaction, managementLabel);
     }
 
-    await interaction.reply({ ...buildInitializeShiftFallbackPayload(), ephemeral: true });
+    const fallbackPayload = { ...buildInitializeShiftFallbackPayload(), ephemeral: true };
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply(fallbackPayload);
+    } else {
+      await interaction.reply(fallbackPayload);
+    }
   } catch (error) {
     console.error('Error in handleShiftRolePrompt:', error);
     if (interaction.deferred || interaction.replied) {

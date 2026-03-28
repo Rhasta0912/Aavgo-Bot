@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Replace the post-PIN success message with the next route card so the login flow stays on one screen.
+  - Summary: After a user saves their security PIN, the bot now moves straight into the proper route card instead of posting a separate “security updated” confirmation first. This keeps the login flow cleaner and reduces stacked messages for people who are new to Discord.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Make the login flow pin-first and auto-route users by role with simpler UI copy.
   - Summary: The shift entry flow now checks for a saved security PIN before anything else, then automatically routes agents to the Agent Route, team leaders/SMEs to the Management Route, and trainees to the Training Route. The route cards now use clearer beginner-friendly labels like `Live -> Hotel Shift` and `Practice -> Training`.
   - Files touched:
