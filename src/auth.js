@@ -206,7 +206,7 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
       `You have reached **8 hours** on your current ${modeLabel}.\n\n` +
       `Please end your session now to avoid auto logout.\n\n` +
       `If you need to continue, tap **Confirm Overtime** below to acknowledge that you want to go beyond 8 hours.\n\n` +
-      `If still active after **5 minutes**, the bot will auto logout and cap this record to **8 hours**.`
+      `If still active after **5 minutes**, the bot will auto logout. If you had already reached 8 hours, the record will be capped at **8 hours**.`
     )
     .addFields(
       { name: 'Mode', value: modeLabel === 'training' ? 'Training' : 'Shift', inline: true },
@@ -220,6 +220,13 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
   let dmSent = false;
   let ttsSent = false;
   let buttonDmSent = false;
+  const warningIso = new Date().toISOString();
+
+  db.prepare(`
+    UPDATE sessions
+    SET overtime_warning_at = ?, overtime_confirmed = 0
+    WHERE id = ? AND status = 'active'
+  `).run(warningIso, session.id);
 
   const user = await client.users.fetch(session.discord_id).catch(() => null);
   if (user) {
@@ -477,7 +484,7 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
   const hasTeamShift = activeSessions.some(s => s.hotel_id === 'TEAM_SHIFT');
 
   // 2. Close in DB
-  const result = db.prepare("UPDATE sessions SET status = 'closed', logout_time = ? WHERE agent_id = ? AND status = 'active'").run(nowIso, agentId);
+  const result = db.prepare("UPDATE sessions SET status = 'closed', logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0 WHERE agent_id = ? AND status = 'active'").run(nowIso, agentId);
   console.log(`[AUTH-MAINT] Closed ${result.changes} session(s) for agent ${agentId}`);
 
   // 3. Trigger refreshes
@@ -530,7 +537,7 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
 
   for (const priorSession of priorSessions) {
     const priorAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(priorSession.agent_id);
-    db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed' WHERE id = ?").run(priorSession.id);
+    db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed', overtime_warning_at = NULL, overtime_confirmed = 0 WHERE id = ?").run(priorSession.id);
 
     if (!priorAgent) continue;
 
@@ -1208,7 +1215,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
     if (priorSession) {
       const priorAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(priorSession.agent_id);
-      db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed' WHERE id = ?").run(priorSession.id);
+      db.prepare("UPDATE sessions SET logout_time = CURRENT_TIMESTAMP, status = 'closed', overtime_warning_at = NULL, overtime_confirmed = 0 WHERE id = ?").run(priorSession.id);
       try {
         const oldMember = await interaction.guild.members.fetch(priorAgent.discord_id);
         if (oldMember) {
@@ -1893,6 +1900,8 @@ async function monitorOvertimeSessions(client) {
         sessions.id,
         sessions.agent_id,
         sessions.login_time,
+        sessions.overtime_warning_at,
+        COALESCE(sessions.overtime_confirmed, 0) AS overtime_confirmed,
         COALESCE(sessions.session_kind, 'shift') AS session_kind,
         agents.discord_id,
         agents.username,
@@ -1908,11 +1917,6 @@ async function monitorOvertimeSessions(client) {
         overtimeWarnedSessionIds.delete(warnedId);
       }
     }
-    for (const confirmedId of [...overtimeConfirmedSessionIds]) {
-      if (!activeSessionIdSet.has(confirmedId)) {
-        overtimeConfirmedSessionIds.delete(confirmedId);
-      }
-    }
 
     const nowMs = Date.now();
     for (const session of activeSessions) {
@@ -1924,9 +1928,12 @@ async function monitorOvertimeSessions(client) {
       const loginMs = parseSessionTimestamp(session.login_time);
       const elapsedMs = nowMs - loginMs;
       const sessionIdKey = String(session.id);
-      const overtimeConfirmed = overtimeConfirmedSessionIds.has(sessionIdKey);
+      const overtimeConfirmed = Number(session.overtime_confirmed || 0) === 1;
+      const warningMs = session.overtime_warning_at ? parseSessionTimestamp(session.overtime_warning_at) : null;
+      const warningElapsedMs = warningMs ? nowMs - warningMs : null;
+      const warningExpired = warningElapsedMs !== null && warningElapsedMs >= (5 * 60 * 1000);
 
-      if (!overtimeConfirmed && elapsedMs >= OVERTIME_WARNING_MS && elapsedMs < OVERTIME_AUTO_LOGOUT_MS && !overtimeWarnedSessionIds.has(sessionIdKey)) {
+      if (!overtimeConfirmed && !warningMs && elapsedMs >= OVERTIME_WARNING_MS && !overtimeWarnedSessionIds.has(sessionIdKey)) {
         overtimeWarnedSessionIds.add(sessionIdKey);
         try {
           await sendOvertimeWarningNotice(client, session, 'AUTO');
@@ -1935,7 +1942,7 @@ async function monitorOvertimeSessions(client) {
         }
       }
 
-      if (!overtimeConfirmed && elapsedMs >= OVERTIME_AUTO_LOGOUT_MS) {
+      if (!overtimeConfirmed && warningMs && warningExpired) {
         const agentKey = String(session.agent_id);
         if (overtimeAutoLogoutAgentIds.has(agentKey)) continue;
         overtimeAutoLogoutAgentIds.add(agentKey);
@@ -1955,19 +1962,38 @@ async function monitorOvertimeSessions(client) {
           await closeAllActiveSessionsForAgent(session.agent_id, client);
 
           for (const active of agentSessions) {
-            const cappedIso = getCappedLogoutIso(active.login_time);
-            db.prepare("UPDATE sessions SET logout_time = ? WHERE id = ?").run(cappedIso, active.id);
+            const activeLoginMs = parseSessionTimestamp(active.login_time);
+            const wasOverEightHours = nowMs >= (activeLoginMs + OVERTIME_WARNING_MS);
+            const cappedIso = wasOverEightHours
+              ? getCappedLogoutIso(active.login_time)
+              : new Date(nowMs).toISOString();
+            db.prepare("UPDATE sessions SET logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0 WHERE id = ?").run(cappedIso, active.id);
             overtimeWarnedSessionIds.delete(String(active.id));
+            overtimeConfirmedSessionIds.delete(String(active.id));
           }
 
           const user = await client.users.fetch(session.discord_id).catch(() => null);
           if (user) {
-            await user.send(
-              `🛑 Auto Logout Applied\n\n` +
-              `Your session went beyond the 5-minute overtime grace window.\n` +
-              `The bot has logged you out automatically.\n\n` +
-              `Recorded time for this session is capped at **8 hours**.`
-            ).catch(() => {});
+            const wasOverEightHours = nowMs >= (parseSessionTimestamp(session.login_time) + OVERTIME_WARNING_MS);
+            const reasonText = wasOverEightHours
+              ? 'You reached **8 hours** and did not confirm overtime in time.'
+              : 'You did not click **Confirm Overtime** before the 5-minute grace window ended.';
+            const capText = wasOverEightHours
+              ? 'This record is capped at **8 hours**.'
+              : 'This record was closed at the end of the grace window.';
+            const autoLogoutEmbed = new EmbedBuilder()
+              .setTitle('🛑 Overtime Auto Logout')
+              .setDescription(
+                `${reasonText}\n\n${capText}`
+              )
+              .addFields(
+                { name: 'Mode', value: session.session_kind === 'training' ? 'Training' : 'Shift', inline: true },
+                { name: 'Reason', value: 'No Confirm Overtime click', inline: true }
+              )
+              .setColor(0xED4245)
+              .setFooter({ text: 'Aavgo Operations - Overtime Control' })
+              .setTimestamp();
+            await user.send({ embeds: [autoLogoutEmbed] }).catch(() => {});
           }
 
           sendAuditLog(client, {
@@ -1975,7 +2001,7 @@ async function monitorOvertimeSessions(client) {
             description:
               `**User:** ${session.username} (<@${session.discord_id}>)\n` +
               `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
-              `**Rule:** Auto-logout at 8h + 5m grace, capped to 8h logged time`,
+              `**Rule:** Auto-logout after warning + 5 minute grace window${nowMs >= (parseSessionTimestamp(session.login_time) + OVERTIME_WARNING_MS) ? ', capped to 8h logged time' : ''}`,
             color: 0xED4245,
             userId: session.discord_id
           });
@@ -6229,6 +6255,11 @@ async function handleOvertimeConfirm(interaction) {
     }
 
     overtimeConfirmedSessionIds.add(String(session.id));
+    db.prepare(`
+      UPDATE sessions
+      SET overtime_confirmed = 1
+      WHERE id = ? AND status = 'active'
+    `).run(session.id);
 
     const confirmedRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()

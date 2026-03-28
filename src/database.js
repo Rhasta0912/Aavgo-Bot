@@ -38,6 +38,8 @@ db.exec(`
     login_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     logout_time DATETIME,
     status TEXT DEFAULT 'active',
+    overtime_warning_at DATETIME,
+    overtime_confirmed INTEGER DEFAULT 0,
     break_status TEXT,
     break_covering_id TEXT,
     break_start_time DATETIME,
@@ -242,6 +244,12 @@ db.pragma('foreign_keys = ON');
     if (!sessionTableInfo.find(col => col.name === 'session_kind')) {
       db.prepare("ALTER TABLE sessions ADD COLUMN session_kind TEXT DEFAULT 'shift'").run();
     }
+    if (!sessionTableInfo.find(col => col.name === 'overtime_warning_at')) {
+      db.prepare("ALTER TABLE sessions ADD COLUMN overtime_warning_at DATETIME").run();
+    }
+    if (!sessionTableInfo.find(col => col.name === 'overtime_confirmed')) {
+      db.prepare("ALTER TABLE sessions ADD COLUMN overtime_confirmed INTEGER DEFAULT 0").run();
+    }
     const hourAdjustmentsTableInfo = db.prepare("PRAGMA table_info(hour_adjustments)").all();
     if (!hourAdjustmentsTableInfo || hourAdjustmentsTableInfo.length === 0) {
       db.exec(`
@@ -257,6 +265,7 @@ db.pragma('foreign_keys = ON');
       `);
     }
     db.prepare("UPDATE sessions SET session_kind = 'shift' WHERE session_kind IS NULL OR session_kind = ''").run();
+    db.prepare("UPDATE sessions SET overtime_confirmed = 0 WHERE overtime_confirmed IS NULL").run();
     db.prepare("UPDATE agents SET agent_status = 'standby' WHERE agent_status IS NULL").run();
     db.transaction(() => {
       db.prepare("UPDATE agents SET hotel_id = 'BW_TO' WHERE hotel_id = 'BRNT'").run();

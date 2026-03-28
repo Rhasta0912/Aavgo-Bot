@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Make overtime auto-logout count from the warning timestamp.
+  - Summary: The 5-minute grace window now starts when the overtime warning is sent, so `/limit-warning` and the automatic 8-hour warning both behave the same way. If the user does not click `Confirm Overtime`, the bot logs them out after 5 minutes and sends a clearer reason message.
+  - Files touched:
+    - src/auth.js
+    - src/database.js
+    - HISTORY.md
 - Restyle overtime warnings as cleaner embeds.
   - Summary: The private overtime warning DM now uses a structured embed with clearer labels and the `Confirm Overtime` button beneath it, instead of plain text. The overtime logic and confirmation behavior stay the same.
   - Files touched:
