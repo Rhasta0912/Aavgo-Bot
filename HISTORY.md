@@ -62,6 +62,8 @@ Working rules:
     - HISTORY.md
 - Make overtime warnings private ("Only you can see") for the warned user.
   - Summary: Overtime warning delivery is now DM-only to the warned user, including the `Confirm Overtime` button and TTS notification. Public warning posts in server channels were removed so only the warned user sees the warning prompt.
+- Make live hotel PIN submit always show final shift confirmation before login.
+  - Summary: For non-team shift PIN submits, the bot now always shows the `READY TO START SHIFT` confirmation card before finalizing login. This keeps first-time post-link flow consistent with normal linked-login flow and avoids direct-start behavior in edge role states.
   - Files touched:
     - src/auth.js
     - HISTORY.md

@@ -3946,7 +3946,7 @@ async function handleModalSubmit(interaction) {
       });
     }
 
-    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && normalizedRole === 'agent') {
+    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT') {
       const confirmEmbed = new EmbedBuilder()
         .setTitle('🛡️ Aavgo Operations · Agent Route')
         .setDescription(
