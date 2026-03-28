@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Keep multi-hotel shift selection on one card and auto-clean modal success replies.
+  - Summary: Picking a hotel from the multi-hotel selector now replaces that same temporary card with `READY TO START SHIFT` instead of stacking a second embed. Also added automatic cleanup for modal-based shift success replies so temporary flow clutter is reduced.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Hardened shift route responses against Discord `10062` interaction expiry errors.
   - Summary: Private flow sending now safely catches expired interaction tokens and skips the response without throwing. Added targeted `10062` guards in shift-role and agent-route handlers to reduce noisy stack traces when Discord expires a click.
   - Files touched:

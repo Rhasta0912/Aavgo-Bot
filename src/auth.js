@@ -88,6 +88,14 @@ async function sendPrivateFlowPayload(interaction, payload) {
   }
 }
 
+function scheduleInteractionReplyCleanup(interaction, delayMs = 8000) {
+  if (!interaction || typeof interaction.deleteReply !== 'function') return;
+  const timer = setTimeout(() => {
+    interaction.deleteReply().catch(() => {});
+  }, delayMs);
+  timer.unref?.();
+}
+
 // ─── Constants ───────────────────────────────────────
 const ROLE_NAMES = {
   ON_SHIFT: 'On-Shift',
@@ -1285,6 +1293,10 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     embeds: [],
     components: []
   });
+
+  if (typeof interaction.isModalSubmit === 'function' && interaction.isModalSubmit()) {
+    scheduleInteractionReplyCleanup(interaction, 7000);
+  }
 
   if (isTakeover && hotelId !== 'TEAM_SHIFT') {
     const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
@@ -3323,7 +3335,7 @@ async function handleShiftHotelPickMenu(interaction) {
       });
     }
 
-    await showPinModal(interaction, hotelId, false, allowMultiHotel);
+    return interaction.update(buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
   } catch (error) {
     console.error('Error in handleShiftHotelPickMenu:', error);
     if (error?.code === 10062) {
@@ -3402,11 +3414,7 @@ async function handleSameHotelConfirm(interaction) {
     const hotelId = normalizeCombinedHotelId(hotelIdRaw);
     const allowMultiHotel = multiRaw === '1';
 
-    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
-      return;
-    }
-
-    await showPinModal(interaction, hotelId, false, allowMultiHotel);
+    return interaction.update(buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
   } catch (error) {
     console.error('Error in handleSameHotelConfirm:', error);
     if (interaction.deferred || interaction.replied) {
