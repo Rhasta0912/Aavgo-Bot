@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added global 10-minute auto-expiry for non-login temp messages.
+  - Summary: Ephemeral temp messages from commands and non-login management/developer buttons now auto-delete after 10 minutes by default. Login-system temp messages are explicitly excluded so their dedicated cleanup logic remains unchanged.
+  - Files touched:
+    - src/index.js
+    - HISTORY.md
 - Tightened ephemeral cleanup for login flow and extended quick status visibility to 30 seconds.
   - Summary: After a successful shift/training start, tracked login-flow ephemeral cards now clear immediately to prevent stacked `Only you can see this` clutter. The final success/end-style quick status notices are kept longer and now expire after 30 seconds (previously 15 seconds).
   - Files touched:

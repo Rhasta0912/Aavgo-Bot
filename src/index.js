@@ -1,6 +1,6 @@
 require('dotenv').config();
 const path = require('path');
-const { Client, GatewayIntentBits, Collection, REST, Routes, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { registerCommands } = require('./commands');
 const db = require('./database');
 const auth = require('./auth');
@@ -10,6 +10,49 @@ const { upsertBotStatusCard } = require('./botStatus');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
+const DEFAULT_TEMP_MESSAGE_TTL_MS = 10 * 60 * 1000;
+
+function isLoginSystemInteraction(interaction) {
+  const commandName = String(interaction?.commandName || '').toLowerCase();
+  if (['login', 'logout', 'status', 'setup-login', 'setup-login-team', 'end-shift'].includes(commandName)) {
+    return true;
+  }
+
+  const customId = String(interaction?.customId || '').toLowerCase();
+  if (!customId) return false;
+
+  return (
+    customId.startsWith('start_shift') ||
+    customId.startsWith('shift_') ||
+    customId.startsWith('agent_shift_') ||
+    customId.startsWith('same_hotel_confirm_') ||
+    customId.startsWith('loginmodal_') ||
+    customId === 'hotel_link_start_yes_btn' ||
+    customId === 'hotel_link_start_no_btn' ||
+    customId === 'hotel_select_menu' ||
+    customId === 'training_hotel_select_menu'
+  );
+}
+
+function isEphemeralInteractionContext(interaction) {
+  if (interaction?.ephemeral === true) return true;
+  try {
+    return Boolean(interaction?.message?.flags?.has?.(MessageFlags.Ephemeral));
+  } catch (_) {
+    return false;
+  }
+}
+
+function scheduleDefaultTempMessageCleanup(interaction, delayMs = DEFAULT_TEMP_MESSAGE_TTL_MS) {
+  if (!interaction || isLoginSystemInteraction(interaction)) return;
+  if (!isEphemeralInteractionContext(interaction)) return;
+  if (!(interaction.deferred || interaction.replied)) return;
+
+  const timer = setTimeout(() => {
+    interaction.deleteReply?.().catch(() => {});
+  }, delayMs);
+  timer.unref?.();
+}
 
 const client = new Client({
   intents: [
@@ -635,6 +678,7 @@ client.on('interactionCreate', async interaction => {
     }
   } finally {
     if (autoAckTimer) clearTimeout(autoAckTimer);
+    scheduleDefaultTempMessageCleanup(interaction);
   }
 });
 
