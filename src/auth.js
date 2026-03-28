@@ -200,12 +200,22 @@ function getCappedLogoutIso(loginTimeValue) {
 async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
   const modeLabel = session.session_kind === 'training' ? 'training' : 'shift';
   const sessionId = String(session.id);
-  const warningText =
-    `⚠️ Overtime Warning\n\n` +
-    `You have reached **8 hours** on your current ${modeLabel}.\n` +
-    `Please end your session now to avoid auto logout.\n\n` +
-    `If still active after **5 minutes**, the bot will auto logout and cap this record to **8 hours**.\n\n` +
-    `If you need to continue, use the **Confirm Overtime** button in the server warning message.`;
+  const warningEmbed = new EmbedBuilder()
+    .setTitle('⚠️ Overtime Warning')
+    .setDescription(
+      `You have reached **8 hours** on your current ${modeLabel}.\n\n` +
+      `Please end your session now to avoid auto logout.\n\n` +
+      `If you need to continue, tap **Confirm Overtime** below to acknowledge that you want to go beyond 8 hours.\n\n` +
+      `If still active after **5 minutes**, the bot will auto logout and cap this record to **8 hours**.`
+    )
+    .addFields(
+      { name: 'Mode', value: modeLabel === 'training' ? 'Training' : 'Shift', inline: true },
+      { name: 'Time Limit', value: '8 hours', inline: true },
+      { name: 'Grace Window', value: '5 minutes', inline: true }
+    )
+    .setColor(0xFEE75C)
+    .setFooter({ text: 'Aavgo Operations - Overtime Control' })
+    .setTimestamp();
 
   let dmSent = false;
   let ttsSent = false;
@@ -221,7 +231,7 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
     );
 
     await user.send({
-      content: warningText,
+      embeds: [warningEmbed],
       components: [confirmRow]
     }).then(() => {
       dmSent = true;

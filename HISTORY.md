@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Restyle overtime warnings as cleaner embeds.
+  - Summary: The private overtime warning DM now uses a structured embed with clearer labels and the `Confirm Overtime` button beneath it, instead of plain text. The overtime logic and confirmation behavior stay the same.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Make overtime warnings private ("Only you can see") for the warned user.
   - Summary: Overtime warning delivery is now DM-only to the warned user, including the `Confirm Overtime` button and TTS notification. Public warning posts in server channels were removed so only the warned user sees the warning prompt.
   - Files touched:
