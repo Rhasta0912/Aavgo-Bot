@@ -2748,7 +2748,7 @@ async function handleDenyReg(interaction) {
 async function handleStartShiftClick(interaction) {
   try {
     if (isTraineeMember(interaction) && interaction.customId !== 'tl_start_shift_btn') {
-      return await showTrainingHotelSelection(interaction, true);
+      return await showTrainingHotelSelection(interaction, isEphemeralSourceInteraction(interaction));
     }
 
     const isTLButton = interaction.customId === 'tl_start_shift_btn';
@@ -2760,9 +2760,8 @@ async function handleStartShiftClick(interaction) {
       agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
     }
     if (!agent) {
-      return interaction.reply({ 
+      return sendPrivateFlowPayload(interaction, {
         content: '❌ **Access Denied.** You must be a registered agent. Please use the **Register** button to apply.',
-        ephemeral: true
       });
     }
 
@@ -2770,9 +2769,8 @@ async function handleStartShiftClick(interaction) {
     const isTLOrSME = interactionHasRoleAtLeast(interaction, 'sme');
 
     if (isTLButton && !isTLOrSME) {
-      return interaction.reply({ 
+      return sendPrivateFlowPayload(interaction, {
         content: `❌ **Access Denied.** This portal is reserved for **Team Leaders** and **Subject Matter Experts**. \n\n*Your current role is:* **${role.charAt(0).toUpperCase() + role.slice(1).replace('_', ' ')}**` ,
-        ephemeral: true
       });
     }
 
@@ -2797,19 +2795,17 @@ async function handleStartShiftClick(interaction) {
         .setLabel('No, Cancel')
         .setStyle(ButtonStyle.Secondary);
 
-      return interaction.reply({
+      return sendPrivateFlowPayload(interaction, {
         embeds: [multiEmbed],
         components: [new ActionRowBuilder().addComponents(continueBtn, cancelBtn)],
-        ephemeral: true
       });
     }
 
     // TL/SME manual TL button click (Management Portal)
     if (isTLButton) {
        if (!agent.team) {
-          return interaction.reply({ 
+          return sendPrivateFlowPayload(interaction, {
             content: '⚠️ **Team Assignment Missing.** Please contact a developer to assign your team (Team 1 or Team 2) before logging into management.',
-            ephemeral: true
           });
        }
        return await showPinModal(interaction, 'TEAM_SHIFT', false, allowMultiHotel);
@@ -2827,6 +2823,20 @@ async function handleStartShiftClick(interaction) {
       }
     })();
     const uniqueAssignedHotelIds = [...new Set([...assignedHotelIds, ...compatibilityHotelIds])];
+
+    // If DB team is missing but hotel assignments exist, infer team automatically to avoid re-showing Team Selection.
+    if (!agent.team && uniqueAssignedHotelIds.length > 0) {
+      const inferredTeams = [...new Set(
+        uniqueAssignedHotelIds
+          .map(hotelId => db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team)
+          .filter(Boolean)
+      )];
+      if (inferredTeams.length === 1) {
+        db.prepare('UPDATE agents SET team = ? WHERE id = ?').run(inferredTeams[0], agent.id);
+        agent.team = inferredTeams[0];
+      }
+    }
+
     if (uniqueAssignedHotelIds.length > 1) {
       return await showAssignedHotelShiftPicker(interaction, uniqueAssignedHotelIds, allowMultiHotel);
     }
@@ -2863,7 +2873,10 @@ async function handleStartShiftClick(interaction) {
               .setStyle(ButtonStyle.Secondary);
 
             const promptRow = new ActionRowBuilder().addComponents(takeOverBtn, cancelBtn);
-            return interaction.reply({ embeds: [promptEmbed], components: [promptRow], ephemeral: true });
+            return sendPrivateFlowPayload(interaction, {
+              embeds: [promptEmbed],
+              components: [promptRow]
+            });
           }
 
           console.log(`[LOCK-IN] ${interaction.user.username} bypassing selection for linked hotel ${agent.hotel_id}`);
@@ -2891,10 +2904,13 @@ async function handleStartShiftClick(interaction) {
          new ButtonBuilder().setCustomId('team_btn_Team 2').setLabel('Team 2').setStyle(ButtonStyle.Primary).setEmoji('🧑‍💻')
        );
 
-       return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+       return sendPrivateFlowPayload(interaction, {
+         embeds: [embed],
+         components: [row]
+       });
     }
 
-    await showHotelSelection(interaction, agent.team, false);
+    await showHotelSelection(interaction, agent.team, isEphemeralSourceInteraction(interaction));
 
   } catch (error) {
     console.error('Error in handleStartShiftClick:', error);
@@ -2936,10 +2952,7 @@ async function showAssignedHotelShiftPicker(interaction, hotelIds, allowMultiHot
     .setColor(0xF1C40F);
 
   const row = new ActionRowBuilder().addComponents(pickMenu);
-  if (interaction.deferred || interaction.replied) {
-    return interaction.editReply({ embeds: [embed], components: [row] });
-  }
-  return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+  return sendPrivateFlowPayload(interaction, { embeds: [embed], components: [row] });
 }
 
 async function handleShiftHotelPickMenu(interaction) {

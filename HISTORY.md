@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Turn the login flow into a single temporary wizard card and add team fallback from existing assignments.
+  - Summary: Shift routing steps now reuse the same ephemeral message (replace old step with next step) instead of stacking multiple temporary cards. Added a fallback that infers team from existing hotel assignment roles/data when DB team is missing, so users do not get bounced back to Team Selection unexpectedly.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Keep login route cards private so public kiosks are not overwritten.
   - Summary: Agent and management route prompts now reply as ephemeral flow cards when started from the public kiosk, instead of editing the public setup message. This keeps the temporary route steps visible only to the user who clicked.
   - Files touched:
