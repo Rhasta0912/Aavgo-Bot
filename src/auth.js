@@ -3270,17 +3270,20 @@ async function showTrainingHotelSelection(interaction, isUpdate = false) {
     .setFooter({ text: 'Aavgo Operations • Training Routing' })
     .setTimestamp();
 
-  const payload = { content: null, embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true };
+  const payload = { content: null, embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)] };
 
-  const shouldUpdate = isUpdate || isEphemeralSourceInteraction(interaction);
-
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply(payload);
-  } else if (shouldUpdate) {
-    await interaction.update(payload);
-  } else {
-    await interaction.reply(payload);
+  // When we are already in an ephemeral step, keep replacing that same step.
+  if (
+    isUpdate &&
+    !interaction.deferred &&
+    !interaction.replied &&
+    typeof interaction.update === 'function'
+  ) {
+    return interaction.update(payload);
   }
+
+  // For public source messages (like /setup-login kiosk), always route private.
+  return sendPrivateFlowPayload(interaction, payload);
 }
 
 async function handleShiftModePrompt(interaction) {

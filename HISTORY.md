@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Prevent trainee route from overwriting the public `/setup-login` kiosk message.
+  - Summary: Training route now uses the private flow responder, so trainee `Initialize Shift` opens a private card instead of replacing the public kiosk message. Ephemeral trainee steps still update in-place for one-card flow.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Prioritize live Discord hotel role changes during Initialize Shift.
   - Summary: Shift start now refreshes from Discord role state each time and prioritizes current hotel ghost-role assignments over stale DB compatibility. If TL/OM reassigns a user from one hotel role to another (for example Garden Inn to Travelodge), Initialize Shift now follows the new role immediately and syncs `hotel_id` in DB.
   - Files touched:
