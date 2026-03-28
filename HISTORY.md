@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Matched Agent Route card structure to the cleaner assignment-card pattern.
+  - Summary: Reworked Agent Route copy and section layout to follow the same visual language as the improved hotel cards (plain uppercase section header, clean separators, concise bullet actions).
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Refined Agent Route wording and hierarchy for a more professional operations tone.
   - Summary: Updated the session route card text to clearer, more formal labels (`ROUTE SELECTION`, `Live (Hotel Shift)`, `Practice (Training)`) with concise operational descriptions.
   - Files touched:
