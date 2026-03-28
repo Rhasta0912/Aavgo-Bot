@@ -689,6 +689,36 @@ function buildAgentTeamRequiredEmbed() {
     .setTimestamp();
 }
 
+function buildReadyToStartShiftPayload(hotelId, isTakeover = false, allowMultiHotel = false) {
+  const confirmEmbed = new EmbedBuilder()
+    .setTitle('🛡️ Aavgo Operations · Agent Route')
+    .setDescription(
+      '### ✅ READY TO START SHIFT\n' +
+      '────────────────────────\n' +
+      `🏨 Hotel: **${getCombinedHotelLabel(hotelId)}**\n` +
+      '🤖 Board: Do you want to start your shift?\n' +
+      '────────────────────────'
+    )
+    .setColor(0x57F287)
+    .setFooter({ text: 'Aavgo Operations • Shift Confirmation' })
+    .setTimestamp();
+
+  const yesButton = new ButtonBuilder()
+    .setCustomId(`agent_shift_confirm_yes:${hotelId}:${isTakeover ? '1' : '0'}:${allowMultiHotel ? '1' : '0'}`)
+    .setLabel('✅ Yes')
+    .setStyle(ButtonStyle.Primary);
+
+  const noButton = new ButtonBuilder()
+    .setCustomId('agent_shift_confirm_no')
+    .setLabel('❌ No')
+    .setStyle(ButtonStyle.Secondary);
+
+  return {
+    embeds: [confirmEmbed],
+    components: [new ActionRowBuilder().addComponents(yesButton, noButton)]
+  };
+}
+
 function normalizeTeamInput(input) {
   const cleaned = (input || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (cleaned === 'team 1' || cleaned === '1' || cleaned === 'team1') return 'Team 1';
@@ -2982,7 +3012,10 @@ async function handleStartShiftClick(interaction) {
           }
 
           console.log(`[LOCK-IN] ${interaction.user.username} bypassing selection for linked hotel ${agent.hotel_id}`);
-          return await showPinModal(interaction, agent.hotel_id, false, allowMultiHotel);
+          return sendPrivateFlowPayload(
+            interaction,
+            buildReadyToStartShiftPayload(agent.hotel_id, false, allowMultiHotel)
+          );
        } else {
           db.prepare("UPDATE agents SET hotel_id = NULL WHERE discord_id = ?").run(interaction.user.id);
        }
@@ -3977,6 +4010,10 @@ async function handleModalSubmit(interaction) {
         embeds: [buildAgentTeamRequiredEmbed()],
         components: []
       });
+    }
+
+    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && !autoStartAfterPin) {
+      return interaction.editReply(buildReadyToStartShiftPayload(hotelId, isTakeover, allowMultiHotel));
     }
 
     if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && !autoStartAfterPin) {

@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Keep agent shift flow on a single temporary card when pressing `Live -> Hotel`.
+  - Summary: Clicking `Live -> Hotel` now updates the existing Agent Route card into `READY TO START SHIFT` instead of sending a second temporary message. This keeps one-card flow behavior in the agent route UI.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Make overtime auto-logout count from the warning timestamp.
   - Summary: The 5-minute grace window now starts when the overtime warning is sent, so `/limit-warning` and the automatic 8-hour warning both behave the same way. If the user does not click `Confirm Overtime`, the bot logs them out after 5 minutes and sends a clearer reason message.
   - Files touched:
