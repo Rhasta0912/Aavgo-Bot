@@ -409,10 +409,9 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO', warni
   const warningEmbed = new EmbedBuilder()
     .setTitle('⚠️ Overtime Warning')
     .setDescription(
-      `You have reached the **${warningThresholdLabel}** limit on your current ${modeLabel}.\n\n` +
-      `Please end your session now to avoid auto logout.\n\n` +
+      `You have reached the **${warningThresholdLabel}** on your current ${modeLabel}.\n\n` +
       `If you need to continue, tap **Confirm Overtime** below to acknowledge that you want to go beyond 8 hours.\n\n` +
-      `If still active after **5 minutes**, the bot will auto logout. If you had already reached the limit, the record will be capped at **${warningThresholdLabel}**.`
+      `If still in active after **5 minutes**, the bot will auto logout. If you had already reached the limit, the record will be capped at **${warningThresholdLabel}**.`
     )
     .addFields(
       { name: 'Mode', value: modeLabel === 'training' ? 'Training' : 'Shift', inline: true },
@@ -440,7 +439,11 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO', warni
       new ButtonBuilder()
         .setCustomId(`overtime_confirm:${sessionId}:${session.discord_id}`)
         .setLabel('Confirm Overtime')
-        .setStyle(ButtonStyle.Success)
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`overtime_endshift:${sessionId}:${session.discord_id}`)
+        .setLabel('End Shift')
+        .setStyle(ButtonStyle.Danger)
     );
 
     await user.send({
@@ -6972,6 +6975,45 @@ async function handleOvertimeConfirm(interaction) {
   }
 }
 
+async function handleOvertimeEndShift(interaction) {
+  try {
+    const [, sessionIdRaw, targetDiscordId] = String(interaction.customId || '').split(':');
+    const sessionId = String(sessionIdRaw || '');
+
+    if (!sessionId || !targetDiscordId) {
+      return interaction.reply({ content: '❌ Invalid overtime end-shift payload.', ephemeral: true });
+    }
+
+    if (interaction.user.id !== targetDiscordId) {
+      return interaction.reply({ content: '❌ This overtime action is not for your account.', ephemeral: true });
+    }
+
+    const session = db.prepare(`
+      SELECT
+        sessions.id,
+        COALESCE(sessions.session_kind, 'shift') AS session_kind,
+        agents.discord_id
+      FROM sessions
+      JOIN agents ON agents.id = sessions.agent_id
+      WHERE sessions.id = ? AND sessions.status = 'active'
+      LIMIT 1
+    `).get(sessionId);
+
+    if (!session || String(session.discord_id) !== interaction.user.id) {
+      return interaction.reply({ content: '⚠️ This session is no longer active.', ephemeral: true });
+    }
+
+    return handleLogout(interaction);
+  } catch (error) {
+    console.error('Error in handleOvertimeEndShift:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp({ content: '❌ Failed to end shift from overtime warning.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to end shift from overtime warning.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 async function handleLimitWarning(interaction) {
   try {
     if (!isDeveloper(interaction)) {
@@ -8017,6 +8059,7 @@ module.exports = {
   handleHelpStaff,
   handleHelpAgent,
   handleOvertimeConfirm,
+  handleOvertimeEndShift,
   handleLimitWarning,
   handleSelectTrainee,
   handleNewcomerPromotion,

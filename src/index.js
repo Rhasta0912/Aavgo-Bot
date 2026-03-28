@@ -627,6 +627,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleNewcomerPromotion(interaction);
     } else if (interaction.customId.startsWith('overtime_confirm:')) {
       await auth.handleOvertimeConfirm(interaction);
+    } else if (interaction.customId.startsWith('overtime_endshift:')) {
+      await auth.handleOvertimeEndShift(interaction);
     } else if (interaction.customId === 'tools_normal_break') {
       await tools.handleNormalBreak(interaction);
     } else if (interaction.customId === 'tools_emergency') {

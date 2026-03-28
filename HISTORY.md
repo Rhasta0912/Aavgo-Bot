@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Reworded overtime warning copy and added one-click `End Shift` action beside `Confirm Overtime`.
+  - Summary: Updated overtime warning embed wording to the softer phrasing requested and removed the pressuring line. Also added an `End Shift` button directly in the overtime warning card, so any active user can end session instantly from the warning DM without returning to the login channel.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Extended overtime cycle accounting and added offline session auto-end safety.
   - Summary: Overtime confirmations now extend from cycle checkpoints (8h -> 16h -> 24h...) instead of drifting from confirm-click time, so manual logout after confirming overtime keeps real extended time while auto-end caps at the correct cycle limit. Also added offline protection: if a member goes Offline while in an active shift/training session, the bot now auto-ends the session, swaps them back to logged-out role state, and sends DM/audit notices.
   - Files touched:
