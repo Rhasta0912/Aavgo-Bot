@@ -32,17 +32,31 @@ async function safeDeferComponentUpdate(interaction) {
 }
 
 function sendComponentUpdate(interaction, payload) {
+  const isEphemeralResult = isEphemeralSourceInteraction(interaction) || payload?.ephemeral === true;
   if (interaction.deferred || interaction.replied) {
-    return interaction.editReply(payload);
+    return interaction.editReply(payload).then(message => {
+      maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralResult);
+      return message;
+    });
   }
-  return interaction.update(payload);
+  return interaction.update({ ...payload, fetchReply: true }).then(message => {
+    maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralResult);
+    return message;
+  });
 }
 
 function sendComponentReply(interaction, payload) {
+  const isEphemeralResult = payload?.ephemeral === true || payload?.flags === MessageFlags.Ephemeral;
   if (interaction.deferred || interaction.replied) {
-    return interaction.followUp(payload);
+    return interaction.followUp({ ...payload, fetchReply: true }).then(message => {
+      maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralResult);
+      return message;
+    });
   }
-  return interaction.reply(payload);
+  return interaction.reply({ ...payload, fetchReply: true }).then(message => {
+    maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralResult);
+    return message;
+  });
 }
 
 function isEphemeralSourceInteraction(interaction) {
@@ -60,25 +74,39 @@ async function sendPrivateFlowPayload(interaction, payload) {
     if (forcePrivateReply) {
       if (interaction.deferred || interaction.replied) {
         if (typeof interaction.followUp === 'function') {
-          return await interaction.followUp(privatePayload);
+          const message = await interaction.followUp({ ...privatePayload, fetchReply: true });
+          maybeScheduleEphemeralCleanup(interaction, privatePayload, message, true);
+          return message;
         }
-        return await interaction.editReply(payload);
+        const message = await interaction.editReply(payload);
+        maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralSourceInteraction(interaction));
+        return message;
       }
-      return await interaction.reply(privatePayload);
+      const message = await interaction.reply({ ...privatePayload, fetchReply: true });
+      maybeScheduleEphemeralCleanup(interaction, privatePayload, message, true);
+      return message;
     }
 
     if (interaction.deferred || interaction.replied) {
       if (!isEphemeralSourceInteraction(interaction) && typeof interaction.followUp === 'function') {
-        return await interaction.followUp(privatePayload);
+        const message = await interaction.followUp({ ...privatePayload, fetchReply: true });
+        maybeScheduleEphemeralCleanup(interaction, privatePayload, message, true);
+        return message;
       }
-      return await interaction.editReply(payload);
+      const message = await interaction.editReply(payload);
+      maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralSourceInteraction(interaction));
+      return message;
     }
 
     if (isEphemeralSourceInteraction(interaction) && typeof interaction.update === 'function') {
-      return await interaction.update(payload);
+      const message = await interaction.update({ ...payload, fetchReply: true });
+      maybeScheduleEphemeralCleanup(interaction, payload, message, true);
+      return message;
     }
 
-    return await interaction.reply(privatePayload);
+    const message = await interaction.reply({ ...privatePayload, fetchReply: true });
+    maybeScheduleEphemeralCleanup(interaction, privatePayload, message, true);
+    return message;
   } catch (error) {
     if (error?.code === 10062) {
       console.warn('[FLOW] Skipped expired interaction while sending private payload (10062).');
@@ -88,10 +116,73 @@ async function sendPrivateFlowPayload(interaction, payload) {
   }
 }
 
-function scheduleInteractionReplyCleanup(interaction, delayMs = 8000) {
-  if (!interaction || typeof interaction.deleteReply !== 'function') return;
-  const timer = setTimeout(() => {
-    interaction.deleteReply().catch(() => {});
+const EPHEMERAL_IMPORTANT_TTL_MS = 5 * 60 * 1000;
+const EPHEMERAL_QUICK_TTL_MS = 15 * 1000;
+
+function payloadHasInteractiveComponents(payload) {
+  if (!Array.isArray(payload?.components) || payload.components.length === 0) return false;
+  return payload.components.some(row => {
+    const components = row?.components || row?.data?.components;
+    return Array.isArray(components) && components.length > 0;
+  });
+}
+
+function collectPayloadText(payload) {
+  const parts = [];
+  if (typeof payload?.content === 'string') parts.push(payload.content);
+  if (Array.isArray(payload?.embeds)) {
+    for (const embed of payload.embeds) {
+      const source = embed?.data || embed || {};
+      if (typeof source.title === 'string') parts.push(source.title);
+      if (typeof source.description === 'string') parts.push(source.description);
+      if (Array.isArray(source.fields)) {
+        for (const field of source.fields) {
+          if (typeof field?.name === 'string') parts.push(field.name);
+          if (typeof field?.value === 'string') parts.push(field.value);
+        }
+      }
+      if (typeof source?.footer?.text === 'string') parts.push(source.footer.text);
+    }
+  }
+  return parts.join(' ').toLowerCase();
+}
+
+function getEphemeralCleanupDelayMs(payload) {
+  if (payloadHasInteractiveComponents(payload)) {
+    return EPHEMERAL_IMPORTANT_TTL_MS;
+  }
+
+  const text = collectPayloadText(payload);
+  if (!text) return EPHEMERAL_IMPORTANT_TTL_MS;
+
+  const importantPattern = /(select|choose|confirm|setup|pin|security|team|required|must|warning|access denied|instruction|guide|information|invalid|incorrect|failed|error|not found)/i;
+  if (importantPattern.test(text)) {
+    return EPHEMERAL_IMPORTANT_TTL_MS;
+  }
+
+  const quickPattern = /(success|shift is now live|shift ended|training ended|logout|logged out|cancelled|saved|updated|recorded|completed|done|refreshed|removed|promoted|demoted)/i;
+  if (quickPattern.test(text)) {
+    return EPHEMERAL_QUICK_TTL_MS;
+  }
+
+  return EPHEMERAL_IMPORTANT_TTL_MS;
+}
+
+function maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralResult = false) {
+  if (!interaction || !isEphemeralResult) return;
+  const delayMs = getEphemeralCleanupDelayMs(payload);
+  if (!Number.isFinite(delayMs) || delayMs <= 0) return;
+
+  const timer = setTimeout(async () => {
+    try {
+      if (message?.id && interaction?.webhook?.deleteMessage) {
+        await interaction.webhook.deleteMessage(message.id).catch(() => {});
+        return;
+      }
+      if (typeof interaction.deleteReply === 'function') {
+        await interaction.deleteReply().catch(() => {});
+      }
+    } catch (_) {}
   }, delayMs);
   timer.unref?.();
 }
@@ -1166,9 +1257,14 @@ async function showShiftInitModal(interaction, agent) {
 async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
   const respond = async (payload) => {
     if (interaction.deferred || interaction.replied) {
-      return interaction.editReply(payload);
+      const message = await interaction.editReply(payload);
+      maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralSourceInteraction(interaction));
+      return message;
     }
-    return interaction.reply({ ...payload, ephemeral: true });
+    const replyPayload = { ...payload, ephemeral: true, fetchReply: true };
+    const message = await interaction.reply(replyPayload);
+    maybeScheduleEphemeralCleanup(interaction, replyPayload, message, true);
+    return message;
   };
 
   const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
@@ -1296,10 +1392,6 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     embeds: [],
     components: []
   });
-
-  if (typeof interaction.isModalSubmit === 'function' && interaction.isModalSubmit()) {
-    scheduleInteractionReplyCleanup(interaction, 7000);
-  }
 
   if (isTakeover && hotelId !== 'TEAM_SHIFT') {
     const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
@@ -3332,7 +3424,7 @@ async function handleShiftHotelPickMenu(interaction) {
         .setLabel('⬅️ Cancel')
         .setStyle(ButtonStyle.Secondary);
 
-      return interaction.update({
+      return sendPrivateFlowPayload(interaction, {
         embeds: [promptEmbed],
         components: [new ActionRowBuilder().addComponents(takeOverBtn, cancelBtn)]
       });
@@ -3374,7 +3466,7 @@ async function handleShiftHotelPickMenu(interaction) {
         .setLabel('Choose Another Hotel')
         .setStyle(ButtonStyle.Secondary);
 
-      return interaction.update({
+      return sendPrivateFlowPayload(interaction, {
         embeds: [confirmEmbed],
         components: [new ActionRowBuilder().addComponents(yesBtn, noBtn)]
       });
@@ -3448,7 +3540,7 @@ async function handleSameHotelConfirm(interaction) {
         )
         .setColor(0xF1C40F);
 
-      return interaction.update({
+      return sendPrivateFlowPayload(interaction, {
         embeds: [embed],
         components: [new ActionRowBuilder().addComponents(pickMenu)]
       });
