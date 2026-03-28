@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Removed SME/Team Leader team-picker temp card and auto-routed to assigned team PIN step.
+  - Summary: When SME/TL passes team gate, the bot now skips the `TEAM SHIFT SELECTED` card with Team 1/Team 2 buttons and goes directly to PIN verification for the already-assigned team. This removes the extra temp message while keeping team-first restriction intact.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Made SME/TL team-gate strictly require live Discord Team role assignment.
   - Summary: Effective team validation now requires `Team 1` or `Team 2` role on Discord before management shift flow can open. A stale DB team value alone no longer passes the gate; DB and Discord must align when both exist.
   - Files touched:

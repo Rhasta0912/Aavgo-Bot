@@ -3983,34 +3983,24 @@ async function handleManagementRoutePick(interaction, roleLabel) {
       });
     }
 
-    const embed = new EmbedBuilder()
-      .setTitle(`🛡️ Aavgo Operations · ${roleLabel} Route`)
-      .setDescription(
-        '### ✅ TEAM SHIFT SELECTED\n' +
-        '────────────────────────\n' +
-        '🤖 Board: Choose which team shift to open.\n' +
-        '🧑‍💼 Team 1: Team 1 shift login.\n' +
-        '🧑‍💼 Team 2: Team 2 shift login.\n' +
-        '────────────────────────'
-      )
-      .setColor(0x57F287)
-      .setFooter({ text: 'Aavgo Operations • Team Routing' })
-      .setTimestamp();
+    const assignedTeam =
+      normalizeTeamInput(resolveTeamFromMemberRoles(interaction.member)) ||
+      normalizeTeamInput(agent.team);
 
-    const team1Btn = new ButtonBuilder()
-      .setCustomId('shift_mgmt_team_1_btn')
-      .setLabel('🧑‍💼 Team 1 Shift')
-      .setStyle(ButtonStyle.Primary);
+    if (!assignedTeam) {
+      return sendPrivateFlowPayload(interaction, {
+        embeds: [buildAgentTeamRequiredEmbed()],
+        components: []
+      });
+    }
 
-    const team2Btn = new ButtonBuilder()
-      .setCustomId('shift_mgmt_team_2_btn')
-      .setLabel('🧑‍💼 Team 2 Shift')
-      .setStyle(ButtonStyle.Secondary);
-
-    return sendPrivateFlowPayload(interaction, {
-      embeds: [embed],
-      components: [new ActionRowBuilder().addComponents(team1Btn, team2Btn)]
-    });
+    return await showPinModal(
+      interaction,
+      'TEAM_SHIFT_team_' + assignedTeam.replace(' ', '_'),
+      false,
+      false,
+      'shift'
+    );
   } catch (error) {
     console.error('Error in handleManagementRoutePick:', error);
     if (interaction.deferred || interaction.replied) {
