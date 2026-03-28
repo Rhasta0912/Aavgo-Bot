@@ -567,7 +567,7 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
 }
 
 // ─── PIN Verification Modal ─────────────────────────
-async function showPinModal(interaction, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
+async function showPinModal(interaction, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift', autoStartAfterPin = false) {
   const isTeamShiftOverride = typeof hotelId === 'string' && hotelId.startsWith('TEAM_SHIFT_team_');
   const hotelName = (hotelId === 'TEAM_SHIFT' || isTeamShiftOverride) ? 'Management Shift' : getCombinedHotelLabel(hotelId);
   const agent = db.prepare('SELECT pin_is_set FROM agents WHERE discord_id = ?').get(interaction.user.id);
@@ -577,7 +577,7 @@ async function showPinModal(interaction, hotelId, isTakeover = false, allowMulti
   }
 
   const modal = new ModalBuilder()
-    .setCustomId(`loginmodal_${sessionMode}_${hotelId}${isTakeover ? '_takeover' : ''}${allowMultiHotel ? '_multi' : ''}`)
+    .setCustomId(`loginmodal_${sessionMode}_${hotelId}${isTakeover ? '_takeover' : ''}${allowMultiHotel ? '_multi' : ''}${autoStartAfterPin ? '_autostart' : ''}`)
     .setTitle(`🔑 Verify PIN — ${hotelName}`.substring(0, 45));
 
   const pinInput = new TextInputBuilder()
@@ -3778,7 +3778,12 @@ async function handleHotelLinkStartChoice(interaction) {
       });
     }
 
-    return await handleStartShiftClick(interaction);
+    const linkedHotelId = normalizeCombinedHotelId(agent.hotel_id);
+    if (!linkedHotelId || !HOTEL_NAMES[linkedHotelId]) {
+      return await handleStartShiftClick(interaction);
+    }
+
+    return await showPinModal(interaction, linkedHotelId, false, false, 'shift', true);
   } catch (error) {
     console.error('Error in handleHotelLinkStartChoice:', error);
     if (interaction.deferred || interaction.replied) {
@@ -3933,6 +3938,8 @@ async function handleModalSubmit(interaction) {
     } else if (modalPayload.startsWith('shift_')) {
       modalPayload = modalPayload.slice(6);
     }
+    const autoStartAfterPin = modalPayload.endsWith('_autostart');
+    if (autoStartAfterPin) modalPayload = modalPayload.slice(0, -10);
     const allowMultiHotel = modalPayload.endsWith('_multi');
     if (allowMultiHotel) modalPayload = modalPayload.slice(0, -6);
     const isTakeover = modalPayload.endsWith('_takeover');
@@ -3972,7 +3979,7 @@ async function handleModalSubmit(interaction) {
       });
     }
 
-    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT') {
+    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && !autoStartAfterPin) {
       const confirmEmbed = new EmbedBuilder()
         .setTitle('🛡️ Aavgo Operations · Agent Route')
         .setDescription(

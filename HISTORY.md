@@ -60,6 +60,10 @@ Working rules:
   - Files touched:
     - src/auth.js
     - src/database.js
+- Make first-time post-link `Yes, Start Shift` go straight to shift after PIN.
+  - Summary: Added an `autostart` flag to the post-link start path so after `Hotel Successfully Linked` users can press `Yes, Start Shift`, verify PIN, and enter shift directly without the extra `READY TO START SHIFT` confirmation card. Normal live start flow still keeps the confirmation step.
+  - Files touched:
+    - src/auth.js
     - HISTORY.md
 - Restyle overtime warnings as cleaner embeds.
   - Summary: The private overtime warning DM now uses a structured embed with clearer labels and the `Confirm Overtime` button beneath it, instead of plain text. The overtime logic and confirmation behavior stay the same.
