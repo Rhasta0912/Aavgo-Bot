@@ -75,14 +75,16 @@ const HOTEL_NAMES = {
   'GICP': 'The Garden Inn At Campsite',
   'SUP8': 'Super 8',
   'RMDA': 'Ramada',
-  'AD1': 'AD1'
+  'AD1': 'Travelodge',
+  'DIBS': 'Day Inns Bishop'
 };
 const HOTEL_SELECT_EMOJIS = {
   BW_TO: '🏙️',
   GICP: '🏨',
   SUP8: '✴️',
   RMDA: '🛖',
-  AD1: '📞'
+  AD1: '🏩',
+  DIBS: '🏨'
 };
 // Map hotel IDs to log-in channel IDs
 const HOTEL_LOGIN_CHANNELS = {
@@ -90,7 +92,8 @@ const HOTEL_LOGIN_CHANNELS = {
   'GICP': '1484531330308903005',
   'SUP8': '1483417977859870881',
   'RMDA': '1483417977859870881',
-  'AD1': '1483418055538376735'
+  'AD1': '1483418055538376735',
+  'DIBS': '1487250154099703839'
 };
 
 const APPROVAL_CHANNEL_ID = '1482240202503098398';
@@ -102,13 +105,14 @@ const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 
-const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1'];
+const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'DIBS'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
 const TRAINING_HOTEL_GROUPS = [
   { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
   { label: 'Ramada / Super 8', hotelIds: ['RMDA', 'SUP8'] },
   { label: 'The Garden Inn At Campsite', hotelIds: ['GICP'] },
-  { label: 'AD1', hotelIds: ['AD1'] }
+  { label: 'Travelodge', hotelIds: ['AD1'] },
+  { label: 'Day Inns Bishop', hotelIds: ['DIBS'] }
 ];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -498,8 +502,11 @@ function normalizeHotelInput(input) {
     SUPER8: 'SUP8',
     RMDA: 'RMDA',
     RAMADA: 'RMDA',
-    AD1: 'AD1',
-    CALLSONLY: 'AD1'
+    TRAVELODGE: 'AD1',
+    TRAVELLODGE: 'AD1',
+    DAYINNSBISHOP: 'DIBS',
+    DAYINNS: 'DIBS',
+    BISHOP: 'DIBS'
   };
 
   return aliases[cleaned] || null;
@@ -830,7 +837,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Ramada / Super 8, AD1)');
+    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Ramada / Super 8, Travelodge, Day Inns Bishop)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -1184,12 +1191,8 @@ async function updateHotelStatusEmbed(client, hotelId) {
         .setLabel('📝 Handover')
         .setStyle(ButtonStyle.Secondary);
 
-      if (hotelId === 'AD1') {
-        actionRow.addComponents(callBtn, handoverBtn);
-      } else {
-        actionRow.addComponents(checkInBtn, checkOutBtn);
-        actionRow2.addComponents(callBtn, maintenanceBtn, handoverBtn);
-      }
+      actionRow.addComponents(checkInBtn, checkOutBtn);
+      actionRow2.addComponents(callBtn, maintenanceBtn, handoverBtn);
 
       // Add Break ending button if agent is on break
       if (primarySession.break_status) {
@@ -1198,14 +1201,10 @@ async function updateHotelStatusEmbed(client, hotelId) {
           .setCustomId(`tools_end_bio_${primarySession.discord_id}`)
           .setLabel(breakLabel)
           .setStyle(ButtonStyle.Secondary);
-        if (hotelId === 'AD1') {
-          actionRow.addComponents(endBreakBtn);
-        } else {
-          actionRow2.addComponents(endBreakBtn);
-        }
+        actionRow2.addComponents(endBreakBtn);
       }
       
-      components = hotelId === 'AD1' ? [actionRow] : [actionRow, actionRow2];
+      components = [actionRow, actionRow2];
     }
 
     const embed = new EmbedBuilder()
@@ -1288,7 +1287,7 @@ function buildAgentKioskPayload() {
       '> **5.** Verify your **Secure PIN**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `AD1`'
+      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -1373,7 +1372,7 @@ async function handleSetupLogin(interaction) {
         '> **4.** Verify your **Secure PIN**\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `AD1`'
+        '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -1458,7 +1457,7 @@ function formatLoginTimeLabel(loginTime) {
 }
 
 function getTeam1HotelSummary() {
-  return ['Indianhead/Magnuson', 'The Garden Inn At Campsite', 'Ramada / Super 8', 'AD1'];
+  return ['Indianhead/Magnuson', 'The Garden Inn At Campsite', 'Ramada / Super 8', 'Travelodge', 'Day Inns Bishop'];
 }
 
 function getTrainingGroupLabel(hotelId) {
@@ -1593,7 +1592,11 @@ async function updateTrainingStatusEmbed(client) {
           ? '🛖'
           : group.label === 'The Garden Inn At Campsite'
             ? '🏨'
-            : '📞';
+            : group.label === 'Travelodge'
+              ? '🏩'
+              : group.label === 'Day Inns Bishop'
+                ? '🏨'
+                : '🏨';
       const value = matching.length > 0
         ? matching
           .map(session => `• <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`)
@@ -3360,7 +3363,7 @@ async function handleShiftInitModalSubmit(interaction) {
     const normalizedHotel = normalizeHotelInput(hotelInput);
 
     if (!normalizedHotel || !HOTEL_NAMES[normalizedHotel]) {
-      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, The Garden Inn At Campsite, Ramada / Super 8, AD1**.' });
+      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, The Garden Inn At Campsite, Ramada / Super 8, Travelodge, Day Inns Bishop**.' });
     }
 
     const hotelRecord = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotel);
@@ -3842,13 +3845,6 @@ async function handleActivityClick(interaction) {
     else if (customId.startsWith('activity_handover_')) type = 'handover';
 
     const hotelId = customId.replace(`activity_${type}_`, '');
-
-    if (hotelId === 'AD1' && ['checkin', 'checkout', 'maintenance'].includes(type)) {
-      return interaction.reply({
-        content: 'This location is calls-only. Use Call Log (or Handover) activities for AD1.',
-        ephemeral: true
-      });
-    }
 
     if (type === 'checkin') {
       const modal = new ModalBuilder().setCustomId(`activity_modal_checkin_${hotelId}`).setTitle('🛎️ Guest Check-In');

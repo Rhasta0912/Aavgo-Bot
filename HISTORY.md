@@ -55,6 +55,7 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Rename AD1 to Travelodge in the hotel catalog, add Day Inns Bishop as a new Team 1 hotel, and update the status/training/login surfaces so the new hotel names show consistently.
 - Update `/see-all-pins` so Operations Managers and Developers can view the stored PIN values in a safe audit view, along with role, team, and hotel context.
 - Add an Excel-friendly hours export command so staff can audit live shift and training logs in a spreadsheet.
   - Summary: The new `/hours-export` command now generates a day/week/month horizontal timesheet CSV that Excel can open directly, with one row per date and columns for name, in, out, shift hours, training hours, and total hours so the sheet stays readable and scrolls less.

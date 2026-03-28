@@ -43,7 +43,7 @@ const TEAM_LEADER_ROLE_NAMES = ['team leader'];
 const OPERATIONS_MANAGER_ROLE_NAMES = ['operations manager'];
 const DEVELOPER_ROLE_NAMES = ['developer', 'developers'];
 const TEAM_ASSIGNMENT_ROLE_NAMES = ['team 1', 'team one', 'team 2', 'team two'];
-const HOTEL_IDS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1'];
+const HOTEL_IDS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'DIBS'];
 const HOTEL_GREY_ROLE_IDS = {
   BW_TO: '1483429969807020032',
   GICP: '1484531611549831189',
@@ -954,6 +954,12 @@ async function syncBaseRoleDiscordRoles(member, roleValue) {
 async function syncHotelDiscordRoles(member, selectedHotels = []) {
   if (!member) return;
   const selected = parseHotelSelection(serializeHotelSelection(selectedHotels));
+
+  const selectedRoleIds = selected.flatMap(hotelId => [
+    HOTEL_GREY_ROLE_IDS[hotelId],
+    HOTEL_GREEN_ROLE_IDS[hotelId]
+  ].filter(Boolean));
+  if (selectedRoleIds.length === 0) return;
 
   const allHotelRoleIds = [
     ...Object.values(HOTEL_GREY_ROLE_IDS),

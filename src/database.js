@@ -182,7 +182,9 @@ db.exec(`
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('RMDA', 'Ramada', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('AD1', 'AD1', 'Team 1')
+  INSERT INTO hotels (id, name, team) VALUES ('AD1', 'Travelodge', 'Team 1')
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
+  INSERT INTO hotels (id, name, team) VALUES ('DIBS', 'Day Inns Bishop', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('TEAM_SHIFT', 'Team Operations', 'Global')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
@@ -192,6 +194,7 @@ db.exec(`
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('GICP');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('RMDA');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('AD1');
+  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('DIBS');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('TEAM_SHIFT');
 
   -- Seed team_status
@@ -264,6 +267,8 @@ db.pragma('foreign_keys = ON');
       db.prepare("DELETE FROM hotel_status WHERE hotel_id = 'BRNT'").run();
       db.prepare("DELETE FROM hotels WHERE id = 'BRNT'").run();
       db.prepare("UPDATE hotels SET name = 'Indianhead/Magnuson' WHERE id = 'BW_TO'").run();
+      db.prepare("UPDATE hotels SET name = 'Travelodge' WHERE id = 'AD1'").run();
+      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('DIBS', 'Day Inns Bishop', 'Team 1') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
     })();
     db.transaction(() => {
       const retiredHotelIds = ['VALS', 'QI_RV'];
