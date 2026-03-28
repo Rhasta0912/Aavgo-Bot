@@ -3173,22 +3173,27 @@ async function handleShiftModePrompt(interaction) {
     }
 
     const embed = new EmbedBuilder()
-      .setTitle('Initialize Shift')
+      .setTitle('🛡️ Aavgo Operations · Agent Route')
       .setDescription(
-        'Choose how you want to start:\n\n' +
-        '- **Hotel Shift**: normal live operations\n' +
-        '- **Training**: training flow'
+        '### ✅ SESSION TYPE SELECTED\n' +
+        '────────────────────────\n' +
+        '🤖 Board: Choose how this session should run.\n' +
+        '🟦 Live: Hotel Shift for normal operations.\n' +
+        '🟪 Practice: Training for trainee sessions.\n' +
+        '────────────────────────'
       )
-      .setColor(0x5865F2);
+      .setColor(0x5865F2)
+      .setFooter({ text: 'Aavgo Operations • Session Routing' })
+      .setTimestamp();
 
     const hotelBtn = new ButtonBuilder()
       .setCustomId('shift_mode_hotel_btn')
-      .setLabel('Hotel Shift')
+      .setLabel('🟦 Live -> Hotel Shift')
       .setStyle(ButtonStyle.Primary);
 
     const trainingBtn = new ButtonBuilder()
       .setCustomId('training_start_btn')
-      .setLabel('Training')
+      .setLabel('🟪 Practice -> Training')
       .setStyle(ButtonStyle.Secondary);
 
     await interaction.reply({
@@ -3278,9 +3283,12 @@ async function handleAgentRoutePick(interaction) {
     const embed = new EmbedBuilder()
       .setTitle('🛡️ Aavgo Operations · Agent Route')
       .setDescription(
-        'Choose how you want to start:\n\n' +
-        '- **Hotel Shift**: normal live operations\n' +
-        '- **Training**: training flow'
+        '### ✅ SESSION TYPE SELECTED\n' +
+        '────────────────────────\n' +
+        '🤖 Board: Choose how this session should run.\n' +
+        '🟦 Live: Hotel Shift for normal operations.\n' +
+        '🟪 Practice: Training for trainee sessions.\n' +
+        '────────────────────────'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations • Session Routing' })
@@ -3288,12 +3296,12 @@ async function handleAgentRoutePick(interaction) {
 
     const hotelBtn = new ButtonBuilder()
       .setCustomId('shift_mode_hotel_btn')
-      .setLabel('Hotel Shift')
+      .setLabel('🟦 Live -> Hotel Shift')
       .setStyle(ButtonStyle.Primary);
 
     const trainingBtn = new ButtonBuilder()
       .setCustomId('training_start_btn')
-      .setLabel('Training')
+      .setLabel('🟪 Practice -> Training')
       .setStyle(ButtonStyle.Secondary);
 
     return sendPrivateFlowPayload(interaction, {

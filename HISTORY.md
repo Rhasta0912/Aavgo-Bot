@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Restore the styled Agent Route card and remove the plain fallback copy.
+  - Summary: Updated the Agent Route card back to the structured UI format (`SESSION TYPE SELECTED` with clear Live/Practice labels) and removed old plain wording (`Choose how you want to start`) that made the flow look inconsistent.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Add a post-link shift question and close team-check bypasses.
   - Summary: After `✅ Hotel Successfully Linked`, the bot now asks `Do you want to start your shift?` with `Yes` / `No` buttons. Also added another team requirement check at PIN submit time for agent live shifts, so old/stale flow paths cannot bypass the TL/OM team assignment rule.
   - Files touched:
