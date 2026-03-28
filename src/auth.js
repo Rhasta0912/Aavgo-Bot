@@ -8010,6 +8010,199 @@ async function handleSetupLoginTeam(interaction) {
   }
 }
 
+function buildAssignedHotelShiftPickerPayload(hotelIds, allowMultiHotel = false) {
+  const hotelOptions = buildAssignedHotelSelectionOptions(hotelIds);
+  const pickMenu = new StringSelectMenuBuilder()
+    .setCustomId(allowMultiHotel ? 'shift_hotel_pick_menu_multi' : 'shift_hotel_pick_menu')
+    .setPlaceholder('Choose your hotel assignment...')
+    .addOptions(
+      hotelOptions.map(hotel =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(hotel.label)
+          .setValue(hotel.id)
+          .setDescription(hotel.description)
+      )
+    );
+
+  const embed = new EmbedBuilder()
+    .setTitle('🏨 Choose Your Hotel Location')
+    .setDescription(
+      '### ASSIGNMENT SELECTION\n' +
+      '────────────────────────\n' +
+      'Use the dropdown below to select your hotel for this shift.\n\n' +
+      '⚠ Permanent assignment changes should be handled by Team Leader or Operations Manager.\n' +
+      '────────────────────────'
+    )
+    .setColor(0x57F287)
+    .setFooter({ text: 'Aavgo Operations • Hotel Assignment' })
+    .setTimestamp();
+
+  return {
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(pickMenu)]
+  };
+}
+
+function buildAgentRouteSelectionPayload() {
+  const embed = new EmbedBuilder()
+    .setTitle('🛡️ Aavgo Operations · Agent Route')
+    .setDescription(
+      '### SESSION TYPE SELECTION\n' +
+      '────────────────────────\n' +
+      'Choose how this session should run.\n\n' +
+      '**Live:** Hotel Shift for normal operations.\n' +
+      '**Practice:** Training for trainee sessions.\n' +
+      '────────────────────────'
+    )
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Aavgo Operations • Session Routing' })
+    .setTimestamp();
+
+  const hotelBtn = new ButtonBuilder()
+    .setCustomId('shift_mode_hotel_btn')
+    .setLabel('Live • Hotel Shift')
+    .setStyle(ButtonStyle.Primary);
+
+  const trainingBtn = new ButtonBuilder()
+    .setCustomId('training_start_btn')
+    .setLabel('Practice • Training')
+    .setStyle(ButtonStyle.Secondary);
+
+  return {
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(hotelBtn, trainingBtn)]
+  };
+}
+
+function buildReadyToStartShiftPayload(hotelId, isTakeover = false, allowMultiHotel = false) {
+  const confirmEmbed = new EmbedBuilder()
+    .setTitle('🛡️ Aavgo Operations · Agent Route')
+    .setDescription(
+      '### READY TO START SHIFT\n' +
+      '────────────────────────\n' +
+      `**Hotel:** ${getCombinedHotelLabel(hotelId)}\n` +
+      '**Action:** Start this shift now?\n' +
+      '────────────────────────'
+    )
+    .setColor(0x57F287)
+    .setFooter({ text: 'Aavgo Operations • Shift Confirmation' })
+    .setTimestamp();
+
+  const yesButton = new ButtonBuilder()
+    .setCustomId(`agent_shift_confirm_yes:${hotelId}:${isTakeover ? '1' : '0'}:${allowMultiHotel ? '1' : '0'}`)
+    .setLabel('Start Shift')
+    .setStyle(ButtonStyle.Primary);
+
+  const noButton = new ButtonBuilder()
+    .setCustomId('agent_shift_confirm_no')
+    .setLabel('Cancel')
+    .setStyle(ButtonStyle.Secondary);
+
+  return {
+    embeds: [confirmEmbed],
+    components: [new ActionRowBuilder().addComponents(yesButton, noButton)]
+  };
+}
+
+async function showAssignedHotelShiftPicker(interaction, hotelIds, allowMultiHotel = false) {
+  return sendPrivateFlowPayload(
+    interaction,
+    buildAssignedHotelShiftPickerPayload(hotelIds, allowMultiHotel)
+  );
+}
+
+async function handleAgentRoutePick(interaction) {
+  try {
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'AGENT ROUTE');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    }
+    if (!agent) {
+      return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
+    }
+
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
+
+    if (isTraineeMember(interaction)) {
+      return await showTrainingHotelSelection(interaction, isEphemeralSourceInteraction(interaction));
+    }
+
+    return sendPrivateFlowPayload(interaction, buildAgentRouteSelectionPayload());
+  } catch (error) {
+    if (error?.code === 10062) {
+      console.warn('[AGENT-ROUTE] Interaction expired before response (10062).');
+      return;
+    }
+    console.error('Error in handleAgentRoutePick:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'Failed to open agent route picker.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'Failed to open agent route picker.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleSameHotelConfirm(interaction) {
+  try {
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return sendPrivateFlowPayload(interaction, {
+        content: '❌ You are not registered as an agent.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
+      .filter(([assignedHotelId, roleId]) => HOTEL_NAMES[assignedHotelId] && interaction.member.roles.cache.has(roleId))
+      .map(([assignedHotelId]) => normalizeCombinedHotelId(assignedHotelId));
+    const compatibilityHotelIds = (() => {
+      try {
+        return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
+      } catch {
+        return [];
+      }
+    })();
+    const uniqueAssignedHotelIds = [...new Set(assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds)];
+
+    if (interaction.customId === 'same_hotel_confirm_no') {
+      if (uniqueAssignedHotelIds.length === 0) {
+        return sendPrivateFlowPayload(interaction, {
+          content: '❌ No assigned hotels were found for your account.',
+          embeds: [],
+          components: []
+        });
+      }
+
+      return sendPrivateFlowPayload(
+        interaction,
+        buildAssignedHotelShiftPickerPayload(uniqueAssignedHotelIds, true)
+      );
+    }
+
+    const payload = String(interaction.customId || '').replace('same_hotel_confirm_yes:', '');
+    const [hotelIdRaw, multiRaw = '0'] = payload.split(':');
+    const hotelId = normalizeCombinedHotelId(hotelIdRaw);
+    const allowMultiHotel = multiRaw === '1';
+
+    return interaction.update(buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
+  } catch (error) {
+    if (error?.code === 10062) {
+      console.warn('[SAME-HOTEL] Interaction expired before response (10062).');
+      return;
+    }
+    console.error('Error in handleSameHotelConfirm:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to continue with this hotel.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to continue with this hotel.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 module.exports = {
   HOTEL_NAMES,
   HOTEL_LOGIN_CHANNELS,

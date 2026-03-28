@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Polished agent shift-route UI to a cleaner professional style.
+  - Summary: Updated the Agent Route, multi-hotel assignment picker, and shift confirmation card to a cleaner operations look with less emoji noise, clearer hierarchy, and more readable action labels (`Live • Hotel Shift`, `Practice • Training`, `Start Shift`, `Cancel`).
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Added a centralized shared developer to-do board workflow for launch coordination.
   - Summary: Implemented a live dev board in channel `1483404968684818483` with shared task ownership, so both developers can add, move, check off, and reopen tasks. Added command + interaction support (`/setup-dev-todo`, `/todo-add`, `/todo-move`, `/todo-refresh`) and persistent task storage in SQLite.
   - Files touched:
