@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Require PIN verification every time agent confirms shift start.
+  - Summary: Pressing `Yes` on `READY TO START SHIFT` now always opens PIN verification before login finalizes. This closes the gap where repeat shift starts could bypass PIN re-check.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Removed `/setup-security` from slash commands and staff guidance.
   - Summary: Retired the standalone security kiosk slash command so onboarding no longer depends on a separate `/setup-security` post. PIN setup guidance now points to the built-in secure prompt in shift flow plus `/reset-pin`.
   - Files touched:

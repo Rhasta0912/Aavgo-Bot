@@ -3866,18 +3866,9 @@ async function handleAgentShiftStartConfirm(interaction) {
       });
     }
 
-    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
-      return;
-    }
-
-    if (!interaction.deferred && !interaction.replied) {
-      try {
-        await interaction.deferUpdate();
-      } catch (_) {
-        await interaction.deferReply({ ephemeral: true }).catch(() => {});
-      }
-    }
-    await finalizeShiftLogin(interaction, agent, hotelId, isTakeover, allowMultiHotel, 'shift');
+    // Security hardening: every agent shift start must pass PIN verification,
+    // even when PIN is already configured.
+    return await showPinModal(interaction, hotelId, isTakeover, allowMultiHotel, 'shift', true);
   } catch (error) {
     console.error('Error in handleAgentShiftStartConfirm:', error);
     if (interaction.deferred || interaction.replied) {
