@@ -230,6 +230,14 @@ function maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemera
   timer.unref?.();
 }
 
+function scheduleExplicitReplyCleanup(interaction, delayMs = EPHEMERAL_QUICK_TTL_MS) {
+  if (!interaction || typeof interaction.deleteReply !== 'function') return;
+  const timer = setTimeout(() => {
+    interaction.deleteReply().catch(() => {});
+  }, delayMs);
+  timer.unref?.();
+}
+
 // ─── Constants ───────────────────────────────────────
 const ROLE_NAMES = {
   ON_SHIFT: 'On-Shift',
@@ -5606,6 +5614,7 @@ async function handlePurge(interaction) {
     const messages = await interaction.channel.bulkDelete(amount, true);
     
     await interaction.editReply({ content: `✅ Successfully deleted **${messages.size}** messages from this channel.` });
+    scheduleExplicitReplyCleanup(interaction, 30 * 1000);
     
     sendAuditLog(interaction.client, {
       title: '🧹 Channel Purged',

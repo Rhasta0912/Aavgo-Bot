@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Set `/purge` completion temp message to 30-second expiry.
+  - Summary: The ephemeral success reply for `/purge` (for example, `Successfully deleted N messages`) now auto-deletes after 30 seconds to reduce manager/dev command clutter.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Added global 10-minute auto-expiry for non-login temp messages.
   - Summary: Ephemeral temp messages from commands and non-login management/developer buttons now auto-delete after 10 minutes by default. Login-system temp messages are explicitly excluded so their dedicated cleanup logic remains unchanged.
   - Files touched:
