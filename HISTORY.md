@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Tightened ephemeral cleanup for login flow and extended quick status visibility to 30 seconds.
+  - Summary: After a successful shift/training start, tracked login-flow ephemeral cards now clear immediately to prevent stacked `Only you can see this` clutter. The final success/end-style quick status notices are kept longer and now expire after 30 seconds (previously 15 seconds).
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Added automatic ephemeral cleanup rules for cleaner login flow cards.
   - Summary: Ephemeral (`Only you can see this`) replies now auto-expire by priority in login/private flows: interactive or guidance-heavy messages (buttons/instructions) expire after 5 minutes, while quick completion notices (success/ended/saved/cancelled style messages) expire after 15 seconds. This reduces message clutter during shift initialization while preserving important prompts long enough for interaction.
   - Files touched:

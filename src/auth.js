@@ -117,7 +117,49 @@ async function sendPrivateFlowPayload(interaction, payload) {
 }
 
 const EPHEMERAL_IMPORTANT_TTL_MS = 5 * 60 * 1000;
-const EPHEMERAL_QUICK_TTL_MS = 15 * 1000;
+const EPHEMERAL_QUICK_TTL_MS = 30 * 1000;
+const loginFlowEphemeralByUser = new Map();
+
+function shouldTrackLoginFlowEphemeral(interaction) {
+  const customId = String(interaction?.customId || '').toLowerCase();
+  return (
+    customId.startsWith('start_shift') ||
+    customId.startsWith('shift_') ||
+    customId.startsWith('agent_shift_') ||
+    customId.startsWith('same_hotel_confirm_') ||
+    customId.startsWith('loginmodal_') ||
+    customId === 'hotel_link_start_yes_btn' ||
+    customId === 'hotel_link_start_no_btn'
+  );
+}
+
+function trackLoginFlowEphemeral(interaction, message) {
+  if (!message?.id || !interaction?.user?.id) return;
+  if (!shouldTrackLoginFlowEphemeral(interaction)) return;
+  const userId = interaction.user.id;
+  const tracked = loginFlowEphemeralByUser.get(userId) || new Set();
+  tracked.add(message.id);
+  loginFlowEphemeralByUser.set(userId, tracked);
+}
+
+function clearTrackedLoginFlowEphemeral(interaction, keepMessageIds = []) {
+  if (!interaction?.user?.id || !interaction?.webhook?.deleteMessage) return;
+  const tracked = loginFlowEphemeralByUser.get(interaction.user.id);
+  if (!tracked || tracked.size === 0) return;
+
+  const keep = new Set((keepMessageIds || []).filter(Boolean));
+  for (const messageId of [...tracked]) {
+    if (keep.has(messageId)) continue;
+    interaction.webhook.deleteMessage(messageId).catch(() => {});
+    tracked.delete(messageId);
+  }
+
+  if (tracked.size === 0) {
+    loginFlowEphemeralByUser.delete(interaction.user.id);
+  } else {
+    loginFlowEphemeralByUser.set(interaction.user.id, tracked);
+  }
+}
 
 function payloadHasInteractiveComponents(payload) {
   if (!Array.isArray(payload?.components) || payload.components.length === 0) return false;
@@ -170,6 +212,7 @@ function getEphemeralCleanupDelayMs(payload) {
 
 function maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralResult = false) {
   if (!interaction || !isEphemeralResult) return;
+  trackLoginFlowEphemeral(interaction, message);
   const delayMs = getEphemeralCleanupDelayMs(payload);
   if (!Number.isFinite(delayMs) || delayMs <= 0) return;
 
@@ -1387,11 +1430,12 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   const hotelName = getCombinedHotelLabel(hotelId);
   const sessionLabel = sessionMode === 'training' ? 'training session' : 'shift';
-  await respond({
+  const successMessage = await respond({
     content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}`,
     embeds: [],
     components: []
   });
+  clearTrackedLoginFlowEphemeral(interaction, [successMessage?.id]);
 
   if (isTakeover && hotelId !== 'TEAM_SHIFT') {
     const priorSession = db.prepare("SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1").get(hotelId, agent.id);
