@@ -5614,7 +5614,7 @@ async function handlePurge(interaction) {
     const messages = await interaction.channel.bulkDelete(amount, true);
     
     await interaction.editReply({ content: `✅ Successfully deleted **${messages.size}** messages from this channel.` });
-    scheduleExplicitReplyCleanup(interaction, 30 * 1000);
+    scheduleExplicitReplyCleanup(interaction, 60 * 1000);
     
     sendAuditLog(interaction.client, {
       title: '🧹 Channel Purged',

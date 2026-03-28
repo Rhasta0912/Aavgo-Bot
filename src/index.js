@@ -11,6 +11,7 @@ const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutoria
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 const DEFAULT_TEMP_MESSAGE_TTL_MS = 10 * 60 * 1000;
+const SHORT_TEMP_MESSAGE_TTL_MS = 60 * 1000;
 
 function isLoginSystemInteraction(interaction) {
   const commandName = String(interaction?.commandName || '').toLowerCase();
@@ -43,11 +44,35 @@ function isEphemeralInteractionContext(interaction) {
   }
 }
 
-function scheduleDefaultTempMessageCleanup(interaction, delayMs = DEFAULT_TEMP_MESSAGE_TTL_MS) {
+function isShortCommandConfirmation(message) {
+  if (!message) return false;
+  if (Array.isArray(message.components) && message.components.length > 0) return false;
+
+  const content = String(message.content || '').trim();
+  const isShort = content.length > 0 && content.length <= 220 && !content.includes('\n');
+  if (!isShort) return false;
+
+  const quickPattern = /(success|successfully|done|deleted|removed|updated|saved|assigned|promoted|demoted|cleared|refreshed|set|completed|logged)/i;
+  return quickPattern.test(content);
+}
+
+async function getDefaultTempMessageTtl(interaction) {
+  try {
+    if (!interaction?.fetchReply) return DEFAULT_TEMP_MESSAGE_TTL_MS;
+    const reply = await interaction.fetchReply().catch(() => null);
+    if (isShortCommandConfirmation(reply)) {
+      return SHORT_TEMP_MESSAGE_TTL_MS;
+    }
+  } catch (_) {}
+  return DEFAULT_TEMP_MESSAGE_TTL_MS;
+}
+
+async function scheduleDefaultTempMessageCleanup(interaction) {
   if (!interaction || isLoginSystemInteraction(interaction)) return;
   if (!isEphemeralInteractionContext(interaction)) return;
   if (!(interaction.deferred || interaction.replied)) return;
 
+  const delayMs = await getDefaultTempMessageTtl(interaction);
   const timer = setTimeout(() => {
     interaction.deleteReply?.().catch(() => {});
   }, delayMs);
@@ -678,7 +703,7 @@ client.on('interactionCreate', async interaction => {
     }
   } finally {
     if (autoAckTimer) clearTimeout(autoAckTimer);
-    scheduleDefaultTempMessageCleanup(interaction);
+    scheduleDefaultTempMessageCleanup(interaction).catch(() => {});
   }
 });
 

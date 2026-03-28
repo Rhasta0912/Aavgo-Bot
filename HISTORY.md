@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Updated non-login temp-message expiry to 1 minute for short command confirmations.
+  - Summary: Non-login ephemeral temp messages now use a smart TTL split: short one-line command confirmation replies (for example success/deleted/updated style notices) auto-delete after 1 minute, while longer or richer non-login temp messages still use the 10-minute expiry. `/purge` success temp replies were aligned to 1 minute as part of this rule.
+  - Files touched:
+    - src/index.js
+    - src/auth.js
+    - HISTORY.md
 - Set `/purge` completion temp message to 30-second expiry.
   - Summary: The ephemeral success reply for `/purge` (for example, `Successfully deleted N messages`) now auto-deletes after 30 seconds to reduce manager/dev command clutter.
   - Files touched:
