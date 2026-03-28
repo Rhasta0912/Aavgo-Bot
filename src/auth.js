@@ -4335,24 +4335,26 @@ async function handleConfirmHotelLink(interaction) {
 
     // Hotel linked confirmation + optional start-now prompt
     const linkedEmbed = new EmbedBuilder()
-      .setTitle('✅ Hotel Successfully Linked')
-      .setDescription(`### 🏨 ASSIGNMENT COMPLETE\n` +
-                      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-                      `You have been permanently linked to **${getCombinedHotelLabel(hotelId)}**.\n\n` +
-                      `> **NEXT STEP:** You are NOT in a shift yet. To check-in, please go to the hotel channel and click **Start Shift** to initialize your login.\n` +
-                      `\n` +
-                      `> **Do you want to start your shift?**\n` +
-                      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
+      .setTitle('Hotel Successfully Linked')
+      .setDescription(
+        '### ASSIGNMENT COMPLETE\n' +
+        '---------------------------\n' +
+        `You have been permanently linked to **${getCombinedHotelLabel(hotelId)}**.\n\n` +
+        '> Your shift is not live yet.\n' +
+        '> Press **Start Shift** below to continue now,\n' +
+        '> or choose **Later** and start from your hotel channel.\n' +
+        '---------------------------'
+      )
       .setColor(0x57F287);
 
     const startNowBtn = new ButtonBuilder()
       .setCustomId('hotel_link_start_yes_btn')
-      .setLabel('✅ Yes, Start Shift')
+      .setLabel('Start Shift')
       .setStyle(ButtonStyle.Primary);
 
     const startLaterBtn = new ButtonBuilder()
       .setCustomId('hotel_link_start_no_btn')
-      .setLabel('❌ No, Later')
+      .setLabel('Later')
       .setStyle(ButtonStyle.Secondary);
 
     await sendComponentUpdate(interaction, {

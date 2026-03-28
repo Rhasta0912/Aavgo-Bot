@@ -730,3 +730,11 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Added prerequisite role gating to the Profiles panel so `Set Team` now warns that the target must already have the `Agent` role before selection, and `Set Hotel` now requires both `Agent` plus a `Team 1` or `Team 2` role before single-hotel or multi-hotel assignment can proceed.
 - Added an `Applicants` profile view to the Profiles panel, renamed the main picker placeholder to `Select Profile`, and restored the `Applicants` role during `/db-remove-user` so a fully purged user returns to square one instead of staying role-less.
 - Expanded the `Applicants` profile card so it now shows the same action bar as other profiles (`Set Role`, `Set Team`, `Set Hotel`, `Kick`, `Back`) instead of only the fallback `Back` button.
+- Aligned the hotel-link success card with the same clean style used by the hotel-assignment card.
+  - Summary: Updated the Hotel Successfully Linked embed copy/layout to match the assignment card tone and hierarchy, and simplified the action button labels to Start Shift and Later while keeping the same custom IDs and flow behavior.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+  - Notes:
+    - UI-only update for consistency.
+    - No permission, routing, or PIN-handling behavior changed.
