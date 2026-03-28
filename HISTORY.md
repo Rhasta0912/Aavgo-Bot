@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Refined Agent Route wording and hierarchy for a more professional operations tone.
+  - Summary: Updated the session route card text to clearer, more formal labels (`ROUTE SELECTION`, `Live (Hotel Shift)`, `Practice (Training)`) with concise operational descriptions.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Refined agent-flow cards to better match the requested Claude-style UI and hardened hotel picker interaction reliability.
   - Summary: Adjusted card composition and wording for cleaner visual hierarchy (especially hotel assignment and session-route cards) and added a safe deferred response path for hotel-select interactions to reduce `10062 Unknown interaction` failures under slower response timing.
   - Files touched:

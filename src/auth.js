@@ -8055,11 +8055,11 @@ function buildAgentRouteSelectionPayload() {
   const embed = new EmbedBuilder()
     .setTitle('🛡️ Aavgo Operations · Agent Route')
     .setDescription(
-      '### SESSION TYPE SELECTION\n' +
+      '### ROUTE SELECTION\n' +
       '────────────────────────\n' +
-      'Choose how this session should run.\n\n' +
-      '**Live:** Hotel Shift for normal operations.\n' +
-      '**Practice:** Training for trainee sessions.\n' +
+      'Select how this session should run.\n\n' +
+      '**Live (Hotel Shift):** Standard operations in your assigned hotel.\n' +
+      '**Practice (Training):** Training session tracked separately from live shifts.\n' +
       '────────────────────────'
     )
     .setColor(0x5865F2)
