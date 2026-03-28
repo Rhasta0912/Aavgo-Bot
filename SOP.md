@@ -72,6 +72,8 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
   - `agent` opens the Agent Route
   - `team_leader` / `sme` opens the Management Route
   - `trainee` opens the Training Route
+- Training sessions must stay in the training board only.
+- Training must not assign the live `On-Shift` role or any hotel permission / ghost roles.
 - Keep every login card UI-friendly and beginner-friendly:
   - use plain language
   - avoid Discord jargon

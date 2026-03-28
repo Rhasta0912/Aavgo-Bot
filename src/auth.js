@@ -1035,7 +1035,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   let noteAlert = '';
 
-  if (hotelId !== 'TEAM_SHIFT') {
+  if (hotelId !== 'TEAM_SHIFT' && sessionMode !== 'training') {
     try {
       const member = interaction.member;
       const guild = interaction.guild;

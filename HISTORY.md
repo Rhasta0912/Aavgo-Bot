@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Keep training sessions off the live Discord roles.
+  - Summary: Training logins now update the training board only and do not assign the live `On-Shift` role or any hotel permission / ghost roles. This keeps trainee activity separate from live hotel presence while leaving the live shift flow unchanged.
+  - Files touched:
+    - src/auth.js
+    - SOP.md
+    - HISTORY.md
 - Replace the post-PIN success message with the next route card so the login flow stays on one screen.
   - Summary: After a user saves their security PIN, the bot now moves straight into the proper route card instead of posting a separate “security updated” confirmation first. This keeps the login flow cleaner and reduces stacked messages for people who are new to Discord.
   - Files touched:
