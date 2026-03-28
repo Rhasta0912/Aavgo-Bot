@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Refined agent-flow cards to better match the requested Claude-style UI and hardened hotel picker interaction reliability.
+  - Summary: Adjusted card composition and wording for cleaner visual hierarchy (especially hotel assignment and session-route cards) and added a safe deferred response path for hotel-select interactions to reduce `10062 Unknown interaction` failures under slower response timing.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Polished agent shift-route UI to a cleaner professional style.
   - Summary: Updated the Agent Route, multi-hotel assignment picker, and shift confirmation card to a cleaner operations look with less emoji noise, clearer hierarchy, and more readable action labels (`Live • Hotel Shift`, `Practice • Training`, `Start Shift`, `Cancel`).
   - Files touched:

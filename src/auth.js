@@ -8011,6 +8011,13 @@ async function handleSetupLoginTeam(interaction) {
 }
 
 function buildAssignedHotelShiftPickerPayload(hotelIds, allowMultiHotel = false) {
+  const teamLabel = (() => {
+    const firstHotelId = normalizeCombinedHotelId(hotelIds?.[0]);
+    if (!firstHotelId) return 'Assigned Team';
+    const row = db.prepare('SELECT team FROM hotels WHERE id = ?').get(firstHotelId);
+    return row?.team || 'Assigned Team';
+  })();
+
   const hotelOptions = buildAssignedHotelSelectionOptions(hotelIds);
   const pickMenu = new StringSelectMenuBuilder()
     .setCustomId(allowMultiHotel ? 'shift_hotel_pick_menu_multi' : 'shift_hotel_pick_menu')
@@ -8027,10 +8034,11 @@ function buildAssignedHotelShiftPickerPayload(hotelIds, allowMultiHotel = false)
   const embed = new EmbedBuilder()
     .setTitle('🏨 Choose Your Hotel Location')
     .setDescription(
-      '### ASSIGNMENT SELECTION\n' +
+      `### 📍 ASSIGNMENT SELECTION — ${teamLabel}\n` +
       '────────────────────────\n' +
-      'Use the dropdown below to select your hotel for this shift.\n\n' +
-      '⚠ Permanent assignment changes should be handled by Team Leader or Operations Manager.\n' +
+      '> Use the dropdown below to select your hotel.\n\n' +
+      '> ⚠ **Permanent choice.** You cannot switch hotels\n' +
+      '> without contacting a Developer or Team Leader.\n' +
       '────────────────────────'
     )
     .setColor(0x57F287)
@@ -8199,6 +8207,67 @@ async function handleSameHotelConfirm(interaction) {
       await interaction.editReply({ content: '❌ Failed to continue with this hotel.', embeds: [], components: [] }).catch(() => {});
     } else {
       await interaction.reply({ content: '❌ Failed to continue with this hotel.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleHotelSelectMenu(interaction) {
+  try {
+    await safeDeferComponentUpdate(interaction);
+
+    const hotelId = interaction.values[0];
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return sendComponentReply(interaction, { content: '❌ You are not registered as an agent.', ephemeral: true });
+    }
+
+    if (agent.hotel_id) {
+      return sendComponentUpdate(interaction, {
+        content: '🔒 **Hotel Already Linked.** Your account is permanently assigned. Contact a Developer to change it.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    const hotelName = getCombinedHotelLabel(hotelId);
+    const confirmEmbed = new EmbedBuilder()
+      .setTitle('🏨 Confirm Hotel Assignment')
+      .setDescription(
+        '### ASSIGNMENT CONFIRMATION\n' +
+        '────────────────────────\n' +
+        `You are about to link your account to **${hotelName}**.\n\n` +
+        '> ⚠ This is a permanent choice unless changed by\n' +
+        '> a Developer or Team Leader.\n' +
+        '────────────────────────'
+      )
+      .setColor(0xFEE75C)
+      .setFooter({ text: 'Aavgo Operations • Assignment Lock-In' })
+      .setTimestamp();
+
+    const confirmBtn = new ButtonBuilder()
+      .setCustomId(`confirm_hotel_${hotelId}`)
+      .setLabel('Link This Hotel')
+      .setStyle(ButtonStyle.Success);
+
+    const cancelBtn = new ButtonBuilder()
+      .setCustomId('cancel_hotel_link')
+      .setLabel('Cancel')
+      .setStyle(ButtonStyle.Secondary);
+
+    return sendComponentUpdate(interaction, {
+      embeds: [confirmEmbed],
+      components: [new ActionRowBuilder().addComponents(confirmBtn, cancelBtn)]
+    });
+  } catch (error) {
+    if (error?.code === 10062) {
+      console.warn('[HOTEL-SELECT] Interaction expired before response (10062).');
+      return;
+    }
+    console.error('Error in handleHotelSelectMenu:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to open hotel assignment confirmation.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to open hotel assignment confirmation.', ephemeral: true }).catch(() => {});
     }
   }
 }
