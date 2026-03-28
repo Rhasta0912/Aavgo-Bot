@@ -111,6 +111,7 @@ const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
+const LOGIN_CHANNEL_ID = '1482228169485582446';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
 const overtimeWarnedSessionIds = new Set();
@@ -158,6 +159,47 @@ function parseSessionTimestamp(value) {
 function getCappedLogoutIso(loginTimeValue) {
   const loginMs = parseSessionTimestamp(loginTimeValue);
   return new Date(loginMs + OVERTIME_WARNING_MS).toISOString();
+}
+
+async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
+  const modeLabel = session.session_kind === 'training' ? 'training' : 'shift';
+  const warningText =
+    `⚠️ Overtime Warning\n\n` +
+    `You have reached **8 hours** on your current ${modeLabel}.\n` +
+    `Please end your session now to avoid auto logout.\n\n` +
+    `If still active after **5 minutes**, the bot will auto logout and cap this record to **8 hours**.`;
+
+  const pingText =
+    `<@${session.discord_id}> ⚠️ **Overtime warning**: You are near overtime on your active ${modeLabel}. ` +
+    `Please end session now. Auto logout triggers in **5 minutes** and record will cap at **8 hours**.`;
+
+  let dmSent = false;
+  let pingSent = false;
+
+  const user = await client.users.fetch(session.discord_id).catch(() => null);
+  if (user) {
+    await user.send(warningText).then(() => { dmSent = true; }).catch(() => {});
+  }
+
+  const loginChannel = await client.channels.fetch(LOGIN_CHANNEL_ID).catch(() => null);
+  if (loginChannel && loginChannel.isTextBased()) {
+    await loginChannel.send({
+      content: pingText,
+      allowedMentions: { users: [session.discord_id] }
+    }).then(() => { pingSent = true; }).catch(() => {});
+  }
+
+  sendAuditLog(client, {
+    title: source === 'MANUAL' ? '⚠️ Manual Overtime Warning' : '⚠️ Overtime Warning Sent',
+    description:
+      `**User:** ${session.username} (<@${session.discord_id}>)\n` +
+      `**Mode:** ${modeLabel === 'training' ? 'Training' : 'Shift'}\n` +
+      `**Delivery:** DM ${dmSent ? 'Sent' : 'Failed'} | Login Channel Ping ${pingSent ? 'Sent' : 'Failed'}`,
+    color: 0xFEE75C,
+    userId: session.discord_id
+  });
+
+  return { dmSent, pingSent };
 }
 
 function buildAuditFields(resolvedDescription) {
@@ -1794,18 +1836,9 @@ async function monitorOvertimeSessions(client) {
       if (elapsedMs >= OVERTIME_WARNING_MS && elapsedMs < OVERTIME_AUTO_LOGOUT_MS && !overtimeWarnedSessionIds.has(sessionIdKey)) {
         overtimeWarnedSessionIds.add(sessionIdKey);
         try {
-          const user = await client.users.fetch(session.discord_id).catch(() => null);
-          if (user) {
-            const modeLabel = session.session_kind === 'training' ? 'training' : 'shift';
-            await user.send(
-              `⚠️ Overtime Warning\n\n` +
-              `You have reached **8 hours** on your current ${modeLabel}.\n` +
-              `Please end your session now to avoid auto logout.\n\n` +
-              `If still active after **5 minutes**, the bot will auto logout and cap this record to **8 hours**.`
-            ).catch(() => {});
-          }
+          await sendOvertimeWarningNotice(client, session, 'AUTO');
         } catch (warnErr) {
-          console.warn('[OVERTIME] Failed to send warning DM:', warnErr.message);
+          console.warn('[OVERTIME] Failed to send warning notice:', warnErr.message);
         }
       }
 
@@ -5830,6 +5863,7 @@ async function handleHelpStaff(interaction) {
         '> `/db-log-checkin`: Manually log a guest check-in to management tracking.\n' +
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
         '> `/add-hours`: Add manual hours to an agent record.\n' +
+        '> `/limit-warning user:@name`: Manually trigger overtime warning (DM + ping).\n' +
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
@@ -5910,6 +5944,70 @@ async function handleHelpAgent(interaction) {
     console.error('Error in handleHelpAgent:', e);
     if (!interaction.replied && !interaction.deferred) {
       await interaction.reply({ content: '❌ Error opening the agent guide.', ephemeral: true });
+    }
+  }
+}
+
+async function handleLimitWarning(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const targetUser = interaction.options.getUser('user');
+    const session = db.prepare(`
+      SELECT
+        sessions.id,
+        sessions.agent_id,
+        sessions.login_time,
+        COALESCE(sessions.session_kind, 'shift') AS session_kind,
+        agents.discord_id,
+        agents.username,
+        agents.role
+      FROM sessions
+      JOIN agents ON agents.id = sessions.agent_id
+      WHERE sessions.status = 'active'
+        AND agents.discord_id = ?
+      ORDER BY sessions.login_time DESC
+      LIMIT 1
+    `).get(targetUser.id);
+
+    if (!session) {
+      return interaction.editReply({ content: `❌ **${targetUser.username}** has no active shift/training session right now.` });
+    }
+
+    const normalizedRole = String(session.role || '').toLowerCase();
+    if (!['agent', 'trainee'].includes(normalizedRole)) {
+      return interaction.editReply({ content: `❌ **${targetUser.username}** is active, but not in Agent/Trainee role.` });
+    }
+
+    overtimeWarnedSessionIds.add(String(session.id));
+    const result = await sendOvertimeWarningNotice(interaction.client, session, 'MANUAL');
+
+    sendAuditLog(interaction.client, {
+      title: '📢 Manual Limit Warning Triggered',
+      description:
+        `**Target:** ${session.username} (<@${session.discord_id}>)\n` +
+        `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
+        `**Triggered By:** ${interaction.user.username} (<@${interaction.user.id}>)`,
+      color: 0xF1C40F,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+
+    await interaction.editReply({
+      content:
+        `✅ Overtime warning sent to **${session.username}**.\n` +
+        `DM: **${result.dmSent ? 'Sent' : 'Failed'}** | Ping: **${result.pingSent ? 'Sent' : 'Failed'}**`
+    });
+  } catch (error) {
+    console.error('Error in handleLimitWarning:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to send manual overtime warning.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to send manual overtime warning.', ephemeral: true }).catch(() => {});
     }
   }
 }
@@ -6896,6 +6994,7 @@ module.exports = {
   handleMemberLeave,
   handleHelpStaff,
   handleHelpAgent,
+  handleLimitWarning,
   handleSelectTrainee,
   handleNewcomerPromotion,
   handleNewcomerAgentPinSubmit,

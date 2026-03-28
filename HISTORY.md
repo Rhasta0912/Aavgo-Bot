@@ -60,6 +60,12 @@ Working rules:
   - Files touched:
     - src/auth.js
     - SOP.md
+- Added overtime warning escalation controls with manual trigger support.
+  - Summary: Overtime warning now sends both a DM and a login-channel @mention ping (callout). Added new `/limit-warning user:@name` command for Developer/Operations Manager so they can manually trigger the same warning for active agent/trainee sessions without waiting for the 8-hour timer.
+  - Files touched:
+    - src/commands.js
+    - src/index.js
+    - src/auth.js
     - HISTORY.md
 - Align the hotel map with the live context: keep AD1 separate, add Travelodge and Day Inns Bishop as distinct Team 1 hotels, and wire their status channels and roles into the bot.
 - Added overtime enforcement for active `agent` / `trainee` sessions.

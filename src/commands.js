@@ -160,6 +160,10 @@ const commandData = [
     .setName('help-agent')
     .setDescription('Show a quick guide for core agent commands and daily workflow'),
   new SlashCommandBuilder()
+    .setName('limit-warning')
+    .setDescription('(Developer/Operations Manager) Manually send an overtime warning to an active agent/trainee')
+    .addUserOption(option => option.setName('user').setDescription('The active agent/trainee to warn').setRequired(true)),
+  new SlashCommandBuilder()
     .setName('select-trainee')
     .setDescription('(Management/Developer) Assign the Trainees role to a user')
     .addUserOption(option => option.setName('name').setDescription('The user to mark as trainee').setRequired(true)),
