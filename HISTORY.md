@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Add a post-link shift question and close team-check bypasses.
+  - Summary: After `✅ Hotel Successfully Linked`, the bot now asks `Do you want to start your shift?` with `Yes` / `No` buttons. Also added another team requirement check at PIN submit time for agent live shifts, so old/stale flow paths cannot bypass the TL/OM team assignment rule.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Add a final "start shift" confirmation step for agents after PIN check.
   - Summary: In the agent hotel-shift flow, after PIN is verified, the bot now asks one clear final question: "Do you want to start your shift?" with `Yes` and `No` buttons. `Yes` continues to shift login, and `No` cancels cleanly. This keeps the flow clearer for users who are still learning Discord.
   - Files touched:

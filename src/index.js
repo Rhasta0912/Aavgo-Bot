@@ -532,6 +532,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'training_start_btn') {
       await auth.handleTrainingStartClick(interaction);
+    } else if (interaction.customId === 'hotel_link_start_yes_btn' || interaction.customId === 'hotel_link_start_no_btn') {
+      await auth.handleHotelLinkStartChoice(interaction);
     } else if (interaction.customId.startsWith('agent_shift_confirm_yes:') || interaction.customId === 'agent_shift_confirm_no') {
       await auth.handleAgentShiftStartConfirm(interaction);
     } else if (interaction.customId === 'training_end_btn') {

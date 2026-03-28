@@ -631,6 +631,22 @@ async function guardShiftPinFirst(interaction, agent, sessionMode = 'shift') {
   return false;
 }
 
+function buildAgentTeamRequiredEmbed() {
+  return new EmbedBuilder()
+    .setTitle('🛡️ Aavgo Operations · Team Required')
+    .setDescription(
+      '### ⚠️ TEAM ASSIGNMENT REQUIRED\n' +
+      '────────────────────────\n' +
+      '🤖 Board: You cannot start a hotel shift yet.\n' +
+      '👤 Requirement: Your team must be assigned first.\n' +
+      '🧑‍💼 Ask: Team Leader or Operations Manager must set your team.\n' +
+      '────────────────────────'
+    )
+    .setColor(0xFEE75C)
+    .setFooter({ text: 'Aavgo Operations • Team Routing' })
+    .setTimestamp();
+}
+
 function normalizeTeamInput(input) {
   const cleaned = (input || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (cleaned === 'team 1' || cleaned === '1' || cleaned === 'team1') return 'Team 1';
@@ -2830,22 +2846,8 @@ async function handleStartShiftClick(interaction) {
     }
 
     if (!agent.team) {
-      const teamRequiredEmbed = new EmbedBuilder()
-        .setTitle('🛡️ Aavgo Operations · Team Required')
-        .setDescription(
-          '### ⚠️ TEAM ASSIGNMENT REQUIRED\n' +
-          '────────────────────────\n' +
-          '🤖 Board: You cannot start a hotel shift yet.\n' +
-          '👤 Requirement: Your team must be assigned first.\n' +
-          '🧑‍💼 Ask: Team Leader or Operations Manager must set your team.\n' +
-          '────────────────────────'
-        )
-        .setColor(0xFEE75C)
-        .setFooter({ text: 'Aavgo Operations • Team Routing' })
-        .setTimestamp();
-
       return sendPrivateFlowPayload(interaction, {
-        embeds: [teamRequiredEmbed],
+        embeds: [buildAgentTeamRequiredEmbed()],
         components: []
       });
     }
@@ -3587,17 +3589,32 @@ async function handleConfirmHotelLink(interaction) {
        console.warn('[ROLES] Failed to assign initial Grey role:', roleErr.message);
     }
 
-    // Proceed to PIN modal
+    // Hotel linked confirmation + optional start-now prompt
     const linkedEmbed = new EmbedBuilder()
       .setTitle('✅ Hotel Successfully Linked')
       .setDescription(`### 🏨 ASSIGNMENT COMPLETE\n` +
                       `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
                       `You have been permanently linked to **${getCombinedHotelLabel(hotelId)}**.\n\n` +
                       `> **NEXT STEP:** You are NOT in a shift yet. To check-in, please go to the hotel channel and click **Start Shift** to initialize your login.\n` +
+                      `\n` +
+                      `> **Do you want to start your shift?**\n` +
                       `━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
       .setColor(0x57F287);
 
-    await sendComponentUpdate(interaction, { embeds: [linkedEmbed], components: [] });
+    const startNowBtn = new ButtonBuilder()
+      .setCustomId('hotel_link_start_yes_btn')
+      .setLabel('✅ Yes, Start Shift')
+      .setStyle(ButtonStyle.Primary);
+
+    const startLaterBtn = new ButtonBuilder()
+      .setCustomId('hotel_link_start_no_btn')
+      .setLabel('❌ No, Later')
+      .setStyle(ButtonStyle.Secondary);
+
+    await sendComponentUpdate(interaction, {
+      embeds: [linkedEmbed],
+      components: [new ActionRowBuilder().addComponents(startNowBtn, startLaterBtn)]
+    });
 
   } catch (error) {
     console.error('Error in handleConfirmHotelLink:', error);
@@ -3636,6 +3653,51 @@ async function handleCancelHotelLink(interaction) {
     await showHotelSelection(interaction, agent.team, true);
   } catch (e) {
     console.error('Error in handleCancelHotelLink:', e);
+  }
+}
+
+async function handleHotelLinkStartChoice(interaction) {
+  try {
+    if (interaction.customId === 'hotel_link_start_no_btn') {
+      return sendPrivateFlowPayload(interaction, {
+        content: '✅ No problem. You can start later from your hotel channel.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'HOTEL LINK START CHOICE');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    }
+    if (!agent) {
+      return sendPrivateFlowPayload(interaction, {
+        content: '❌ You are not registered as an agent.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
+
+    if (!agent.team) {
+      return sendPrivateFlowPayload(interaction, {
+        embeds: [buildAgentTeamRequiredEmbed()],
+        components: []
+      });
+    }
+
+    return await handleStartShiftClick(interaction);
+  } catch (error) {
+    console.error('Error in handleHotelLinkStartChoice:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to open shift start flow.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to open shift start flow.', ephemeral: true }).catch(() => {});
+    }
   }
 }
 
@@ -3815,6 +3877,13 @@ async function handleModalSubmit(interaction) {
     }
 
     const normalizedRole = normalizeAgentRole(agent.role);
+    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && normalizedRole === 'agent' && !agent.team) {
+      return interaction.editReply({
+        embeds: [buildAgentTeamRequiredEmbed()],
+        components: []
+      });
+    }
+
     if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && normalizedRole === 'agent') {
       const confirmEmbed = new EmbedBuilder()
         .setTitle('🛡️ Aavgo Operations · Agent Route')
@@ -7148,6 +7217,7 @@ module.exports = {
   interactionHasRoleAtLeast,
   getAgentDisplayName,
   handleConfirmHotelLink,
+  handleHotelLinkStartChoice,
   handleCancelHotelLink,
   handleHotelSelectMenu,
   handleAgentShiftStartConfirm,
