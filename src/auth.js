@@ -3239,12 +3239,9 @@ async function handleAgentRoutePick(interaction) {
     const embed = new EmbedBuilder()
       .setTitle('🛡️ Aavgo Operations · Agent Route')
       .setDescription(
-        '### ✅ SESSION TYPE SELECTED\n' +
-        '────────────────────────\n' +
-        '🤖 Board: Choose how this session should run.\n' +
-        '🟦 Live: Hotel Shift for normal operations.\n' +
-        '🟪 Practice: Training for trainee sessions.\n' +
-        '────────────────────────'
+        'Choose how you want to start:\n\n' +
+        '- **Hotel Shift**: normal live operations\n' +
+        '- **Training**: training flow'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations • Session Routing' })
@@ -3252,12 +3249,12 @@ async function handleAgentRoutePick(interaction) {
 
     const hotelBtn = new ButtonBuilder()
       .setCustomId('shift_mode_hotel_btn')
-      .setLabel('🟦 Live -> Hotel Shift')
+      .setLabel('Hotel Shift')
       .setStyle(ButtonStyle.Primary);
 
     const trainingBtn = new ButtonBuilder()
       .setCustomId('training_start_btn')
-      .setLabel('🟪 Practice -> Training')
+      .setLabel('Training')
       .setStyle(ButtonStyle.Secondary);
 
     return sendComponentUpdate(interaction, {

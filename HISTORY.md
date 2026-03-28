@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Revert the Agent Route card back to the simpler layout while keeping PIN-first routing.
+  - Summary: The login flow still checks for a saved PIN first and auto-routes by role, but the agent route card is back to the simpler wording and button labels so the UI does not feel unexpectedly changed.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Keep training sessions off the live Discord roles.
   - Summary: Training logins now update the training board only and do not assign the live `On-Shift` role or any hotel permission / ghost roles. This keeps trainee activity separate from live hotel presence while leaving the live shift flow unchanged.
   - Files touched:
