@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Stop `/setup-login` public kiosk message from being overwritten by private flow steps.
+  - Summary: Hardened private-flow response routing so `start_shift_btn` always replies ephemerally and never updates the public setup kiosk message. Added fallback behavior so deferred public interactions send ephemeral follow-ups instead of editing the source message.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Restore the styled Agent Route card and remove the plain fallback copy.
   - Summary: Updated the Agent Route card back to the structured UI format (`SESSION TYPE SELECTED` with clear Live/Practice labels) and removed old plain wording (`Choose how you want to start`) that made the flow look inconsistent.
   - Files touched:

@@ -54,7 +54,23 @@ function isEphemeralSourceInteraction(interaction) {
 }
 
 function sendPrivateFlowPayload(interaction, payload) {
+  const forcePrivateReply = interaction?.customId === 'start_shift_btn';
+  const privatePayload = { ...payload, ephemeral: true };
+
+  if (forcePrivateReply) {
+    if (interaction.deferred || interaction.replied) {
+      if (typeof interaction.followUp === 'function') {
+        return interaction.followUp(privatePayload);
+      }
+      return interaction.editReply(payload);
+    }
+    return interaction.reply(privatePayload);
+  }
+
   if (interaction.deferred || interaction.replied) {
+    if (!isEphemeralSourceInteraction(interaction) && typeof interaction.followUp === 'function') {
+      return interaction.followUp(privatePayload);
+    }
     return interaction.editReply(payload);
   }
 
@@ -62,7 +78,7 @@ function sendPrivateFlowPayload(interaction, payload) {
     return interaction.update(payload);
   }
 
-  return interaction.reply({ ...payload, ephemeral: true });
+  return interaction.reply(privatePayload);
 }
 
 // ─── Constants ───────────────────────────────────────
