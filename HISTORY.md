@@ -78,6 +78,11 @@ Working rules:
     - src/auth.js
     - SOP.md
     - HISTORY.md
+- Enforce `No Pin` role automation for Agent/Trainee across all role assignment paths.
+  - Summary: Added centralized `No Pin` role sync so anyone with `Agents (1482227287159078964)` or `Trainees (1484705126026449029)` automatically receives `No Pin (1485275671797436620)` while their PIN is not configured, regardless of whether roles came from buttons, commands, or manual Discord edits. The role is auto-removed once PIN is configured (or if the user is no longer Agent/Trainee). Also aligned command promotion flow so trainee promotions can receive `No Pin` immediately.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Fix same-hotel confirmation interaction routing in login flow.
   - Summary: The `same_hotel_confirm_*` handler was mistakenly wired under the string-select branch, so button clicks were not acknowledged and Discord showed `This interaction failed`. Routing is now corrected under the button branch, and the misplaced select-menu route was removed.
   - Files touched:

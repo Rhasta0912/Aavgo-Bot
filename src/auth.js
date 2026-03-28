@@ -163,6 +163,9 @@ const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
+const AGENT_ROLE_ID = '1482227287159078964';
+const TRAINEE_ROLE_ID = '1484705126026449029';
+const NO_PIN_ROLE_ID = '1485275671797436620';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
 const OVERTIME_TEST_WARNING_MS = 3 * 60 * 1000;
@@ -946,8 +949,8 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
     const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
     const traineeRole = interaction.guild.roles.cache.get('1484705126026449029') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'trainees');
     const applicantsRole = interaction.guild.roles.cache.get('1484919969689894912') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
-    const unverifiedRole = normalizedRole === 'agent'
-      ? (interaction.guild.roles.cache.get('1485275671797436620') || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'unverified'))
+    const unverifiedRole = (normalizedRole === 'agent' || normalizedRole === 'trainee')
+      ? (interaction.guild.roles.cache.get(NO_PIN_ROLE_ID) || interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'unverified'))
       : null;
 
     const rolesToAdd = [agentsRole, loggedOutRole, unverifiedRole].filter(Boolean);
@@ -2338,6 +2341,43 @@ function formatHotelCompatibilityLabel(hotelIds) {
   return labels.length > 0 ? labels.join(', ') : 'none';
 }
 
+async function syncNoPinRoleForMember(member, guild, agentRecord, contextLabel = 'ROLE SYNC') {
+  try {
+    if (!member || !guild) return;
+
+    const noPinRole =
+      guild.roles.cache.get(NO_PIN_ROLE_ID) ||
+      guild.roles.cache.find(role => {
+        const normalized = normalizeDiscordRoleName(role?.name);
+        return normalized === 'unverified' || normalized === 'no pin';
+      });
+    if (!noPinRole) return;
+
+    const roleNames = [...(member.roles?.cache?.values?.() || [])]
+      .map(role => normalizeDiscordRoleName(role?.name))
+      .filter(Boolean);
+    const hasAgentOrTraineeRole =
+      member.roles.cache.has(AGENT_ROLE_ID) ||
+      member.roles.cache.has(TRAINEE_ROLE_ID) ||
+      hasDiscordRoleName(roleNames, ['agent', 'agents', 'trainee', 'trainees']);
+    const pinConfigured = hasConfiguredPin(agentRecord);
+    const hasNoPinRole = member.roles.cache.has(noPinRole.id);
+
+    if (hasAgentOrTraineeRole && !pinConfigured && !hasNoPinRole) {
+      await member.roles.add(noPinRole);
+      console.log(`[${contextLabel}] Added ${noPinRole.name} to ${member.displayName || member.user?.username || member.id} (PIN missing).`);
+      return;
+    }
+
+    if ((!hasAgentOrTraineeRole || pinConfigured) && hasNoPinRole) {
+      await member.roles.remove(noPinRole);
+      console.log(`[${contextLabel}] Removed ${noPinRole.name} from ${member.displayName || member.user?.username || member.id} (PIN set or role no longer eligible).`);
+    }
+  } catch (error) {
+    console.warn(`[${contextLabel}] No-PIN role sync warning for ${member?.displayName || member?.user?.username || member?.id || 'unknown'}:`, error.message);
+  }
+}
+
 async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, contextLabel = 'ROLE SYNC') {
   try {
     if (!member || !guild) return null;
@@ -2381,6 +2421,8 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
         console.log(`[${contextLabel}] Updated ${displayName}: role=${resolvedRole} team=${resolvedTeam} hotels=${formatHotelCompatibilityLabel(hotelCompatibility)}`);
       }
 
+      const syncedExisting = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
+      await syncNoPinRoleForMember(member, guild, syncedExisting || existing, contextLabel);
       return { action: 'updated', role: snapshot.role || normalizeAgentRole(existing.role), team: snapshot.team || existing.team || null };
     }
 
@@ -2394,6 +2436,9 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
     db.prepare(
       "INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, team, hotel_compatibility) VALUES (?, ?, ?, 0, ?, ?, ?, ?)"
     ).run(member.id, displayName, bootstrapPin, bootstrapRole, bootstrapStatus, snapshot.team || null, hotelCompatibilityValue);
+
+    const created = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
+    await syncNoPinRoleForMember(member, guild, created, contextLabel);
 
     console.log(`[${contextLabel}] Created ${displayName}: role=${bootstrapRole} team=${snapshot.team || 'none'} hotels=${formatHotelCompatibilityLabel(hotelCompatibility)}`);
     return { action: 'created', role: bootstrapRole, team: snapshot.team || null };
