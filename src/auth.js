@@ -152,6 +152,7 @@ const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
 const overtimeWarnedSessionIds = new Set();
 const overtimeAutoLogoutAgentIds = new Set();
+const overtimeConfirmedSessionIds = new Set();
 
 const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
@@ -199,30 +200,47 @@ function getCappedLogoutIso(loginTimeValue) {
 
 async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
   const modeLabel = session.session_kind === 'training' ? 'training' : 'shift';
+  const sessionId = String(session.id);
   const warningText =
     `⚠️ Overtime Warning\n\n` +
     `You have reached **8 hours** on your current ${modeLabel}.\n` +
     `Please end your session now to avoid auto logout.\n\n` +
-    `If still active after **5 minutes**, the bot will auto logout and cap this record to **8 hours**.`;
+    `If still active after **5 minutes**, the bot will auto logout and cap this record to **8 hours**.\n\n` +
+    `If you need to continue, use the **Confirm Overtime** button in the server warning message.`;
 
   const pingText =
     `<@${session.discord_id}> ⚠️ **Overtime warning**: You are near overtime on your active ${modeLabel}. ` +
-    `Please end session now. Auto logout triggers in **5 minutes** and record will cap at **8 hours**.`;
+    `Please end session now. Auto logout triggers in **5 minutes** and record will cap at **8 hours** unless you confirm overtime.`;
 
   let dmSent = false;
+  let ttsSent = false;
   let pingSent = false;
+  let buttonSent = false;
 
   const user = await client.users.fetch(session.discord_id).catch(() => null);
   if (user) {
     await user.send(warningText).then(() => { dmSent = true; }).catch(() => {});
+    await user.send({
+      content: `⚠️ Attention: You have received an overtime warning for your current ${modeLabel}.`,
+      tts: true
+    }).then(() => { ttsSent = true; }).catch(() => {});
   }
 
   const loginChannel = await client.channels.fetch(LOGIN_CHANNEL_ID).catch(() => null);
   if (loginChannel && loginChannel.isTextBased()) {
+    const confirmRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`overtime_confirm:${sessionId}:${session.discord_id}`)
+        .setLabel('Confirm Overtime')
+        .setStyle(ButtonStyle.Success)
+    );
+
     await loginChannel.send({
       content: pingText,
+      components: [confirmRow],
       allowedMentions: { users: [session.discord_id] }
     }).then(() => { pingSent = true; }).catch(() => {});
+    if (pingSent) buttonSent = true;
   }
 
   sendAuditLog(client, {
@@ -230,12 +248,12 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO') {
     description:
       `**User:** ${session.username} (<@${session.discord_id}>)\n` +
       `**Mode:** ${modeLabel === 'training' ? 'Training' : 'Shift'}\n` +
-      `**Delivery:** DM ${dmSent ? 'Sent' : 'Failed'} | Login Channel Ping ${pingSent ? 'Sent' : 'Failed'}`,
+      `**Delivery:** DM ${dmSent ? 'Sent' : 'Failed'} | TTS DM ${ttsSent ? 'Sent' : 'Failed'} | Login Ping ${pingSent ? 'Sent' : 'Failed'} | Confirm Button ${buttonSent ? 'Sent' : 'Failed'}`,
     color: 0xFEE75C,
     userId: session.discord_id
   });
 
-  return { dmSent, pingSent };
+  return { dmSent, ttsSent, pingSent, buttonSent };
 }
 
 function buildAuditFields(resolvedDescription) {
@@ -1889,6 +1907,11 @@ async function monitorOvertimeSessions(client) {
         overtimeWarnedSessionIds.delete(warnedId);
       }
     }
+    for (const confirmedId of [...overtimeConfirmedSessionIds]) {
+      if (!activeSessionIdSet.has(confirmedId)) {
+        overtimeConfirmedSessionIds.delete(confirmedId);
+      }
+    }
 
     const nowMs = Date.now();
     for (const session of activeSessions) {
@@ -1900,8 +1923,9 @@ async function monitorOvertimeSessions(client) {
       const loginMs = parseSessionTimestamp(session.login_time);
       const elapsedMs = nowMs - loginMs;
       const sessionIdKey = String(session.id);
+      const overtimeConfirmed = overtimeConfirmedSessionIds.has(sessionIdKey);
 
-      if (elapsedMs >= OVERTIME_WARNING_MS && elapsedMs < OVERTIME_AUTO_LOGOUT_MS && !overtimeWarnedSessionIds.has(sessionIdKey)) {
+      if (!overtimeConfirmed && elapsedMs >= OVERTIME_WARNING_MS && elapsedMs < OVERTIME_AUTO_LOGOUT_MS && !overtimeWarnedSessionIds.has(sessionIdKey)) {
         overtimeWarnedSessionIds.add(sessionIdKey);
         try {
           await sendOvertimeWarningNotice(client, session, 'AUTO');
@@ -1910,7 +1934,7 @@ async function monitorOvertimeSessions(client) {
         }
       }
 
-      if (elapsedMs >= OVERTIME_AUTO_LOGOUT_MS) {
+      if (!overtimeConfirmed && elapsedMs >= OVERTIME_AUTO_LOGOUT_MS) {
         const agentKey = String(session.agent_id);
         if (overtimeAutoLogoutAgentIds.has(agentKey)) continue;
         overtimeAutoLogoutAgentIds.add(agentKey);
@@ -6173,6 +6197,72 @@ async function handleHelpAgent(interaction) {
   }
 }
 
+async function handleOvertimeConfirm(interaction) {
+  try {
+    const [, sessionIdRaw, targetDiscordId] = String(interaction.customId || '').split(':');
+    const sessionId = String(sessionIdRaw || '');
+
+    if (!sessionId || !targetDiscordId) {
+      return interaction.reply({ content: '❌ Invalid overtime confirmation payload.', ephemeral: true });
+    }
+
+    if (interaction.user.id !== targetDiscordId) {
+      return interaction.reply({ content: '❌ This overtime confirmation is not for your account.', ephemeral: true });
+    }
+
+    const session = db.prepare(`
+      SELECT
+        sessions.id,
+        sessions.agent_id,
+        COALESCE(sessions.session_kind, 'shift') AS session_kind,
+        agents.discord_id,
+        agents.username
+      FROM sessions
+      JOIN agents ON agents.id = sessions.agent_id
+      WHERE sessions.id = ? AND sessions.status = 'active'
+      LIMIT 1
+    `).get(sessionId);
+
+    if (!session || String(session.discord_id) !== interaction.user.id) {
+      return interaction.reply({ content: '⚠️ This session is no longer active.', ephemeral: true });
+    }
+
+    overtimeConfirmedSessionIds.add(String(session.id));
+
+    const confirmedRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`overtime_confirmed:${session.id}`)
+        .setLabel('Overtime Confirmed')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(true)
+    );
+
+    await interaction.update({
+      content: `✅ <@${interaction.user.id}> confirmed overtime for current ${session.session_kind === 'training' ? 'training' : 'shift'}. Auto logout is bypassed for this session.`,
+      components: [confirmedRow],
+      allowedMentions: { users: [interaction.user.id] }
+    });
+
+    sendAuditLog(interaction.client, {
+      title: '✅ Overtime Confirmed',
+      description:
+        `**User:** ${session.username} (<@${session.discord_id}>)\n` +
+        `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
+        `**Action:** User confirmed overtime; auto-logout bypass enabled for this session.`,
+      color: 0x57F287,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+  } catch (error) {
+    console.error('Error in handleOvertimeConfirm:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp({ content: '❌ Failed to confirm overtime.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to confirm overtime.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 async function handleLimitWarning(interaction) {
   try {
     if (!isDeveloper(interaction)) {
@@ -6225,7 +6315,8 @@ async function handleLimitWarning(interaction) {
     await interaction.editReply({
       content:
         `✅ Overtime warning sent to **${session.username}**.\n` +
-        `DM: **${result.dmSent ? 'Sent' : 'Failed'}** | Ping: **${result.pingSent ? 'Sent' : 'Failed'}**`
+        `DM: **${result.dmSent ? 'Sent' : 'Failed'}** | TTS DM: **${result.ttsSent ? 'Sent' : 'Failed'}** | ` +
+        `Ping: **${result.pingSent ? 'Sent' : 'Failed'}** | Confirm Button: **${result.buttonSent ? 'Sent' : 'Failed'}**`
     });
   } catch (error) {
     console.error('Error in handleLimitWarning:', error);
@@ -7219,6 +7310,7 @@ module.exports = {
   handleMemberLeave,
   handleHelpStaff,
   handleHelpAgent,
+  handleOvertimeConfirm,
   handleLimitWarning,
   handleSelectTrainee,
   handleNewcomerPromotion,

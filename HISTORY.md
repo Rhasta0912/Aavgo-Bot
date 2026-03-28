@@ -72,6 +72,8 @@ Working rules:
     - HISTORY.md
 - Add a post-link shift question and close team-check bypasses.
   - Summary: After `✅ Hotel Successfully Linked`, the bot now asks `Do you want to start your shift?` with `Yes` / `No` buttons. Also added another team requirement check at PIN submit time for agent live shifts, so old/stale flow paths cannot bypass the TL/OM team assignment rule.
+- Upgraded overtime warning flow with server-side confirm popup and TTS DM notification.
+  - Summary: Overtime warning now sends (1) regular DM, (2) TTS DM for stronger alerting, and (3) login-channel warning message with a `Confirm Overtime` button. If the warned user clicks confirm, auto-logout at 8h+5m is bypassed for that active session. `/limit-warning` remains private/ephemeral to the command runner.
   - Files touched:
     - src/auth.js
     - src/index.js
