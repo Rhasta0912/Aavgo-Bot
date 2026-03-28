@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Hardened shift route responses against Discord `10062` interaction expiry errors.
+  - Summary: Private flow sending now safely catches expired interaction tokens and skips the response without throwing. Added targeted `10062` guards in shift-role and agent-route handlers to reduce noisy stack traces when Discord expires a click.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Require PIN verification every time agent confirms shift start.
   - Summary: Pressing `Yes` on `READY TO START SHIFT` now always opens PIN verification before login finalizes. This closes the gap where repeat shift starts could bypass PIN re-check.
   - Files touched:

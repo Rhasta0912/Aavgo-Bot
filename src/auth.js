@@ -53,32 +53,39 @@ function isEphemeralSourceInteraction(interaction) {
   }
 }
 
-function sendPrivateFlowPayload(interaction, payload) {
+async function sendPrivateFlowPayload(interaction, payload) {
   const forcePrivateReply = interaction?.customId === 'start_shift_btn';
   const privatePayload = { ...payload, ephemeral: true };
-
-  if (forcePrivateReply) {
-    if (interaction.deferred || interaction.replied) {
-      if (typeof interaction.followUp === 'function') {
-        return interaction.followUp(privatePayload);
+  try {
+    if (forcePrivateReply) {
+      if (interaction.deferred || interaction.replied) {
+        if (typeof interaction.followUp === 'function') {
+          return await interaction.followUp(privatePayload);
+        }
+        return await interaction.editReply(payload);
       }
-      return interaction.editReply(payload);
+      return await interaction.reply(privatePayload);
     }
-    return interaction.reply(privatePayload);
-  }
 
-  if (interaction.deferred || interaction.replied) {
-    if (!isEphemeralSourceInteraction(interaction) && typeof interaction.followUp === 'function') {
-      return interaction.followUp(privatePayload);
+    if (interaction.deferred || interaction.replied) {
+      if (!isEphemeralSourceInteraction(interaction) && typeof interaction.followUp === 'function') {
+        return await interaction.followUp(privatePayload);
+      }
+      return await interaction.editReply(payload);
     }
-    return interaction.editReply(payload);
-  }
 
-  if (isEphemeralSourceInteraction(interaction) && typeof interaction.update === 'function') {
-    return interaction.update(payload);
-  }
+    if (isEphemeralSourceInteraction(interaction) && typeof interaction.update === 'function') {
+      return await interaction.update(payload);
+    }
 
-  return interaction.reply(privatePayload);
+    return await interaction.reply(privatePayload);
+  } catch (error) {
+    if (error?.code === 10062) {
+      console.warn('[FLOW] Skipped expired interaction while sending private payload (10062).');
+      return null;
+    }
+    throw error;
+  }
 }
 
 // ─── Constants ───────────────────────────────────────
@@ -3657,6 +3664,10 @@ async function handleShiftRolePrompt(interaction) {
       await interaction.reply(fallbackPayload);
     }
   } catch (error) {
+    if (error?.code === 10062) {
+      console.warn('[SHIFT-ROUTE] Interaction expired before route response (10062).');
+      return;
+    }
     console.error('Error in handleShiftRolePrompt:', error);
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({ content: 'Failed to open shift role picker.', embeds: [], components: [] }).catch(() => {});
@@ -3714,6 +3725,10 @@ async function handleAgentRoutePick(interaction) {
       components: [new ActionRowBuilder().addComponents(hotelBtn, trainingBtn)]
     });
   } catch (error) {
+    if (error?.code === 10062) {
+      console.warn('[AGENT-ROUTE] Interaction expired before response (10062).');
+      return;
+    }
     console.error('Error in handleAgentRoutePick:', error);
     if (interaction.deferred || interaction.replied) {
       await interaction.editReply({ content: 'Failed to open agent route picker.', embeds: [], components: [] }).catch(() => {});
