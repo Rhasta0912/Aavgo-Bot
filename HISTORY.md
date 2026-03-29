@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Updated trainee training flow to avoid any shift/hotel role swaps.
+  - Summary: Trainee-only training sessions now keep Discord roles untouched during login and logout (no hotel green/grey role changes, no On-Shift/Logged Out swap). Training still records hours/session history normally.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Updated trainee training login to grant temporary selected-hotel access role during training only.
   - Summary: When a trainee starts a training session and picks a hotel, the bot now gives the hotel green role temporarily for that session (without making permanent assignment). On training end/auto-end, training sessions now remove the temporary green role and do not add permanent grey assignment roles.
   - Files touched:

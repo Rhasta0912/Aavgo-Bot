@@ -765,6 +765,29 @@ async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
   try {
     if (!guild || !member) return;
 
+    const roleNames = [...(member.roles?.cache?.values?.() || [])]
+      .map(role => normalizeDiscordRoleName(role?.name))
+      .filter(Boolean);
+    const hasAgentRole =
+      member.roles?.cache?.has(AGENT_ROLE_ID) ||
+      roleNames.includes('agent') ||
+      roleNames.includes('agents');
+    const hasTraineeRole =
+      member.roles?.cache?.has(TRAINEE_ROLE_ID) ||
+      roleNames.includes('trainee') ||
+      roleNames.includes('trainees');
+    const isTraineeOnly = hasTraineeRole && !hasAgentRole;
+    const allTrainingRefs = (hotelRefs || []).length > 0 && (hotelRefs || []).every(ref => {
+      const kind = String(
+        typeof ref === 'string' ? 'shift' : (ref?.session_kind || ref?.sessionKind || 'shift')
+      ).toLowerCase();
+      return kind === 'training';
+    });
+    if (isTraineeOnly && allTrainingRefs) {
+      // Trainee training sessions should not alter shift-role presentation.
+      return;
+    }
+
     const onShiftRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
     const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
     const rolesToRemove = [onShiftRole].filter(Boolean);
@@ -1446,6 +1469,8 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   db.prepare("INSERT INTO sessions (agent_id, hotel_id, session_kind, login_time) VALUES (?, ?, ?, ?)").run(agent.id, hotelId, sessionMode, nowIso);
 
   let noteAlert = '';
+  const normalizedRole = normalizeAgentRole(agent.role);
+  const isTraineeTrainingSession = sessionMode === 'training' && normalizedRole === 'trainee';
 
   if (hotelId !== 'TEAM_SHIFT') {
     try {
@@ -1456,7 +1481,9 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
 
-      if (sessionMode === 'training') {
+      if (isTraineeTrainingSession) {
+        // Trainees in training should not receive hotel/on-shift/logged-out role swaps.
+      } else if (sessionMode === 'training') {
         const rolesToAdd = [greenRole].filter(Boolean);
         const rolesToRemove = [loggedOut, greyRole].filter(Boolean);
         if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
