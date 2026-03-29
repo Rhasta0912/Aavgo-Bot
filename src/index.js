@@ -611,7 +611,11 @@ client.on('interactionCreate', async interaction => {
       await auth.handleManagementTeamStart(interaction, 'Team 1');
     } else if (interaction.customId === 'shift_mgmt_team_2_btn') {
       await auth.handleManagementTeamStart(interaction, 'Team 2');
-    } else if (interaction.customId === 'shift_mode_hotel_btn' || interaction.customId === 'start_shift_multi_confirm_btn') {
+    } else if (
+      interaction.customId === 'shift_mode_hotel_btn' ||
+      interaction.customId === 'start_shift_single_confirm_btn' ||
+      interaction.customId === 'start_shift_multi_confirm_btn'
+    ) {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'training_start_btn') {
       await auth.handleTrainingStartClick(interaction);
@@ -685,7 +689,11 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDevApprove(interaction);
     } else if (interaction.customId.startsWith('dev_deny_')) {
       await auth.handleDevDeny(interaction);
-    } else if (interaction.customId === 'tl_start_shift_btn' || interaction.customId === 'tl_start_shift_multi_confirm_btn') {
+    } else if (
+      interaction.customId === 'tl_start_shift_btn' ||
+      interaction.customId === 'tl_start_shift_single_confirm_btn' ||
+      interaction.customId === 'tl_start_shift_multi_confirm_btn'
+    ) {
       await auth.handleStartShiftClick(interaction);
     } else if (interaction.customId === 'tl_logout_btn') {
       await auth.handleLogout(interaction);

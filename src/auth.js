@@ -3364,6 +3364,51 @@ async function handleDenyReg(interaction) {
 }
 
 // ─── Start Shift Button Click ────────────────────────
+function buildMultiHotelCoverageModePayload(hotelIds, activeHotelId = null) {
+  const uniqueHotelIds = [...new Set((hotelIds || []).map(normalizeCombinedHotelId).filter(Boolean))];
+  const hotelSummary = uniqueHotelIds.length > 0
+    ? uniqueHotelIds.map(hotelId => `• ${getCombinedHotelLabel(hotelId)}`).join('\n')
+    : '• No hotel assignments found.';
+  const activeLine = activeHotelId
+    ? `\n\n🟢 Active now: **${getCombinedHotelLabel(activeHotelId)}**`
+    : '';
+
+  const embed = new EmbedBuilder()
+    .setTitle('🏨 Choose Shift Coverage')
+    .setDescription(
+      '### COVERAGE MODE\n' +
+      '------------------------\n' +
+      `Assigned hotels:\n${hotelSummary}${activeLine}\n\n` +
+      'Pick how you want this shift to run:\n' +
+      '• **1 Hotel Only**: keep one active hotel (switch mode).\n' +
+      '• **Cover Multiple Hotels**: allow concurrent assigned hotels.\n' +
+      '------------------------'
+    )
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Aavgo Operations • Shift Coverage Mode' })
+    .setTimestamp();
+
+  const singleBtn = new ButtonBuilder()
+    .setCustomId('start_shift_single_confirm_btn')
+    .setLabel('1 Hotel Only')
+    .setStyle(ButtonStyle.Primary);
+
+  const multiBtn = new ButtonBuilder()
+    .setCustomId('start_shift_multi_confirm_btn')
+    .setLabel('Cover Multiple Hotels')
+    .setStyle(ButtonStyle.Success);
+
+  const cancelBtn = new ButtonBuilder()
+    .setCustomId('start_shift_multi_cancel_btn')
+    .setLabel('Cancel')
+    .setStyle(ButtonStyle.Secondary);
+
+  return {
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(singleBtn, multiBtn, cancelBtn)]
+  };
+}
+
 async function handleStartShiftClick(interaction) {
   try {
     if (isTraineeMember(interaction) && interaction.customId !== 'tl_start_shift_btn') {
@@ -3371,7 +3416,9 @@ async function handleStartShiftClick(interaction) {
     }
 
     const isTLButton = interaction.customId === 'tl_start_shift_btn';
+    const forceSingleHotel = interaction.customId === 'start_shift_single_confirm_btn' || interaction.customId === 'tl_start_shift_single_confirm_btn';
     const allowMultiHotel = interaction.customId === 'start_shift_multi_confirm_btn' || interaction.customId === 'tl_start_shift_multi_confirm_btn';
+    const coverageModeChosen = forceSingleHotel || allowMultiHotel;
     const discordId = interaction.user.id;
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(discordId);
     if (!agent) {
@@ -3398,32 +3445,9 @@ async function handleStartShiftClick(interaction) {
       });
     }
 
-    // Check if agent is already on shift
-    const activeSession = db.prepare("SELECT * FROM sessions WHERE agent_id = ? AND status = 'active'").get(agent.id);
-    if (activeSession && !allowMultiHotel) {
-      const multiEmbed = new EmbedBuilder()
-        .setTitle('🏨 Multiple Hotels Check')
-        .setDescription(
-          `You are already logged into **${HOTEL_NAMES[activeSession.hotel_id] || activeSession.hotel_id}**.\n\n` +
-          'Are you handling **multiple hotels** right now?'
-        )
-        .setColor(0xFEE75C);
-
-      const continueBtn = new ButtonBuilder()
-        .setCustomId(isTLButton ? 'tl_start_shift_multi_confirm_btn' : 'start_shift_multi_confirm_btn')
-        .setLabel('Yes, Continue')
-        .setStyle(ButtonStyle.Primary);
-
-      const cancelBtn = new ButtonBuilder()
-        .setCustomId('start_shift_multi_cancel_btn')
-        .setLabel('No, Cancel')
-        .setStyle(ButtonStyle.Secondary);
-
-      return sendPrivateFlowPayload(interaction, {
-        embeds: [multiEmbed],
-        components: [new ActionRowBuilder().addComponents(continueBtn, cancelBtn)],
-      });
-    }
+    const activeShiftSession = db.prepare(
+      "SELECT hotel_id FROM sessions WHERE agent_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') = 'shift' ORDER BY id DESC LIMIT 1"
+    ).get(agent.id);
 
     // TL/SME manual TL button click (Management Portal)
     if (isTLButton) {
@@ -3461,6 +3485,32 @@ async function handleStartShiftClick(interaction) {
     const preferredHotelIds = assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds;
     const uniqueAssignedHotelIds = [...new Set(preferredHotelIds)];
 
+    if (activeShiftSession && !allowMultiHotel && uniqueAssignedHotelIds.length <= 1 && !forceSingleHotel) {
+      const activeHotelLabel = getCombinedHotelLabel(normalizeCombinedHotelId(activeShiftSession.hotel_id));
+      const singleModeEmbed = new EmbedBuilder()
+        .setTitle('🏨 Active Shift Detected')
+        .setDescription(
+          `You are already logged into **${activeHotelLabel}**.\n\n` +
+          'Do you want to restart as a single-hotel shift?'
+        )
+        .setColor(0xFEE75C);
+
+      const continueBtn = new ButtonBuilder()
+        .setCustomId('start_shift_single_confirm_btn')
+        .setLabel('Yes, Continue')
+        .setStyle(ButtonStyle.Primary);
+
+      const cancelBtn = new ButtonBuilder()
+        .setCustomId('start_shift_multi_cancel_btn')
+        .setLabel('Cancel')
+        .setStyle(ButtonStyle.Secondary);
+
+      return sendPrivateFlowPayload(interaction, {
+        embeds: [singleModeEmbed],
+        components: [new ActionRowBuilder().addComponents(continueBtn, cancelBtn)]
+      });
+    }
+
     if (assignedHotelIds.length === 1) {
       const roleAssignedHotelId = assignedHotelIds[0];
       if (normalizeCombinedHotelId(agent.hotel_id) !== roleAssignedHotelId) {
@@ -3470,6 +3520,12 @@ async function handleStartShiftClick(interaction) {
     }
 
     if (uniqueAssignedHotelIds.length > 1) {
+      if (!coverageModeChosen) {
+        return sendPrivateFlowPayload(
+          interaction,
+          buildMultiHotelCoverageModePayload(uniqueAssignedHotelIds, normalizeCombinedHotelId(activeShiftSession?.hotel_id))
+        );
+      }
       return await showAssignedHotelShiftPicker(interaction, uniqueAssignedHotelIds, allowMultiHotel);
     }
 
@@ -3632,7 +3688,7 @@ async function handleShiftHotelPickMenu(interaction) {
         .setStyle(ButtonStyle.Success);
 
       const noBtn = new ButtonBuilder()
-        .setCustomId('same_hotel_confirm_no')
+        .setCustomId(`same_hotel_confirm_no:${allowMultiHotel ? '1' : '0'}`)
         .setLabel('Choose Another Hotel')
         .setStyle(ButtonStyle.Secondary);
 
@@ -3680,7 +3736,7 @@ async function handleSameHotelConfirm(interaction) {
     })();
     const uniqueAssignedHotelIds = [...new Set(assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds)];
 
-    if (interaction.customId === 'same_hotel_confirm_no') {
+    if (interaction.customId.startsWith('same_hotel_confirm_no')) {
       if (uniqueAssignedHotelIds.length === 0) {
         return sendPrivateFlowPayload(interaction, {
           content: '❌ No assigned hotels were found for your account.',
@@ -3691,7 +3747,7 @@ async function handleSameHotelConfirm(interaction) {
 
       const hotelOptions = buildAssignedHotelSelectionOptions(uniqueAssignedHotelIds);
       const pickMenu = new StringSelectMenuBuilder()
-        .setCustomId('shift_hotel_pick_menu_multi')
+        .setCustomId(String(interaction.customId || '').endsWith(':1') ? 'shift_hotel_pick_menu_multi' : 'shift_hotel_pick_menu')
         .setPlaceholder('Pick your hotel for this shift')
         .addOptions(
           hotelOptions.map(hotel =>
@@ -8178,7 +8234,7 @@ async function handleSameHotelConfirm(interaction) {
     })();
     const uniqueAssignedHotelIds = [...new Set(assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds)];
 
-    if (interaction.customId === 'same_hotel_confirm_no') {
+    if (interaction.customId.startsWith('same_hotel_confirm_no')) {
       if (uniqueAssignedHotelIds.length === 0) {
         return sendPrivateFlowPayload(interaction, {
           content: '❌ No assigned hotels were found for your account.',
@@ -8189,7 +8245,7 @@ async function handleSameHotelConfirm(interaction) {
 
       return sendPrivateFlowPayload(
         interaction,
-        buildAssignedHotelShiftPickerPayload(uniqueAssignedHotelIds, true)
+        buildAssignedHotelShiftPickerPayload(uniqueAssignedHotelIds, String(interaction.customId || '').endsWith(':1'))
       );
     }
 
