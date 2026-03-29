@@ -46,7 +46,10 @@ function sendComponentUpdate(interaction, payload) {
 }
 
 function sendComponentReply(interaction, payload) {
-  const isEphemeralResult = payload?.ephemeral === true || payload?.flags === MessageFlags.Ephemeral;
+  const isEphemeralResult =
+    isEphemeralSourceInteraction(interaction) ||
+    payload?.ephemeral === true ||
+    payload?.flags === MessageFlags.Ephemeral;
   if (interaction.deferred || interaction.replied) {
     return interaction.followUp({ ...payload, fetchReply: true }).then(message => {
       maybeScheduleEphemeralCleanup(interaction, payload, message, isEphemeralResult);
@@ -61,6 +64,8 @@ function sendComponentReply(interaction, payload) {
 
 function isEphemeralSourceInteraction(interaction) {
   try {
+    if (interaction?.__aavgoEphemeral === true) return true;
+    if (interaction?.ephemeral === true) return true;
     return Boolean(interaction?.message?.flags?.has?.(MessageFlags.Ephemeral));
   } catch (_) {
     return false;
@@ -4690,6 +4695,7 @@ async function handleLogin(interaction) {
 async function handleShiftInitModalSubmit(interaction) {
   try {
     await interaction.deferReply({ ephemeral: true });
+    interaction.__aavgoEphemeral = true;
 
     const agent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(interaction.user.id);
     if (!agent) {
@@ -4757,6 +4763,7 @@ async function handleModalSubmit(interaction) {
   try {
     // 1. Acknowledge immediately (Modals have a 3s timeout)
     await interaction.deferReply({ ephemeral: true });
+    interaction.__aavgoEphemeral = true;
 
     // Route to register submit
     if (interaction.customId === 'register_modal') {
@@ -5065,6 +5072,7 @@ async function handleLogout(interaction) {
 
     if (!interaction.deferred && !interaction.replied) {
       await interaction.deferReply({ ephemeral: true });
+      interaction.__aavgoEphemeral = true;
     }
 
     const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(targetDiscordId);
@@ -5125,6 +5133,7 @@ async function handleLogout(interaction) {
           ? '✅ **Training ended.** You have been logged out successfully.'
           : '✅ **Shift ended.** You have been logged out successfully.')
     });
+    scheduleExplicitReplyCleanup(interaction, EPHEMERAL_QUICK_TTL_MS);
 
     const targetMember = (interaction.member && interaction.member.id === targetDiscordId)
       ? interaction.member

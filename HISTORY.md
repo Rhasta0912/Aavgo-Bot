@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed login temp-message auto-delete regression for shift start/end confirmations.
+  - Summary: Login-flow success confirmations (including management `TEAM_SHIFT` start and end-shift confirmations) were not always auto-cleaning because deferred ephemeral replies from modal/login paths were not consistently detected as ephemeral. Added robust ephemeral tracking for deferred login interactions and re-enabled quick cleanup for those confirmation replies (30s rule), while keeping non-login 10-minute temp-message behavior unchanged.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Added SME/Team Leader shift-status role swap on management login (no hotel roles).
   - Summary: Starting a `TEAM_SHIFT` as `SME` or `Team Leader` now applies the same status-state swap used by agents (`+On-Shift`, `-Logged Out`) while still skipping all hotel green/grey role assignment. This keeps management on clean status roles only while covering all hotels.
   - Files touched:
