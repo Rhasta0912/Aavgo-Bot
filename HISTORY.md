@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed overtime auto-logout SQL crash (`ambiguous column name: id`).
+  - Summary: The overtime auto-end query joined `sessions` and `agents` but selected plain `id`, which caused SQLite to fail and blocked automatic logout after warning grace. Query fields are now fully qualified (`sessions.id`, `sessions.hotel_id`, `sessions.login_time`, `sessions.agent_id`, `sessions.status`) so overtime auto-logout runs correctly.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Changed overtime warning `End Shift` to a one-click direct log-in channel redirect.
   - Summary: Overtime warning now sends `End Shift` as a direct link button that opens the log-in channel immediately in one click, instead of requiring a second `Open Log-in Channel` button after pressing `End Shift`.
   - Files touched:

@@ -2490,10 +2490,10 @@ async function monitorOvertimeSessions(client) {
 
         try {
           const agentSessions = db.prepare(`
-            SELECT id, hotel_id, login_time, COALESCE(session_kind, 'shift') AS session_kind, agents.discord_id, agents.role
+            SELECT sessions.id, sessions.hotel_id, sessions.login_time, COALESCE(sessions.session_kind, 'shift') AS session_kind, agents.discord_id, agents.role
             FROM sessions
             JOIN agents ON agents.id = sessions.agent_id
-            WHERE agent_id = ? AND status = 'active'
+            WHERE sessions.agent_id = ? AND sessions.status = 'active'
           `).all(session.agent_id);
 
           if (agentSessions.length === 0) {
