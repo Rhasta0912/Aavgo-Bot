@@ -96,7 +96,13 @@ const commandData = [
       )),
   new SlashCommandBuilder()
     .setName('end-shift')
-    .setDescription('End your current shift'),
+    .setDescription('End your shift (OM/Developer can target another user)')
+    .addUserOption(option =>
+      option
+        .setName('user')
+        .setDescription('Target user to force end (Operations Manager / Developer only)')
+        .setRequired(false)
+    ),
   new SlashCommandBuilder()
     .setName('tools')
     .setDescription('Agent Tools (Normal Break, Bio Break, Emergency)'),

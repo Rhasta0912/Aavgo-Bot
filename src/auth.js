@@ -4888,22 +4888,48 @@ async function handleLogout(interaction) {
       }
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    const isChatCommand = typeof interaction.isChatInputCommand === 'function' && interaction.isChatInputCommand();
+    const callerDiscordId = interaction.user.id;
+    let targetDiscordId = callerDiscordId;
+    let forceEndedByManager = false;
 
-    const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (isChatCommand && interaction.commandName === 'end-shift') {
+      const targetUser = interaction.options?.getUser?.('user') || null;
+      if (targetUser && targetUser.id !== callerDiscordId) {
+        if (!isDeveloper(interaction)) {
+          const denyMessage = '❌ Only Operations Manager or Developer can end another user\'s shift.';
+          if (interaction.deferred || interaction.replied) {
+            return interaction.editReply({ content: denyMessage });
+          }
+          return interaction.reply({ content: denyMessage, ephemeral: true });
+        }
+        targetDiscordId = targetUser.id;
+        forceEndedByManager = true;
+      }
+    }
+
+    if (!interaction.deferred && !interaction.replied) {
+      await interaction.deferReply({ ephemeral: true });
+    }
+
+    const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(targetDiscordId);
     if (!agent) {
-      return interaction.editReply({ content: 'You are not registered.' });
+      return interaction.editReply({
+        content: forceEndedByManager ? 'That user is not registered.' : 'You are not registered.'
+      });
     }
 
     // Fetch ALL active sessions for this agent
     const activeSessions = db.prepare("SELECT id, hotel_id, login_time, session_kind FROM sessions WHERE agent_id = ? AND status = 'active'").all(agent.id);
     if (activeSessions.length === 0) {
-      return interaction.editReply({ content: 'You are not currently on any shift.' });
+      return interaction.editReply({
+        content: forceEndedByManager ? 'That user is not currently on any shift.' : 'You are not currently on any shift.'
+      });
     }
 
     // Save references BEFORE closing
     const primarySession = activeSessions[0];
-    
+
     // Calculate duration for audit log
     let durationStr = 'Unknown';
     let loginTimeDisplay = 'Unknown';
@@ -4913,7 +4939,7 @@ async function handleLogout(interaction) {
         const loginTime = new Date(loginTimeStr).getTime();
         loginTimeDisplay = new Date(loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const durationMs = Date.now() - loginTime;
-        
+
         if (!isNaN(durationMs)) {
           const hours = Math.floor(durationMs / (1000 * 60 * 60));
           const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
@@ -4924,7 +4950,7 @@ async function handleLogout(interaction) {
       }
     }
     const logoutTimeDisplay = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const isOvertime = durationStr.includes('h') && parseInt(durationStr.split('h')[0]) >= 8;
+    const isOvertime = durationStr.includes('h') && parseInt(durationStr.split('h')[0], 10) >= 8;
     const hasTrainingSession = activeSessions.some(session => session.session_kind === 'training');
 
     // Fetch activities for the summary before closing sessions
@@ -4935,19 +4961,26 @@ async function handleLogout(interaction) {
 
     // Close ALL active sessions using centralized helper
     const hotelIdsToSync = await closeAllActiveSessionsForAgent(agent.id, interaction.client);
-    
+
     // Reply early to avoid timeout
     await interaction.editReply({
-      content: hasTrainingSession
-        ? '✅ **Training ended.** You have been logged out successfully.'
-        : '✅ **Shift ended.** You have been logged out successfully.'
+      content: forceEndedByManager
+        ? (hasTrainingSession ? `✅ Training ended for <@${targetDiscordId}>.` : `✅ Shift ended for <@${targetDiscordId}>.`)
+        : (hasTrainingSession
+          ? '✅ **Training ended.** You have been logged out successfully.'
+          : '✅ **Shift ended.** You have been logged out successfully.')
     });
+
+    const targetMember = (interaction.member && interaction.member.id === targetDiscordId)
+      ? interaction.member
+      : await interaction.guild?.members?.fetch(targetDiscordId).catch(() => null);
 
     // Disconnect from VC if present
     try {
-      if (interaction.member.voice.channel) {
-        await interaction.member.voice.disconnect('Shift ended');
-        console.log(`[LOGOUT] Disconnected ${interaction.user.username} from VC.`);
+      if (targetMember?.voice?.channel) {
+        const disconnectReason = forceEndedByManager ? `Shift ended by ${interaction.user.username}` : 'Shift ended';
+        await targetMember.voice.disconnect(disconnectReason);
+        console.log(`[LOGOUT] Disconnected ${targetDiscordId} from VC.`);
       }
     } catch (vcErr) {
       console.warn('[LOGOUT] Could not disconnect from VC:', vcErr.message);
@@ -4955,47 +4988,29 @@ async function handleLogout(interaction) {
 
     // Role management (non-blocking)
     try {
-      const member = interaction.member;
-      const guild = interaction.guild;
-      const onShift = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
-      const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
-
-      const rolesToRemove = [onShift].filter(Boolean);
-      const rolesToAdd = [loggedOutRole].filter(Boolean);
-
-      for (const hId of hotelIdsToSync) {
-        // Remove Green role
-        const greenRoleId = ROLE_NAMES.GREEN[hId];
-        const greenRole = guild.roles.cache.get(greenRoleId);
-        if (greenRole) rolesToRemove.push(greenRole);
-
-        // Restore Grey role
-        const greyRoleId = ROLE_NAMES.GREY[hId];
-        const greyRole = guild.roles.cache.get(greyRoleId);
-        if (greyRole) rolesToAdd.push(greyRole);
+      if (targetMember) {
+        await applyLoggedOutRolesForMember(interaction.guild, targetMember, hotelIdsToSync);
+        console.log(`[ROLES] Shift roles swapped for ${targetDiscordId}: -Green, +Grey`);
+      } else {
+        console.warn(`[ROLES] Member not found for role cleanup (${targetDiscordId}).`);
       }
-
-      if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
-      if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
-      console.log(`[ROLES] Shift roles swapped for ${interaction.user.username}: -Green, +Grey`);
     } catch (roleErr) {
       console.warn('[ROLES] Could not revert roles:', roleErr.message);
     }
 
-    // Role management (non-blocking) - done
-    // Calculate duration for audit log (Already done above)
-
     // Audit log
     const hotelNames = hotelIdsToSync.map(h => HOTEL_NAMES[h] || h).join(', ');
     const isManagement = hotelIdsToSync.includes('TEAM_SHIFT');
-    const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
-    
+    const nickname = await getAgentDisplayName(interaction.guild, targetDiscordId);
+    const endedByName = forceEndedByManager ? await getAgentDisplayName(interaction.guild, callerDiscordId) : null;
+
     let summaryDesc = `**Agent:** ${nickname}\n` +
+                      `${forceEndedByManager ? `**Ended By:** ${endedByName} (<@${callerDiscordId}>)\n` : ''}` +
                       `**Shift:** \`${loginTimeDisplay}\` - \`${logoutTimeDisplay}\` (**${durationStr}**)\n` +
                       `**Location:** ${hotelNames}\n` +
                       `${isOvertime ? '**⚠️ OVERTIME:** Yes (8h+)\n' : ''}` +
                       `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
-    
+
     if (checkins.length > 0) summaryDesc += `### 🛎️ Check-Ins (${checkins.length})\n${checkins.map(c => `> • ${c.guest_name}`).join('\n')}\n\n`;
     if (checkouts.length > 0) summaryDesc += `### 🗝️ Check-Outs (${checkouts.length})\n${checkouts.map(c => `> • ${c.guest_name}`).join('\n')}\n\n`;
     if (calls.length > 0) summaryDesc += `### 📞 Call Logs (${calls.length})\n${calls.map(c => `> • ${c.guest_name}`).join('\n')}\n`;
@@ -5008,7 +5023,7 @@ async function handleLogout(interaction) {
       color: isManagement ? 0xED4245 : 0x3498DB,
       forceManagerLog: true,
       hotelId: isManagement ? 'TEAM_SHIFT' : undefined,
-      userId: interaction.user.id,
+      userId: targetDiscordId,
       guild: interaction.guild
     });
 
@@ -5016,10 +5031,10 @@ async function handleLogout(interaction) {
     if (hotelIdsToSync.some(id => TEAM_1_HOTELS.includes(id))) {
       await sendAuditLog(interaction.client, {
         title: '🛑 Shift Ended',
-        description: `**Agent:** ${nickname}\n**Hotel(s):** ${hotelNames}\n**Duration:** ${durationStr}`,
+        description: `**Agent:** ${nickname}\n${forceEndedByManager ? `**Ended By:** ${endedByName}\n` : ''}**Hotel(s):** ${hotelNames}\n**Duration:** ${durationStr}`,
         color: 0xED4245,
         hotelId: hotelIdsToSync[0], // Routine routing
-        userId: interaction.user.id,
+        userId: targetDiscordId,
         guild: interaction.guild
       });
     }
@@ -6843,6 +6858,7 @@ async function handleHelpStaff(interaction) {
         '> `/db-log-checkin`: Manually log a guest check-in to management tracking.\n' +
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
         '> `/add-hours`: Add manual hours to an agent record.\n' +
+        '> `/end-shift user:@name`: End your own shift or force-end another active shift (OM/Developer).\n' +
         '> `/limit-warning user:@name`: Manually trigger overtime warning (DM + ping).\n' +
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
@@ -8417,9 +8433,6 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
-
-
-
 
 
 
