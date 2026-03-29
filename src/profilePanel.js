@@ -893,7 +893,12 @@ function buildHourHistoryEmbed(profile, monthHistory) {
       `> Combined Total (Month): ${formatHours(monthHistory.monthTotalHours)} hrs\n\n` +
       '```text\n' +
       `${calendarTable}\n` +
-      '```'
+      '```\n\n' +
+      '━━━━━━━━━━━━━━━━━━━━\n' +
+      '**Month Summary**\n' +
+      `Live Shift: **${formatHours(monthHistory.monthShiftHours)} hrs**\n` +
+      `Training: **${formatHours(monthHistory.monthTrainingHours)} hrs**\n` +
+      `Total: **${formatHours(monthHistory.monthTotalHours)} hrs**`
     )
     .setColor(0x3498DB)
     .setFooter({ text: 'Aavgo Operations - Monthly Hour History' })

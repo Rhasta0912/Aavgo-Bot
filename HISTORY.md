@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added a separated `Month Summary` block at the bottom of Profiles hour-history calendar.
+  - Summary: `View Hour History` now shows a spaced monthly summary section under the calendar table with Live Shift, Training, and Total monthly hours so totals are easier to read.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
 - Matched Agent Route card structure to the cleaner assignment-card pattern.
   - Summary: Reworked Agent Route copy and section layout to follow the same visual language as the improved hotel cards (plain uppercase section header, clean separators, concise bullet actions).
   - Files touched:
