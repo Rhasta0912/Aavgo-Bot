@@ -1421,9 +1421,10 @@ async function showShiftInitModal(interaction, agent) {
 }
 
 async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
+  const normalizedRole = normalizeAgentRole(agent?.role);
   const effectiveAllowMultiHotel = (
     sessionMode === 'shift' &&
-    normalizeAgentRole(agent?.role) !== 'agent'
+    normalizedRole !== 'agent'
   ) ? allowMultiHotel : false;
 
   const respond = async (payload) => {
@@ -1490,18 +1491,28 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   let noteAlert = '';
   const isTrainingSession = sessionMode === 'training';
 
-  if (hotelId !== 'TEAM_SHIFT') {
-    try {
-      const member = interaction.member;
-      const guild = interaction.guild;
-      const onShift = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
-      const loggedOut = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+  try {
+    const member = interaction.member;
+    const guild = interaction.guild;
+    const onShift = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
+    const loggedOut = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+
+    if (isTrainingSession) {
+      // Training / practice sessions are role-neutral for Agents and Trainees.
+    } else if (
+      hotelId === 'TEAM_SHIFT' &&
+      (normalizedRole === 'sme' || normalizedRole === 'team_leader') &&
+      onShift &&
+      loggedOut
+    ) {
+      await member.roles.add([onShift]);
+      await member.roles.remove([loggedOut]);
+      console.log(`[ROLES] Management shift roles swapped for ${interaction.user.username}: +On-Shift, -Logged Out`);
+    } else if (hotelId !== 'TEAM_SHIFT') {
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
 
-      if (isTrainingSession) {
-        // Training / practice sessions are role-neutral for Agents and Trainees.
-      } else if (onShift && loggedOut && greenRole) {
+      if (onShift && loggedOut && greenRole) {
         const rolesToAdd = [onShift, greenRole];
         const rolesToRemove = [loggedOut];
         if (greyRole) rolesToRemove.push(greyRole);
@@ -1510,9 +1521,9 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
         await member.roles.remove(rolesToRemove);
         console.log(`[ROLES] Shift roles swapped for ${interaction.user.username}: +On-Shift/+Green, -Logged Out/-Grey`);
       }
-    } catch (roleErr) {
-      console.warn('[ROLES] Could not update roles:', roleErr.message);
     }
+  } catch (roleErr) {
+    console.warn('[ROLES] Could not update roles:', roleErr.message);
   }
 
   if (hotelId === 'TEAM_SHIFT') {

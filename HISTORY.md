@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added SME/Team Leader shift-status role swap on management login (no hotel roles).
+  - Summary: Starting a `TEAM_SHIFT` as `SME` or `Team Leader` now applies the same status-state swap used by agents (`+On-Shift`, `-Logged Out`) while still skipping all hotel green/grey role assignment. This keeps management on clean status roles only while covering all hotels.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Fixed overtime auto-logout SQL crash (`ambiguous column name: id`).
   - Summary: The overtime auto-end query joined `sessions` and `agents` but selected plain `id`, which caused SQLite to fail and blocked automatic logout after warning grace. Query fields are now fully qualified (`sessions.id`, `sessions.hotel_id`, `sessions.login_time`, `sessions.agent_id`, `sessions.status`) so overtime auto-logout runs correctly.
   - Files touched:
