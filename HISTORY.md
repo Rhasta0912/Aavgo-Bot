@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Hardened training/practice to be fully non-permanent for both Agents and Trainees.
+  - Summary: Training sessions no longer affect permanent hotel assignment flow. Agent permanent `hotel_id` sync now only trusts grey assignment roles (not green session roles), and training-only logout keeps role-neutral behavior while cleaning stale green roles from older behavior.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Updated trainee training flow to avoid any shift/hotel role swaps.
   - Summary: Trainee-only training sessions now keep Discord roles untouched during login and logout (no hotel green/grey role changes, no On-Shift/Logged Out swap). Training still records hours/session history normally.
   - Files touched:

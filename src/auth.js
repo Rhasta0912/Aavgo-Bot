@@ -776,15 +776,27 @@ async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
       member.roles?.cache?.has(TRAINEE_ROLE_ID) ||
       roleNames.includes('trainee') ||
       roleNames.includes('trainees');
-    const isTraineeOnly = hasTraineeRole && !hasAgentRole;
+    const isAgentOrTrainee = hasAgentRole || hasTraineeRole;
     const allTrainingRefs = (hotelRefs || []).length > 0 && (hotelRefs || []).every(ref => {
       const kind = String(
         typeof ref === 'string' ? 'shift' : (ref?.session_kind || ref?.sessionKind || 'shift')
       ).toLowerCase();
       return kind === 'training';
     });
-    if (isTraineeOnly && allTrainingRefs) {
-      // Trainee training sessions should not alter shift-role presentation.
+    if (isAgentOrTrainee && allTrainingRefs) {
+      // Agent/Trainee training sessions should not alter shift-role presentation.
+      // Cleanup only stale green roles from older behavior, without adding any other roles.
+      const staleTrainingGreens = [...new Map(
+        (hotelRefs || [])
+          .map(ref => (typeof ref === 'string' ? ref : (ref?.hotel_id || ref?.hotelId || null)))
+          .filter(Boolean)
+          .map(hId => guild.roles.cache.get(ROLE_NAMES.GREEN[hId]))
+          .filter(Boolean)
+          .map(role => [role.id, role])
+      ).values()];
+      if (staleTrainingGreens.length > 0) {
+        await member.roles.remove(staleTrainingGreens).catch(() => {});
+      }
       return;
     }
 
@@ -1469,8 +1481,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   db.prepare("INSERT INTO sessions (agent_id, hotel_id, session_kind, login_time) VALUES (?, ?, ?, ?)").run(agent.id, hotelId, sessionMode, nowIso);
 
   let noteAlert = '';
-  const normalizedRole = normalizeAgentRole(agent.role);
-  const isTraineeTrainingSession = sessionMode === 'training' && normalizedRole === 'trainee';
+  const isTrainingSession = sessionMode === 'training';
 
   if (hotelId !== 'TEAM_SHIFT') {
     try {
@@ -1481,14 +1492,8 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
 
-      if (isTraineeTrainingSession) {
-        // Trainees in training should not receive hotel/on-shift/logged-out role swaps.
-      } else if (sessionMode === 'training') {
-        const rolesToAdd = [greenRole].filter(Boolean);
-        const rolesToRemove = [loggedOut, greyRole].filter(Boolean);
-        if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
-        if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
-        console.log(`[ROLES] Training roles swapped for ${interaction.user.username}: +Green(temp), -Logged Out/-Grey`);
+      if (isTrainingSession) {
+        // Training / practice sessions are role-neutral for Agents and Trainees.
       } else if (onShift && loggedOut && greenRole) {
         const rolesToAdd = [onShift, greenRole];
         const rolesToRemove = [loggedOut];
@@ -2715,6 +2720,13 @@ function getAssignedHotelIdsFromMemberRoles(member) {
   return [...new Set(hotelIds)];
 }
 
+function getAssignedGreyHotelIdsFromMemberRoles(member) {
+  const hotelIds = Object.entries(ROLE_NAMES.GREY)
+    .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && member?.roles?.cache?.has(roleId))
+    .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
+  return [...new Set(hotelIds)];
+}
+
 function serializeHotelCompatibility(hotelIds) {
   return JSON.stringify([...new Set((hotelIds || []).filter(Boolean))]);
 }
@@ -3573,6 +3585,7 @@ async function handleStartShiftClick(interaction) {
 
     // If the agent has multiple assigned grey hotel roles, let them pick the hotel for this shift.
     const assignedHotelIds = getAssignedHotelIdsFromMemberRoles(interaction.member);
+    const permanentAssignedHotelIds = getAssignedGreyHotelIdsFromMemberRoles(interaction.member);
     const compatibilityHotelIds = (() => {
       try {
         return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
@@ -3619,8 +3632,8 @@ async function handleStartShiftClick(interaction) {
       }
     }
 
-    if (assignedHotelIds.length === 1) {
-      const roleAssignedHotelId = assignedHotelIds[0];
+    if (permanentAssignedHotelIds.length === 1) {
+      const roleAssignedHotelId = permanentAssignedHotelIds[0];
       if (normalizeCombinedHotelId(agent.hotel_id) !== roleAssignedHotelId) {
         db.prepare("UPDATE agents SET hotel_id = ? WHERE discord_id = ?").run(roleAssignedHotelId, discordId);
         agent.hotel_id = roleAssignedHotelId;
