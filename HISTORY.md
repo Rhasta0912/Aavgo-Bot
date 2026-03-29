@@ -745,3 +745,4 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - No permission, routing, or PIN-handling behavior changed.
 - Rolled back the broader hotel-link workflow revamp after the user asked to revert it, so the selection, confirmation, success, save-for-later, and cancel flow cards are back to the previous behavior.
 - Added a coverage mode step for multi-hotel agents during Initialize Shift (`1 Hotel Only` vs `Cover Multiple Hotels`) so they explicitly choose single vs concurrent hotel handling, and hardened hour calculations to merge overlapping sessions so logging into two hotels at the same time counts once (8 real hours stays 8, not 16).
+- Disabled agent multi-shift runtime: agents can still be assigned multiple hotels, but Initialize Shift now always requires picking one hotel and always keeps only one active agent shift (legacy multi buttons now fall back to single-shift behavior).
