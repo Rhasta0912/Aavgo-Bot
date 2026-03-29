@@ -702,6 +702,14 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
   const activeSessions = db.prepare("SELECT hotel_id, session_kind FROM sessions WHERE agent_id = ? AND status = 'active'").all(agentId);
   if (activeSessions.length === 0) return [];
 
+  const sessionRefs = [...new Map(
+    activeSessions.map(s => {
+      const hotelId = s.hotel_id;
+      const sessionKind = String(s.session_kind || 'shift').toLowerCase();
+      return [`${hotelId}:${sessionKind}`, { hotel_id: hotelId, session_kind: sessionKind }];
+    })
+  ).values()];
+
   const hotelIds = [...new Set(activeSessions.map(s => s.hotel_id))];
   const hasTrainingSessions = activeSessions.some(s => s.session_kind === 'training');
   const hasTeamShift = activeSessions.some(s => s.hotel_id === 'TEAM_SHIFT');
@@ -750,10 +758,10 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
     }
   }
 
-  return hotelIds;
+  return sessionRefs;
 }
 
-async function applyLoggedOutRolesForMember(guild, member, hotelIds = []) {
+async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
   try {
     if (!guild || !member) return;
 
@@ -762,15 +770,25 @@ async function applyLoggedOutRolesForMember(guild, member, hotelIds = []) {
     const rolesToRemove = [onShiftRole].filter(Boolean);
     const rolesToAdd = [loggedOutRole].filter(Boolean);
 
-    for (const hId of hotelIds) {
+    for (const ref of hotelRefs) {
+      const hId = typeof ref === 'string' ? ref : (ref?.hotel_id || ref?.hotelId || null);
+      if (!hId) continue;
+      const sessionKind = String(
+        typeof ref === 'string' ? 'shift' : (ref?.session_kind || ref?.sessionKind || 'shift')
+      ).toLowerCase();
+
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hId]);
       const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hId]);
       if (greenRole) rolesToRemove.push(greenRole);
-      if (greyRole) rolesToAdd.push(greyRole);
+      // Training sessions should never grant permanent ghost/grey assignment roles.
+      if (greyRole && sessionKind !== 'training') rolesToAdd.push(greyRole);
     }
 
-    if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove).catch(() => {});
-    if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd).catch(() => {});
+    const uniqueRemove = [...new Map(rolesToRemove.filter(Boolean).map(role => [role.id, role])).values()];
+    const uniqueAdd = [...new Map(rolesToAdd.filter(Boolean).map(role => [role.id, role])).values()];
+
+    if (uniqueRemove.length > 0) await member.roles.remove(uniqueRemove).catch(() => {});
+    if (uniqueAdd.length > 0) await member.roles.add(uniqueAdd).catch(() => {});
   } catch (error) {
     console.warn('[ROLES] Could not apply logged-out role state:', error.message);
   }
@@ -1429,7 +1447,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   let noteAlert = '';
 
-  if (hotelId !== 'TEAM_SHIFT' && sessionMode !== 'training') {
+  if (hotelId !== 'TEAM_SHIFT') {
     try {
       const member = interaction.member;
       const guild = interaction.guild;
@@ -1438,14 +1456,20 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
 
-      if (onShift && loggedOut && greenRole) {
+      if (sessionMode === 'training') {
+        const rolesToAdd = [greenRole].filter(Boolean);
+        const rolesToRemove = [loggedOut, greyRole].filter(Boolean);
+        if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+        if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
+        console.log(`[ROLES] Training roles swapped for ${interaction.user.username}: +Green(temp), -Logged Out/-Grey`);
+      } else if (onShift && loggedOut && greenRole) {
         const rolesToAdd = [onShift, greenRole];
         const rolesToRemove = [loggedOut];
         if (greyRole) rolesToRemove.push(greyRole);
 
         await member.roles.add(rolesToAdd);
         await member.roles.remove(rolesToRemove);
-        console.log(`[ROLES] Shift roles swapped for ${interaction.user.username}: +Green, -Grey`);
+        console.log(`[ROLES] Shift roles swapped for ${interaction.user.username}: +On-Shift/+Green, -Logged Out/-Grey`);
       }
     } catch (roleErr) {
       console.warn('[ROLES] Could not update roles:', roleErr.message);
@@ -2360,7 +2384,7 @@ async function monitorOvertimeSessions(client) {
 
         try {
           const agentSessions = db.prepare(`
-            SELECT id, hotel_id
+            SELECT id, hotel_id, COALESCE(session_kind, 'shift') AS session_kind
             FROM sessions
             WHERE agent_id = ? AND status = 'active'
           `).all(session.agent_id);
@@ -2371,9 +2395,8 @@ async function monitorOvertimeSessions(client) {
           }
 
           await closeAllActiveSessionsForAgent(session.agent_id, client);
-          const hotelIds = [...new Set(agentSessions.map(row => row.hotel_id).filter(Boolean))];
           if (member) {
-            await applyLoggedOutRolesForMember(guild, member, hotelIds);
+            await applyLoggedOutRolesForMember(guild, member, agentSessions);
           }
 
           for (const active of agentSessions) {
@@ -2441,9 +2464,8 @@ async function monitorOvertimeSessions(client) {
 
           await closeAllActiveSessionsForAgent(session.agent_id, client);
           const overtimeMember = guild?.members?.cache?.get(session.discord_id) || null;
-          const overtimeHotelIds = [...new Set(agentSessions.map(row => row.hotel_id).filter(Boolean))];
           if (overtimeMember) {
-            await applyLoggedOutRolesForMember(guild, overtimeMember, overtimeHotelIds);
+            await applyLoggedOutRolesForMember(guild, overtimeMember, agentSessions);
           }
 
           const primarySessionOverLimit = nowMs >= nextWarningDueMs;

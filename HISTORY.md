@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Updated trainee training login to grant temporary selected-hotel access role during training only.
+  - Summary: When a trainee starts a training session and picks a hotel, the bot now gives the hotel green role temporarily for that session (without making permanent assignment). On training end/auto-end, training sessions now remove the temporary green role and do not add permanent grey assignment roles.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Fixed rank exclusivity to follow DB-selected role instead of always keeping highest Discord rank.
   - Summary: The exclusive rank-role enforcer now prefers the user’s saved DB role (`applicant/trainee/agent/sme/team_leader`) when multiple rank roles are present at once. This fixes role-change demotion cases where selecting SME or lower could get reverted back to Team Leader because highest-rank priority removed the newly selected role.
   - Files touched:
