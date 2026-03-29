@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Enforced exclusive rank-role behavior for Applicant/Trainee/Agent/SME/Team Leader.
+  - Summary: Added a single-rank role rule so members can only hold one of these rank roles at a time: Applicant (`1484919969689894912`), Trainee (`1484705126026449029`), Agent (`1482227287159078964`), SME (`1482382342621233153`), Team Leader (`1482732583660818636`). Role sync now auto-removes the other rank roles based on priority (Team Leader > SME > Agent > Trainee > Applicant), while all non-rank roles keep their existing logic.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Added a separated `Month Summary` block at the bottom of Profiles hour-history calendar.
   - Summary: `View Hour History` now shows a spaced monthly summary section under the calendar table with Live Shift, Training, and Total monthly hours so totals are easier to read.
   - Files touched:

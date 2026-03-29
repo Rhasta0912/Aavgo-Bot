@@ -306,8 +306,11 @@ const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
+const APPLICANT_ROLE_ID = '1484919969689894912';
 const AGENT_ROLE_ID = '1482227287159078964';
 const TRAINEE_ROLE_ID = '1484705126026449029';
+const SME_ROLE_ID = '1482382342621233153';
+const TEAM_LEADER_ROLE_ID = '1482732583660818636';
 const NO_PIN_ROLE_ID = '1485275671797436620';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
@@ -318,6 +321,13 @@ const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
 const offlineAutoLogoutAgentIds = new Set();
 let combinedHotelStatusRefreshTimer = null;
+const EXCLUSIVE_RANK_ROLE_PRIORITY = [
+  TEAM_LEADER_ROLE_ID,
+  SME_ROLE_ID,
+  AGENT_ROLE_ID,
+  TRAINEE_ROLE_ID,
+  APPLICANT_ROLE_ID
+];
 
 const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
@@ -334,6 +344,7 @@ const AGENT_STATUS_LABELS = {
   ready: 'Ready for Live Shifts'
 };
 const ROLE_LABELS = {
+  applicant: 'Applicant',
   trainee: 'Trainee',
   agent: 'Agent',
   sme: 'Subject Matter Expert (SME)',
@@ -2553,7 +2564,35 @@ function hasDiscordRoleName(roleNames, candidates) {
   return candidates.some(candidate => roleNames.includes(normalizeDiscordRoleName(candidate)));
 }
 
+async function enforceExclusiveRankRoles(member, guild, contextLabel = 'ROLE SYNC') {
+  try {
+    if (!member || !guild) return null;
+
+    const presentRankRoleIds = EXCLUSIVE_RANK_ROLE_PRIORITY.filter(roleId => member.roles.cache.has(roleId));
+    if (presentRankRoleIds.length <= 1) return presentRankRoleIds[0] || null;
+
+    const keepRoleId = EXCLUSIVE_RANK_ROLE_PRIORITY.find(roleId => member.roles.cache.has(roleId)) || presentRankRoleIds[0];
+    const removeRoleIds = presentRankRoleIds.filter(roleId => roleId !== keepRoleId);
+    const removableRoles = removeRoleIds
+      .map(roleId => guild.roles.cache.get(roleId))
+      .filter(role => role && role.editable);
+
+    if (removableRoles.length > 0) {
+      await member.roles.remove(removableRoles);
+      const keptRoleName = guild.roles.cache.get(keepRoleId)?.name || keepRoleId;
+      const removedRoleNames = removableRoles.map(role => role.name).join(', ');
+      console.log(`[${contextLabel}] Enforced rank-role exclusivity for ${member.displayName || member.user?.username || member.id}: kept ${keptRoleName}, removed ${removedRoleNames}`);
+    }
+
+    return keepRoleId;
+  } catch (error) {
+    console.warn(`[${contextLabel}] Could not enforce rank-role exclusivity for ${member?.displayName || member?.user?.username || member?.id || 'unknown'}:`, error.message);
+    return null;
+  }
+}
+
 function getDiscordRoleSyncSnapshot(member) {
+  const roleIds = new Set([...(member?.roles?.cache?.keys?.() || [])]);
   const roleNames = [...(member?.roles?.cache?.values?.() || [])]
     .map(role => normalizeDiscordRoleName(role?.name))
     .filter(Boolean);
@@ -2574,6 +2613,9 @@ function getDiscordRoleSyncSnapshot(member) {
   }
   if (hasDiscordRoleName(roleNames, ['trainee', 'trainees'])) {
     return { role: 'trainee', team: teamName };
+  }
+  if (roleIds.has(APPLICANT_ROLE_ID) || hasDiscordRoleName(roleNames, ['applicant', 'applicants'])) {
+    return { role: 'applicant', team: teamName };
   }
 
   return { role: null, team: teamName };
@@ -2662,6 +2704,8 @@ async function syncNoPinRoleForMember(member, guild, agentRecord, contextLabel =
 async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, contextLabel = 'ROLE SYNC') {
   try {
     if (!member || !guild) return null;
+
+    await enforceExclusiveRankRoles(member, guild, contextLabel);
 
     const snapshot = getDiscordRoleSyncSnapshot(member);
     const hotelCompatibility = getDiscordHotelCompatibilitySnapshot(member);
