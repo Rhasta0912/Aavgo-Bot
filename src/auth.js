@@ -5148,7 +5148,12 @@ async function handleLogout(interaction) {
     const calls = activities.filter(a => a.type === 'call');
 
     // Close ALL active sessions using centralized helper
-    const hotelIdsToSync = await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+    const closedSessionRefs = await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+    const closedHotelIds = [...new Set(
+      (closedSessionRefs || [])
+        .map(ref => (typeof ref === 'string' ? ref : (ref?.hotel_id || ref?.hotelId || null)))
+        .filter(Boolean)
+    )];
 
     // Reply early to avoid timeout
     await interaction.editReply({
@@ -5178,7 +5183,7 @@ async function handleLogout(interaction) {
     // Role management (non-blocking)
     try {
       if (targetMember) {
-        await applyLoggedOutRolesForMember(interaction.guild, targetMember, hotelIdsToSync);
+        await applyLoggedOutRolesForMember(interaction.guild, targetMember, closedSessionRefs);
         console.log(`[ROLES] Shift roles swapped for ${targetDiscordId}: -Green, +Grey`);
       } else {
         console.warn(`[ROLES] Member not found for role cleanup (${targetDiscordId}).`);
@@ -5188,8 +5193,10 @@ async function handleLogout(interaction) {
     }
 
     // Audit log
-    const hotelNames = hotelIdsToSync.map(h => HOTEL_NAMES[h] || h).join(', ');
-    const isManagement = hotelIdsToSync.includes('TEAM_SHIFT');
+    const hotelNames = closedHotelIds.length > 0
+      ? closedHotelIds.map(h => HOTEL_NAMES[h] || h).join(', ')
+      : 'Unknown';
+    const isManagement = closedHotelIds.includes('TEAM_SHIFT');
     const nickname = await getAgentDisplayName(interaction.guild, targetDiscordId);
     const endedByName = forceEndedByManager ? await getAgentDisplayName(interaction.guild, callerDiscordId) : null;
 
@@ -5217,12 +5224,12 @@ async function handleLogout(interaction) {
     });
 
     // Simple Notice (Public Team Log)
-    if (hotelIdsToSync.some(id => TEAM_1_HOTELS.includes(id))) {
+    if (closedHotelIds.some(id => TEAM_1_HOTELS.includes(id))) {
       await sendAuditLog(interaction.client, {
         title: '🛑 Shift Ended',
         description: `**Agent:** ${nickname}\n${forceEndedByManager ? `**Ended By:** ${endedByName}\n` : ''}**Hotel(s):** ${hotelNames}\n**Duration:** ${durationStr}`,
         color: 0xED4245,
-        hotelId: hotelIdsToSync[0], // Routine routing
+        hotelId: closedHotelIds[0], // Routine routing
         userId: targetDiscordId,
         guild: interaction.guild
       });

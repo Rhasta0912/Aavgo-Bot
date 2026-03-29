@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed logout analytics/log routing after session-ref return update.
+  - Summary: `closeAllActiveSessionsForAgent()` now returns session references (`hotel_id` + `session_kind`), but logout analytics logic was still treating the result as plain hotel-ID strings. This caused hotel labels and TEAM_SHIFT/team-log routing checks to misread closed sessions. Logout now normalizes closed hotel IDs for analytics/routing while still passing full session refs to role cleanup.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Fixed login temp-message auto-delete regression for shift start/end confirmations.
   - Summary: Login-flow success confirmations (including management `TEAM_SHIFT` start and end-shift confirmations) were not always auto-cleaning because deferred ephemeral replies from modal/login paths were not consistently detected as ephemeral. Added robust ephemeral tracking for deferred login interactions and re-enabled quick cleanup for those confirmation replies (30s rule), while keeping non-login 10-minute temp-message behavior unchanged.
   - Files touched:
