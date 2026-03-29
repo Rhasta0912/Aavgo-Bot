@@ -2584,8 +2584,11 @@ function getDiscordHotelCompatibilitySnapshot(member) {
 }
 
 function getAssignedHotelIdsFromMemberRoles(member) {
-  const hotelRoleMap = { ...ROLE_NAMES.GREY, ...ROLE_NAMES.GREEN };
-  const hotelIds = Object.entries(hotelRoleMap)
+  const hotelRoleEntries = [
+    ...Object.entries(ROLE_NAMES.GREY),
+    ...Object.entries(ROLE_NAMES.GREEN)
+  ];
+  const hotelIds = hotelRoleEntries
     .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && member?.roles?.cache?.has(roleId))
     .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
   return [...new Set(hotelIds)];
