@@ -407,20 +407,35 @@ client.on('guildMemberAdd', async member => {
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   try {
+    const applicantRoleId = '1484919969689894912';
     const traineeRoleId = '1484705126026449029';
     const agentRoleId = '1482227287159078964';
-    const applicantsRoleId = '1484919969689894912';
+    const smeRoleId = '1482382342621233153';
+    const teamLeaderRoleId = '1482732583660818636';
+    const rankRolePriority = [
+      teamLeaderRoleId,
+      smeRoleId,
+      agentRoleId,
+      traineeRoleId,
+      applicantRoleId
+    ];
 
-    const gainedTrainee = !oldMember.roles.cache.has(traineeRoleId) && newMember.roles.cache.has(traineeRoleId);
-    const gainedAgent = !oldMember.roles.cache.has(agentRoleId) && newMember.roles.cache.has(agentRoleId);
+    const gainedRankRoleIds = rankRolePriority.filter(
+      roleId => !oldMember.roles.cache.has(roleId) && newMember.roles.cache.has(roleId)
+    );
+    const preferredRankRoleId = gainedRankRoleIds.length > 0
+      ? rankRolePriority.find(roleId => gainedRankRoleIds.includes(roleId)) || gainedRankRoleIds[0]
+      : null;
 
-    const applicantsRole = newMember.guild.roles.cache.get(applicantsRoleId) || newMember.guild.roles.cache.find(r => r.name.toLowerCase() === 'applicants');
-    if ((gainedTrainee || gainedAgent) && applicantsRole && newMember.roles.cache.has(applicantsRole.id)) {
-      await newMember.roles.remove(applicantsRole);
-      console.log(`[ROLE SYNC] Removed Applicants role from ${newMember.user.username} after promotion`);
+    if (preferredRankRoleId) {
+      const preferredRoleName = newMember.guild.roles.cache.get(preferredRankRoleId)?.name || preferredRankRoleId;
+      const memberLabel = newMember.displayName || newMember.user?.username || newMember.id;
+      console.log(`[ROLE SYNC] Rank role change detected for ${memberLabel}; prioritizing ${preferredRoleName}`);
     }
 
-    await auth.syncAgentRecordFromDiscordMember(newMember, newMember.guild, 'ROLE SYNC UPDATE');
+    await auth.syncAgentRecordFromDiscordMember(newMember, newMember.guild, 'ROLE SYNC UPDATE', {
+      preferredRankRoleId
+    });
   } catch (error) {
     console.warn('[ROLE SYNC] Failed to process member role update:', error.message);
   }

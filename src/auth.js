@@ -2595,7 +2595,7 @@ function hasDiscordRoleName(roleNames, candidates) {
   return candidates.some(candidate => roleNames.includes(normalizeDiscordRoleName(candidate)));
 }
 
-async function enforceExclusiveRankRoles(member, guild, contextLabel = 'ROLE SYNC') {
+async function enforceExclusiveRankRoles(member, guild, contextLabel = 'ROLE SYNC', preferredRankRoleId = null) {
   try {
     if (!member || !guild) return null;
 
@@ -2615,6 +2615,7 @@ async function enforceExclusiveRankRoles(member, guild, contextLabel = 'ROLE SYN
     const dbPreferredRoleId = rankRoleIdByDbRole[dbRole];
 
     const keepRoleId = (
+      (preferredRankRoleId && presentRankRoleIds.includes(preferredRankRoleId) && preferredRankRoleId) ||
       (dbPreferredRoleId && presentRankRoleIds.includes(dbPreferredRoleId) && dbPreferredRoleId) ||
       EXCLUSIVE_RANK_ROLE_PRIORITY.find(roleId => member.roles.cache.has(roleId)) ||
       presentRankRoleIds[0]
@@ -2629,7 +2630,10 @@ async function enforceExclusiveRankRoles(member, guild, contextLabel = 'ROLE SYN
       const keptRoleName = guild.roles.cache.get(keepRoleId)?.name || keepRoleId;
       const removedRoleNames = removableRoles.map(role => role.name).join(', ');
       const dbRoleLabel = dbRole ? getRoleLabel(dbRole) : 'none';
-      console.log(`[${contextLabel}] Enforced rank-role exclusivity for ${member.displayName || member.user?.username || member.id}: kept ${keptRoleName}, removed ${removedRoleNames}, dbRole=${dbRoleLabel}`);
+      const keepReason = preferredRankRoleId && keepRoleId === preferredRankRoleId
+        ? 'preferred assignment'
+        : (dbPreferredRoleId && keepRoleId === dbPreferredRoleId ? 'db-aligned' : 'priority fallback');
+      console.log(`[${contextLabel}] Enforced rank-role exclusivity for ${member.displayName || member.user?.username || member.id}: kept ${keptRoleName} (${keepReason}), removed ${removedRoleNames}, dbRole=${dbRoleLabel}`);
     }
 
     return keepRoleId;
@@ -2749,11 +2753,12 @@ async function syncNoPinRoleForMember(member, guild, agentRecord, contextLabel =
   }
 }
 
-async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, contextLabel = 'ROLE SYNC') {
+async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, contextLabel = 'ROLE SYNC', options = {}) {
   try {
     if (!member || !guild) return null;
+    const preferredRankRoleId = options?.preferredRankRoleId || null;
 
-    await enforceExclusiveRankRoles(member, guild, contextLabel);
+    await enforceExclusiveRankRoles(member, guild, contextLabel, preferredRankRoleId);
 
     const snapshot = getDiscordRoleSyncSnapshot(member);
     const hotelCompatibility = getDiscordHotelCompatibilitySnapshot(member);

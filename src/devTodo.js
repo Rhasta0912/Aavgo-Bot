@@ -16,11 +16,11 @@ const DEV_TODO_MESSAGE_KEY = 'dev_todo_board_message_id';
 const DEV_TODO_COMPLETED_SCOPE_KEY = 'dev_todo_completed_scope';
 
 const STATUS_META = {
-  backlog: { title: 'Backlog' },
-  in_progress: { title: 'In Progress' },
-  blocked: { title: 'Blocked' },
-  ready_deploy: { title: 'Ready to Deploy' },
-  done: { title: 'Done' }
+  backlog: { title: 'Backlog', emoji: '🧠', empty: '- Backlog is clear.' },
+  in_progress: { title: 'In Progress', emoji: '⚙️', empty: '- No tasks currently in progress.' },
+  blocked: { title: 'Blocked', emoji: '⛔', empty: '- No blocked tasks.' },
+  ready_deploy: { title: 'Ready to Deploy', emoji: '🚢', empty: '- No tasks ready to deploy.' },
+  done: { title: 'Done', emoji: '✅', empty: '- No completed tasks yet.' }
 };
 
 const COMPLETED_SCOPE_META = {
@@ -42,6 +42,7 @@ const STATUS_CHOICES = Object.keys(STATUS_META);
 const COMPLETED_SCOPE_CHOICES = Object.keys(COMPLETED_SCOPE_META);
 const DEFAULT_COMPLETED_SCOPE = 'today';
 const DEV_ID_FALLBACK = new Set(['320128931971727360', '1186978205018632242']);
+const BOARD_DIVIDER = '━━━━━━━━━━━━━━━━━━━━';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS dev_todo_tasks (
@@ -228,18 +229,25 @@ function toDiscordRelativeTimestamp(timestampValue) {
 
 function formatTaskLine(task) {
   const code = getTaskCode(task.id);
-  const eta = task.eta_text ? ` | ETA: ${clip(task.eta_text, 24)}` : '';
-  return `- \`${code}\` ${clip(task.title, 56)} | ${getOwnerLabel(task)}${eta}`;
+  const eta = task.eta_text ? ` • ETA ${clip(task.eta_text, 20)}` : '';
+  return `• \`${code}\` ${clip(task.title, 50)} • ${getOwnerLabel(task)}${eta}`;
 }
 
 function formatCompletedLine(entry) {
-  const sourceLabel = entry.source === 'task' ? 'Task' : 'Manual';
+  const sourceLabel = entry.source === 'task' ? '✅ Task' : '📝 Manual';
   const codePrefix = entry.task_code ? `\`${entry.task_code}\` ` : '';
   const actor = entry.actor_discord_id ? `<@${entry.actor_discord_id}>` : clip(entry.actor_name || 'Unknown', 28);
   const unix = toDiscordRelativeTimestamp(entry.completed_at);
   const when = unix ? `<t:${unix}:R>` : 'Unknown time';
-  const note = entry.note ? ` | ${clip(entry.note, 48)}` : '';
-  return `- [${sourceLabel}] ${codePrefix}${clip(entry.title, 52)} | ${actor} | ${when}${note}`;
+  const note = entry.note ? ` • ${clip(entry.note, 34)}` : '';
+  return `• ${sourceLabel} ${codePrefix}${clip(entry.title, 44)} • ${actor} • ${when}${note}`;
+}
+
+function buildProgressBar(doneCount, totalCount, size = 10) {
+  if (totalCount <= 0) return '░'.repeat(size);
+  const safeDone = Math.max(0, Math.min(doneCount, totalCount));
+  const filled = Math.round((safeDone / totalCount) * size);
+  return `${'█'.repeat(filled)}${'░'.repeat(Math.max(0, size - filled))}`;
 }
 
 function buildBoardEmbeds(tasks, completedScope = getCompletedScope()) {
@@ -255,59 +263,76 @@ function buildBoardEmbeds(tasks, completedScope = getCompletedScope()) {
 
   const completedCount = getCompletedCount(normalizedScope);
   const completedEntries = getCompletedEntries(normalizedScope, 8);
+  const activeTaskCount = grouped.backlog.length + grouped.in_progress.length + grouped.blocked.length + grouped.ready_deploy.length;
+  const totalTaskCount = activeTaskCount + grouped.done.length;
+  const completionRate = totalTaskCount > 0 ? Math.round((grouped.done.length / totalTaskCount) * 100) : 0;
+  const completionBar = buildProgressBar(grouped.done.length, totalTaskCount, 12);
 
   const summaryEmbed = new EmbedBuilder()
-    .setTitle('Aavgo Developer Launch Board')
+    .setTitle('🚀 Aavgo Developer Launch Board')
     .setDescription(
-      'Shared team board. Any approved developer can add, move, and check off tasks.\n' +
-      '--------------------------------\n' +
-      `Backlog: **${grouped.backlog.length}**\n` +
-      `In Progress: **${grouped.in_progress.length}**\n` +
-      `Blocked: **${grouped.blocked.length}**\n` +
-      `Ready to Deploy: **${grouped.ready_deploy.length}**\n` +
-      `Done (To-Do Status): **${grouped.done.length}**\n` +
-      `Completed Log (${scopeMeta.label}): **${completedCount}**`
+      '✅ Shared team board. Any approved developer can add, move, and check off tasks.\n' +
+      `🗂️ Completed View: **${scopeMeta.label}**\n` +
+      `${BOARD_DIVIDER}\n` +
+      `${STATUS_META.backlog.emoji} Backlog: **${grouped.backlog.length}**\n` +
+      `${STATUS_META.in_progress.emoji} In Progress: **${grouped.in_progress.length}**\n` +
+      `${STATUS_META.blocked.emoji} Blocked: **${grouped.blocked.length}**\n` +
+      `${STATUS_META.ready_deploy.emoji} Ready to Deploy: **${grouped.ready_deploy.length}**\n` +
+      `${STATUS_META.done.emoji} Done (To-Do): **${grouped.done.length}**\n` +
+      `🧾 Completed Log (${scopeMeta.label}): **${completedCount}**`
     )
-    .setColor(0x5865F2)
-    .setFooter({ text: `Aavgo DevOps | Shared Board | Completed View: ${scopeMeta.label}` })
+    .addFields(
+      {
+        name: '📈 Workflow Health',
+        value: `Completion: **${completionRate}%**\n\`${completionBar}\`\nOpen Tasks: **${activeTaskCount}**`,
+        inline: true
+      },
+      {
+        name: '🧭 Completion Range',
+        value: `**${scopeMeta.label}**\n${scopeMeta.description}`,
+        inline: true
+      }
+    )
+    .setColor(0x4F46E5)
+    .setFooter({ text: `Aavgo DevOps • Shared Board • Completed View: ${scopeMeta.label}` })
     .setTimestamp();
 
   const boardEmbed = new EmbedBuilder()
-    .setTitle('Active Developer Tasks')
-    .setColor(0x2B2D31)
+    .setTitle('📋 Active Developer Tasks')
+    .setColor(0x1F2937)
     .addFields(
       {
-        name: STATUS_META.in_progress.title,
+        name: `${STATUS_META.in_progress.emoji} ${STATUS_META.in_progress.title} (${grouped.in_progress.length})`,
         value: grouped.in_progress.length > 0
           ? grouped.in_progress.slice(0, 8).map(formatTaskLine).join('\n')
-          : '- No tasks currently in progress.'
+          : STATUS_META.in_progress.empty
       },
       {
-        name: STATUS_META.blocked.title,
+        name: `${STATUS_META.blocked.emoji} ${STATUS_META.blocked.title} (${grouped.blocked.length})`,
         value: grouped.blocked.length > 0
           ? grouped.blocked.slice(0, 8).map(formatTaskLine).join('\n')
-          : '- No blocked tasks.'
+          : STATUS_META.blocked.empty
       },
       {
-        name: STATUS_META.ready_deploy.title,
+        name: `${STATUS_META.ready_deploy.emoji} ${STATUS_META.ready_deploy.title} (${grouped.ready_deploy.length})`,
         value: grouped.ready_deploy.length > 0
           ? grouped.ready_deploy.slice(0, 8).map(formatTaskLine).join('\n')
-          : '- No tasks ready to deploy.'
+          : STATUS_META.ready_deploy.empty
       },
       {
-        name: STATUS_META.backlog.title,
+        name: `${STATUS_META.backlog.emoji} ${STATUS_META.backlog.title} (${grouped.backlog.length})`,
         value: grouped.backlog.length > 0
           ? grouped.backlog.slice(0, 8).map(formatTaskLine).join('\n')
-          : '- Backlog is clear.'
+          : STATUS_META.backlog.empty
       },
       {
-        name: `Completed (${scopeMeta.label})`,
+        name: `🧾 Completed (${scopeMeta.label})`,
         value: completedEntries.length > 0
           ? completedEntries.map(formatCompletedLine).join('\n')
           : '- No completed entries in this range.'
       }
     )
-    .setFooter({ text: 'Aavgo DevOps | One Board, Shared Ownership' })
+    .setFooter({ text: 'Aavgo DevOps • One Board, Shared Ownership' })
     .setTimestamp();
 
   return [summaryEmbed, boardEmbed];
@@ -317,8 +342,9 @@ function buildCompletedScopeMenu(completedScope) {
   const normalizedScope = normalizeCompletedScope(completedScope);
   const options = COMPLETED_SCOPE_CHOICES.map(scope => {
     const meta = COMPLETED_SCOPE_META[scope];
+    const prefix = scope === 'today' ? '🗓️ ' : (scope === 'week' ? '📅 ' : '🧾 ');
     return new StringSelectMenuOptionBuilder()
-      .setLabel(meta.label)
+      .setLabel(`${prefix}${meta.label}`)
       .setValue(scope)
       .setDescription(meta.description)
       .setDefault(scope === normalizedScope);
@@ -326,7 +352,7 @@ function buildCompletedScopeMenu(completedScope) {
 
   return new StringSelectMenuBuilder()
     .setCustomId('devtodo_completed_scope_select')
-    .setPlaceholder(`Completed View: ${COMPLETED_SCOPE_META[normalizedScope].label}`)
+    .setPlaceholder(`🗂️ Completed View: ${COMPLETED_SCOPE_META[normalizedScope].label}`)
     .addOptions(options);
 }
 
@@ -334,42 +360,42 @@ function buildBoardComponents(completedScope = getCompletedScope()) {
   const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('devtodo_add_btn')
-      .setLabel('New Task')
+      .setLabel('➕ New Task')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('devtodo_pick_in_progress')
-      .setLabel('In Progress')
+      .setLabel('⚙️ In Progress')
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('devtodo_pick_blocked')
-      .setLabel('Block')
+      .setLabel('⛔ Block')
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId('devtodo_pick_done')
-      .setLabel('Check Off')
+      .setLabel('✅ Check Off')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('devtodo_pick_backlog')
-      .setLabel('Reopen')
+      .setLabel('↩️ Reopen')
       .setStyle(ButtonStyle.Secondary)
   );
 
   const row2 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('devtodo_pick_ready_deploy')
-      .setLabel('Ready Deploy')
+      .setLabel('🚢 Ready Deploy')
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('devtodo_log_done_btn')
-      .setLabel('Log Completed')
+      .setLabel('📝 Log Completed')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('devtodo_clear_done_btn')
-      .setLabel('Clear Completed')
+      .setLabel('🧹 Clear Completed')
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
       .setCustomId('devtodo_refresh_btn')
-      .setLabel('Refresh')
+      .setLabel('🔄 Refresh')
       .setStyle(ButtonStyle.Secondary)
   );
 
@@ -497,18 +523,18 @@ function buildCompletedLogModal() {
 function buildClearCompletedPicker() {
   const menu = new StringSelectMenuBuilder()
     .setCustomId('devtodo_clear_completed_select')
-    .setPlaceholder('Select completed range to clear')
+    .setPlaceholder('🧹 Select completed range to clear')
     .addOptions(
       new StringSelectMenuOptionBuilder()
-        .setLabel('Today')
+        .setLabel('🗓️ Today')
         .setValue('today')
         .setDescription('Clear completed entries logged today'),
       new StringSelectMenuOptionBuilder()
-        .setLabel('This Week')
+        .setLabel('📅 This Week')
         .setValue('week')
         .setDescription('Clear completed entries logged this week'),
       new StringSelectMenuOptionBuilder()
-        .setLabel('All Time')
+        .setLabel('🧾 All Time')
         .setValue('all')
         .setDescription('Clear the entire completed log')
     );
