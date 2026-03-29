@@ -22,6 +22,7 @@ const TEAM_APPLICANTS = 'Applicants';
 const TRAINEE_ROLE_ID = '1484705126026449029';
 const AGENT_ROLE_ID = '1482227287159078964';
 const SME_ROLE_ID = '1482382342621233153';
+const TEAM_LEADER_ROLE_ID = '1482732583660818636';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 const DEVELOPER_ROLE_ID = '1482312134875418737';
 const APPLICANTS_ROLE_ID = '1484919969689894912';
@@ -729,6 +730,7 @@ function buildSetRoleMenuRow(targetDiscordId, teamName) {
       .setCustomId(`profiles_set_role_pick:${targetDiscordId}:${teamName}`)
       .setPlaceholder('Select role rank')
       .addOptions(
+        new StringSelectMenuOptionBuilder().setLabel('Applicant').setDescription('Set as Applicant role').setValue('applicant'),
         new StringSelectMenuOptionBuilder().setLabel('Trainee').setDescription('Set as Trainee role').setValue('trainee'),
         new StringSelectMenuOptionBuilder().setLabel('Agent').setDescription('Set as Agent role').setValue('agent'),
         new StringSelectMenuOptionBuilder().setLabel('SME').setDescription('Set as Subject Matter Expert').setValue('sme'),
@@ -943,26 +945,61 @@ async function syncTeamDiscordRoles(member, teamName) {
 async function syncBaseRoleDiscordRoles(member, roleValue) {
   if (!member) return;
 
+  const applicantRole = member.guild.roles.cache.get(APPLICANTS_ROLE_ID) ||
+    member.guild.roles.cache.find(role => String(role.name || '').toLowerCase() === 'applicants');
   const traineeRole = member.guild.roles.cache.get(TRAINEE_ROLE_ID) ||
     member.guild.roles.cache.find(role => String(role.name || '').toLowerCase() === 'trainees');
   const agentsRole = member.guild.roles.cache.get(AGENT_ROLE_ID) ||
     member.guild.roles.cache.find(role => String(role.name || '').toLowerCase() === 'agents');
 
   const normalized = String(roleValue || '').toLowerCase();
+  if (normalized === 'applicant') {
+    if (traineeRole && member.roles.cache.has(traineeRole.id)) {
+      await member.roles.remove(traineeRole).catch(() => {});
+    }
+    if (agentsRole && member.roles.cache.has(agentsRole.id)) {
+      await member.roles.remove(agentsRole).catch(() => {});
+    }
+    if (applicantRole && !member.roles.cache.has(applicantRole.id)) {
+      await member.roles.add(applicantRole).catch(() => {});
+    }
+    return;
+  }
+
   if (normalized === 'trainee') {
+    if (applicantRole && member.roles.cache.has(applicantRole.id)) {
+      await member.roles.remove(applicantRole).catch(() => {});
+    }
     if (agentsRole && member.roles.cache.has(agentsRole.id)) {
       await member.roles.remove(agentsRole).catch(() => {});
     }
     if (traineeRole && !member.roles.cache.has(traineeRole.id)) {
       await member.roles.add(traineeRole).catch(() => {});
     }
-  } else {
+    return;
+  }
+
+  if (normalized === 'agent') {
+    if (applicantRole && member.roles.cache.has(applicantRole.id)) {
+      await member.roles.remove(applicantRole).catch(() => {});
+    }
     if (traineeRole && member.roles.cache.has(traineeRole.id)) {
       await member.roles.remove(traineeRole).catch(() => {});
     }
     if (agentsRole && !member.roles.cache.has(agentsRole.id)) {
       await member.roles.add(agentsRole).catch(() => {});
     }
+    return;
+  }
+
+  if (applicantRole && member.roles.cache.has(applicantRole.id)) {
+    await member.roles.remove(applicantRole).catch(() => {});
+  }
+  if (traineeRole && member.roles.cache.has(traineeRole.id)) {
+    await member.roles.remove(traineeRole).catch(() => {});
+  }
+  if (agentsRole && member.roles.cache.has(agentsRole.id)) {
+    await member.roles.remove(agentsRole).catch(() => {});
   }
 }
 
@@ -1012,7 +1049,7 @@ function buildAccessRequirementEmbed(title, description, requirement) {
 
 async function applyRoleUpdate(interaction, discordId, roleValue, teamName) {
   const normalized = String(roleValue || '').toLowerCase();
-  const allowed = ['trainee', 'agent', 'sme', 'team_leader'];
+  const allowed = ['applicant', 'trainee', 'agent', 'sme', 'team_leader'];
   if (!allowed.includes(normalized)) {
     return sendComponentUpdate(interaction, { content: 'Invalid role selected.', embeds: [], components: [] });
   }
@@ -1025,7 +1062,7 @@ async function applyRoleUpdate(interaction, discordId, roleValue, teamName) {
 
   if (!current) {
     const bootstrapPin = String(Math.floor(100000 + Math.random() * 900000));
-    const bootstrapStatus = normalized === 'trainee' ? 'standby' : 'ready';
+    const bootstrapStatus = normalized === 'applicant' ? 'pending' : (normalized === 'trainee' ? 'standby' : 'ready');
     db.prepare(
       'INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status, team, hotel_compatibility) VALUES (?, ?, ?, 0, ?, ?, ?, ?)'
     ).run(discordId, displayName, bootstrapPin, normalized, bootstrapStatus, resolvedTeam, '[]');
@@ -1321,7 +1358,7 @@ async function showSetRoleView(interaction, discordId, teamName) {
     embeds: [
       buildConfigEmbed(
         'Set Role',
-        `Select the rank for <@${discordId}>.\n\nOptions: Trainee, Agent, SME, Team Leader.`
+        `Select the rank for <@${discordId}>.\n\nOptions: Applicant, Trainee, Agent, SME, Team Leader.`
       )
     ],
     components: [

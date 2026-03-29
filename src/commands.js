@@ -175,7 +175,7 @@ const commandData = [
     .addUserOption(option => option.setName('user').setDescription('The user to promote').setRequired(true)),
   new SlashCommandBuilder()
     .setName('db-demote')
-    .setDescription('(Developer Only) Demote a manager back to an agent')
+    .setDescription('(Developer Only) Demote a user by one rank step')
     .addUserOption(option => option.setName('user').setDescription('The user to demote').setRequired(true)),
   new SlashCommandBuilder()
     .setName('db-remove-user')

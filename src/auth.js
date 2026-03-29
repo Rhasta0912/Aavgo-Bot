@@ -311,6 +311,7 @@ const AGENT_ROLE_ID = '1482227287159078964';
 const TRAINEE_ROLE_ID = '1484705126026449029';
 const SME_ROLE_ID = '1482382342621233153';
 const TEAM_LEADER_ROLE_ID = '1482732583660818636';
+const OPERATIONS_MANAGER_DISCORD_ROLE_ID = '1482226842047090809';
 const NO_PIN_ROLE_ID = '1485275671797436620';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
@@ -358,6 +359,7 @@ const ROLE_HIERARCHY = {
   team_leader: 3,
   operations_manager: 5
 };
+const ROLE_DEMOTION_CHAIN = ['operations_manager', 'team_leader', 'sme', 'agent', 'trainee', 'applicant'];
 
 function parseSessionTimestamp(value) {
   if (!value) return Date.now();
@@ -1028,6 +1030,13 @@ function getRoleLabel(role) {
 
 function getRoleRank(role) {
   return ROLE_HIERARCHY[normalizeAgentRole(role)] || 0;
+}
+
+function getNextDemotedRole(role) {
+  const normalized = normalizeAgentRole(role);
+  const idx = ROLE_DEMOTION_CHAIN.indexOf(normalized);
+  if (idx === -1 || idx >= ROLE_DEMOTION_CHAIN.length - 1) return null;
+  return ROLE_DEMOTION_CHAIN[idx + 1];
 }
 
 function hasAgentRoleAtLeast(role, minimumRole) {
@@ -6253,22 +6262,61 @@ async function handleDemote(interaction) {
     const agent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
     if (!agent) return interaction.reply({ content: `❌ **${targetUser.username}** is not a registered agent.`, ephemeral: true });
 
-    db.prepare("UPDATE agents SET role = 'agent' WHERE discord_id = ?").run(targetUser.id);
+    const currentRole = normalizeAgentRole(agent.role);
+    const nextRole = getNextDemotedRole(currentRole);
+    if (!nextRole) {
+      return interaction.reply({ content: `⚠️ **${targetUser.username}** is already at the lowest rank (**Applicant**).`, ephemeral: true });
+    }
 
-    // Role Removal
+    db.prepare("UPDATE agents SET role = ? WHERE discord_id = ?").run(nextRole, targetUser.id);
+
+    // Role sync
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
-      const rolesToRemove = interaction.guild.roles.cache.filter(r => 
-        r.name.toLowerCase() === 'team leader' || r.name.toLowerCase() === 'subject matter expert' || r.name.toLowerCase() === 'operations manager'
-      );
-      if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
+      const targetRoleIdByRank = {
+        applicant: APPLICANT_ROLE_ID,
+        trainee: TRAINEE_ROLE_ID,
+        agent: AGENT_ROLE_ID,
+        sme: SME_ROLE_ID,
+        team_leader: TEAM_LEADER_ROLE_ID
+      };
+      const targetRoleId = targetRoleIdByRank[nextRole] || null;
+      const rankRoleIds = [APPLICANT_ROLE_ID, TRAINEE_ROLE_ID, AGENT_ROLE_ID, SME_ROLE_ID, TEAM_LEADER_ROLE_ID];
+
+      const rolesToRemove = rankRoleIds
+        .filter(roleId => roleId !== targetRoleId)
+        .map(roleId => interaction.guild.roles.cache.get(roleId))
+        .filter(role => role && member.roles.cache.has(role.id));
+      if (rolesToRemove.length > 0) {
+        await member.roles.remove(rolesToRemove);
+      }
+
+      const operationsManagerRole =
+        interaction.guild.roles.cache.get(OPERATIONS_MANAGER_DISCORD_ROLE_ID) ||
+        interaction.guild.roles.cache.find(role => normalizeDiscordRoleName(role?.name) === 'operations manager');
+      if (operationsManagerRole && member.roles.cache.has(operationsManagerRole.id)) {
+        await member.roles.remove(operationsManagerRole).catch(() => {});
+      }
+
+      if (targetRoleId) {
+        const targetRole = interaction.guild.roles.cache.get(targetRoleId);
+        if (targetRole && !member.roles.cache.has(targetRole.id)) {
+          await member.roles.add(targetRole);
+        }
+      }
+
+      const updatedAgent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
+      await syncNoPinRoleForMember(member, interaction.guild, updatedAgent, 'DEMOTE');
     } catch (e) { console.warn('[DEMOTE] Role cleanup failed:', e.message); }
 
-    await interaction.reply({ content: `📉 **${targetUser.username}** has been demoted back to **Agent**. Management roles removed.`, ephemeral: true });
+    await interaction.reply({
+      content: `📉 **${targetUser.username}** demoted: **${getRoleLabel(currentRole)} → ${getRoleLabel(nextRole)}**.`,
+      ephemeral: true
+    });
 
     sendAuditLog(interaction.client, {
       title: '📉 Management Demotion',
-      description: `**User:** ${targetUser.username} (<@${targetUser.id}>)\n**Action:** Demoted to Agent\n**Admin:** {{AGENT_NAME}}`,
+      description: `**User:** ${targetUser.username} (<@${targetUser.id}>)\n**Action:** ${getRoleLabel(currentRole)} → ${getRoleLabel(nextRole)}\n**Admin:** {{AGENT_NAME}}`,
       color: 0xE67E22,
       userId: interaction.user.id,
       guild: interaction.guild
@@ -6882,7 +6930,7 @@ async function handleHelpStaff(interaction) {
         '> `/db-add-developer`: Add a developer record.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
-        '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles.\n\n' +
+        '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles (`/db-demote` steps down one rank).\n\n' +
         '### 🧰 Database & Recovery\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/db-info`: Inspect DB path, schema, and table layout.\n' +

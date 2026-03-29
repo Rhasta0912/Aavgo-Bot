@@ -55,6 +55,13 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added full downward rank-demotion support across command and Profiles panel.
+  - Summary: `/db-demote` now steps down one rank at a time instead of forcing `Agent`, following the chain `Operations Manager -> Team Leader -> SME -> Agent -> Trainee -> Applicant` (with lowest-rank protection). Profiles `Set Role` now includes `Applicant`, so staff can demote all the way down through the same rank ladder from the panel too.
+  - Files touched:
+    - src/auth.js
+    - src/profilePanel.js
+    - src/commands.js
+    - HISTORY.md
 - Enforced exclusive rank-role behavior for Applicant/Trainee/Agent/SME/Team Leader.
   - Summary: Added a single-rank role rule so members can only hold one of these rank roles at a time: Applicant (`1484919969689894912`), Trainee (`1484705126026449029`), Agent (`1482227287159078964`), SME (`1482382342621233153`), Team Leader (`1482732583660818636`). Role sync now auto-removes the other rank roles based on priority (Team Leader > SME > Agent > Trainee > Applicant), while all non-rank roles keep their existing logic.
   - Files touched:
