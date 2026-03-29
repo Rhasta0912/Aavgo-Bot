@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Changed overtime warning `End Shift` to a one-click direct log-in channel redirect.
+  - Summary: Overtime warning now sends `End Shift` as a direct link button that opens the log-in channel immediately in one click, instead of requiring a second `Open Log-in Channel` button after pressing `End Shift`.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Hardened training/practice to be fully non-permanent for both Agents and Trainees.
   - Summary: Training sessions no longer affect permanent hotel assignment flow. Agent permanent `hotel_id` sync now only trusts grey assignment roles (not green session roles), and training-only logout keeps role-neutral behavior while cleaning stale green roles from older behavior.
   - Files touched:

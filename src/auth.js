@@ -449,16 +449,23 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO', warni
 
   const user = await client.users.fetch(session.discord_id).catch(() => null);
   if (user) {
-    const confirmRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`overtime_confirm:${sessionId}:${session.discord_id}`)
-        .setLabel('Confirm Overtime')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
+    const guildId = client.guilds.cache.first()?.id || null;
+    const loginChannelUrl = guildId ? `https://discord.com/channels/${guildId}/${LOGIN_CHANNEL_ID}` : null;
+    const confirmBtn = new ButtonBuilder()
+      .setCustomId(`overtime_confirm:${sessionId}:${session.discord_id}`)
+      .setLabel('Confirm Overtime')
+      .setStyle(ButtonStyle.Success);
+    const endShiftBtn = loginChannelUrl
+      ? new ButtonBuilder()
+        .setLabel('End Shift')
+        .setEmoji('🛑')
+        .setStyle(ButtonStyle.Link)
+        .setURL(loginChannelUrl)
+      : new ButtonBuilder()
         .setCustomId(`overtime_endshift:${sessionId}:${session.discord_id}`)
         .setLabel('End Shift')
-        .setStyle(ButtonStyle.Danger)
-    );
+        .setStyle(ButtonStyle.Danger);
+    const confirmRow = new ActionRowBuilder().addComponents(confirmBtn, endShiftBtn);
 
     await user.send({
       embeds: [warningEmbed],
