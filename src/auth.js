@@ -1364,8 +1364,15 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     return respond({ content: '⚠️ You just logged in! Please wait a moment for the status to update.' });
   }
 
+  let closedHotelIds = [];
   if (!effectiveAllowMultiHotel) {
-    await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+    closedHotelIds = await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+    if (closedHotelIds.length > 0) {
+      const member = interaction.member || await interaction.guild?.members?.fetch(interaction.user.id).catch(() => null);
+      if (member) {
+        await applyLoggedOutRolesForMember(interaction.guild, member, closedHotelIds);
+      }
+    }
   }
 
   if (hotelId !== 'TEAM_SHIFT') {
@@ -2573,10 +2580,14 @@ function getDiscordRoleSyncSnapshot(member) {
 }
 
 function getDiscordHotelCompatibilitySnapshot(member) {
-  const hotelIds = Object.entries(ROLE_NAMES.GREY)
-    .filter(([, roleId]) => member?.roles?.cache?.has(roleId))
-    .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
+  return getAssignedHotelIdsFromMemberRoles(member);
+}
 
+function getAssignedHotelIdsFromMemberRoles(member) {
+  const hotelRoleMap = { ...ROLE_NAMES.GREY, ...ROLE_NAMES.GREEN };
+  const hotelIds = Object.entries(hotelRoleMap)
+    .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && member?.roles?.cache?.has(roleId))
+    .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
   return [...new Set(hotelIds)];
 }
 
@@ -3434,9 +3445,7 @@ async function handleStartShiftClick(interaction) {
     }
 
     // If the agent has multiple assigned grey hotel roles, let them pick the hotel for this shift.
-    const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
-      .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && interaction.member.roles.cache.has(roleId))
-      .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
+    const assignedHotelIds = getAssignedHotelIdsFromMemberRoles(interaction.member);
     const compatibilityHotelIds = (() => {
       try {
         return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
@@ -3453,8 +3462,9 @@ async function handleStartShiftClick(interaction) {
       const singleModeEmbed = new EmbedBuilder()
         .setTitle('🏨 Active Shift Detected')
         .setDescription(
-          `You are already logged into **${activeHotelLabel}**.\n\n` +
-          'Do you want to restart as a single-hotel shift?'
+          `You are logged into **${activeHotelLabel}**.\n\n` +
+          'Are you sure you want to start another shift?\n' +
+          'If yes, we will log out your current shift first.'
         )
         .setColor(0xFEE75C);
 
@@ -3472,6 +3482,14 @@ async function handleStartShiftClick(interaction) {
         embeds: [singleModeEmbed],
         components: [new ActionRowBuilder().addComponents(continueBtn, cancelBtn)]
       });
+    }
+
+    if (activeShiftSession && forceSingleHotel) {
+      const closedHotelIds = await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+      const member = interaction.member || await interaction.guild?.members?.fetch(interaction.user.id).catch(() => null);
+      if (member && closedHotelIds.length > 0) {
+        await applyLoggedOutRolesForMember(interaction.guild, member, closedHotelIds);
+      }
     }
 
     if (assignedHotelIds.length === 1) {
@@ -3613,9 +3631,7 @@ async function handleShiftHotelPickMenu(interaction) {
       });
     }
 
-    const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
-      .filter(([assignedHotelId, roleId]) => HOTEL_NAMES[assignedHotelId] && interaction.member.roles.cache.has(roleId))
-      .map(([assignedHotelId]) => normalizeCombinedHotelId(assignedHotelId));
+    const assignedHotelIds = getAssignedHotelIdsFromMemberRoles(interaction.member);
     const compatibilityHotelIds = (() => {
       try {
         return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
@@ -3681,9 +3697,7 @@ async function handleSameHotelConfirm(interaction) {
       });
     }
 
-    const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
-      .filter(([assignedHotelId, roleId]) => HOTEL_NAMES[assignedHotelId] && interaction.member.roles.cache.has(roleId))
-      .map(([assignedHotelId]) => normalizeCombinedHotelId(assignedHotelId));
+    const assignedHotelIds = getAssignedHotelIdsFromMemberRoles(interaction.member);
     const compatibilityHotelIds = (() => {
       try {
         return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
@@ -8182,9 +8196,7 @@ async function handleSameHotelConfirm(interaction) {
       });
     }
 
-    const assignedHotelIds = Object.entries(ROLE_NAMES.GREY)
-      .filter(([assignedHotelId, roleId]) => HOTEL_NAMES[assignedHotelId] && interaction.member.roles.cache.has(roleId))
-      .map(([assignedHotelId]) => normalizeCombinedHotelId(assignedHotelId));
+    const assignedHotelIds = getAssignedHotelIdsFromMemberRoles(interaction.member);
     const compatibilityHotelIds = (() => {
       try {
         return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
