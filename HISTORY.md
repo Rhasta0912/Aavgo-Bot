@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed Profiles rank-change demotion conflict where Team Leader could override SME selection.
+  - Summary: `Set Role` in Profiles now syncs leadership ranks using role IDs first (Team Leader/SME/Operations Manager) with name fallback, so selecting a lower rank like `Team Leader -> SME` reliably removes the previous rank before exclusivity checks run.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
 - Added full downward rank-demotion support across command and Profiles panel.
   - Summary: `/db-demote` now steps down one rank at a time instead of forcing `Agent`, following the chain `Operations Manager -> Team Leader -> SME -> Agent -> Trainee -> Applicant` (with lowest-rank protection). Profiles `Set Role` now includes `Applicant`, so staff can demote all the way down through the same rank ladder from the panel too.
   - Files touched:

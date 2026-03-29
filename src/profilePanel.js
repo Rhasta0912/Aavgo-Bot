@@ -304,18 +304,41 @@ function buildTeamRosterPayload(teamName, members) {
 async function syncLeadershipDiscordRoles(member, role) {
   if (!member) return;
 
-  const removeNames = ['team leader', 'subject matter expert', 'sme', 'operations manager'];
-  const removeRoles = member.guild.roles.cache.filter(guildRole => removeNames.includes(guildRole.name.toLowerCase()));
-  if (removeRoles.size > 0) {
-    await member.roles.remove(removeRoles).catch(() => {});
+  const leadershipRoleIds = [TEAM_LEADER_ROLE_ID, SME_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID];
+  const removeById = leadershipRoleIds
+    .map(roleId => member.guild.roles.cache.get(roleId))
+    .filter(guildRole => guildRole && member.roles.cache.has(guildRole.id));
+
+  if (removeById.length > 0) {
+    await member.roles.remove(removeById).catch(() => {});
+  } else {
+    const removeNames = ['team leader', 'subject matter expert', 'sme', 'operations manager'];
+    const removeRoles = member.guild.roles.cache.filter(guildRole => removeNames.includes(guildRole.name.toLowerCase()));
+    if (removeRoles.size > 0) {
+      await member.roles.remove(removeRoles).catch(() => {});
+    }
   }
 
-  const roleTargets = {
+  const roleTargetsById = {
+    sme: SME_ROLE_ID,
+    team_leader: TEAM_LEADER_ROLE_ID,
+    operations_manager: OPERATIONS_MANAGER_ROLE_ID
+  };
+  const roleTargetsByName = {
     sme: ['subject matter expert', 'sme'],
     team_leader: ['team leader'],
     operations_manager: ['operations manager']
   };
-  const names = roleTargets[role] || [];
+  const targetRoleId = roleTargetsById[role] || null;
+  if (targetRoleId) {
+    const targetRole = member.guild.roles.cache.get(targetRoleId);
+    if (targetRole) {
+      await member.roles.add(targetRole).catch(() => {});
+      return;
+    }
+  }
+
+  const names = roleTargetsByName[role] || [];
 
   for (const name of names) {
     const target = member.guild.roles.cache.find(guildRole => guildRole.name.toLowerCase() === name);
