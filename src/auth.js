@@ -2819,15 +2819,40 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
   try {
     if (!member || !guild) return null;
     const preferredRankRoleId = options?.preferredRankRoleId || null;
-
-    await enforceExclusiveRankRoles(member, guild, contextLabel, preferredRankRoleId);
-
-    const snapshot = getDiscordRoleSyncSnapshot(member);
-    const hotelCompatibility = getDiscordHotelCompatibilitySnapshot(member);
-    const hotelCompatibilityValue = serializeHotelCompatibility(hotelCompatibility);
+    const skipRankExclusivity = options?.skipRankExclusivity === true;
+    const rankRoleValueById = {
+      [APPLICANT_ROLE_ID]: 'applicant',
+      [TRAINEE_ROLE_ID]: 'trainee',
+      [AGENT_ROLE_ID]: 'agent',
+      [SME_ROLE_ID]: 'sme',
+      [TEAM_LEADER_ROLE_ID]: 'team_leader'
+    };
+    let enforcedRankRoleId = null;
+    if (!skipRankExclusivity) {
+      enforcedRankRoleId = await enforceExclusiveRankRoles(member, guild, contextLabel, preferredRankRoleId);
+    }
 
     const displayName = member.displayName || member.user?.username || member.user?.tag || 'Unknown';
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
+    let snapshot = getDiscordRoleSyncSnapshot(member);
+
+    const preferredSnapshotRole = rankRoleValueById[preferredRankRoleId] || null;
+    if (preferredSnapshotRole && enforcedRankRoleId === preferredRankRoleId && snapshot.role !== preferredSnapshotRole) {
+      snapshot = { ...snapshot, role: preferredSnapshotRole };
+      console.log(`[${contextLabel}] Preserved preferred rank for ${displayName}: ${getRoleLabel(preferredSnapshotRole)}.`);
+    }
+
+    const presentRankRoleCount = EXCLUSIVE_RANK_ROLE_PRIORITY.filter(roleId => member.roles.cache.has(roleId)).length;
+    if (skipRankExclusivity && presentRankRoleCount > 1 && existing) {
+      const stableDbRole = normalizeAgentRole(existing.role);
+      if (stableDbRole && snapshot.role !== stableDbRole) {
+        snapshot = { ...snapshot, role: stableDbRole };
+        console.log(`[${contextLabel}] Multiple rank roles detected for ${displayName}; keeping DB role ${getRoleLabel(stableDbRole)} until event sync resolves exclusivity.`);
+      }
+    }
+
+    const hotelCompatibility = getDiscordHotelCompatibilitySnapshot(member);
+    const hotelCompatibilityValue = serializeHotelCompatibility(hotelCompatibility);
 
     if (existing) {
       const updates = [];

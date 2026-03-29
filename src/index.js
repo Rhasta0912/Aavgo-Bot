@@ -119,7 +119,9 @@ async function runRoleSyncWatcher(clientInstance) {
 
         if (previousSnapshot === currentSnapshot) continue;
         roleSyncSnapshotCache.set(cacheKey, currentSnapshot);
-        await auth.syncAgentRecordFromDiscordMember(member, guild, 'ROLE SYNC WATCH');
+        await auth.syncAgentRecordFromDiscordMember(member, guild, 'ROLE SYNC WATCH', {
+          skipRankExclusivity: true
+        });
       }
     }
   } catch (error) {
