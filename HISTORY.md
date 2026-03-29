@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed rank exclusivity to follow DB-selected role instead of always keeping highest Discord rank.
+  - Summary: The exclusive rank-role enforcer now prefers the user’s saved DB role (`applicant/trainee/agent/sme/team_leader`) when multiple rank roles are present at once. This fixes role-change demotion cases where selecting SME or lower could get reverted back to Team Leader because highest-rank priority removed the newly selected role.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Fixed Profiles rank-change demotion conflict where Team Leader could override SME selection.
   - Summary: `Set Role` in Profiles now syncs leadership ranks using role IDs first (Team Leader/SME/Operations Manager) with name fallback, so selecting a lower rank like `Team Leader -> SME` reliably removes the previous rank before exclusivity checks run.
   - Files touched:

@@ -2580,7 +2580,23 @@ async function enforceExclusiveRankRoles(member, guild, contextLabel = 'ROLE SYN
     const presentRankRoleIds = EXCLUSIVE_RANK_ROLE_PRIORITY.filter(roleId => member.roles.cache.has(roleId));
     if (presentRankRoleIds.length <= 1) return presentRankRoleIds[0] || null;
 
-    const keepRoleId = EXCLUSIVE_RANK_ROLE_PRIORITY.find(roleId => member.roles.cache.has(roleId)) || presentRankRoleIds[0];
+    const rankRoleIdByDbRole = {
+      applicant: APPLICANT_ROLE_ID,
+      trainee: TRAINEE_ROLE_ID,
+      agent: AGENT_ROLE_ID,
+      sme: SME_ROLE_ID,
+      team_leader: TEAM_LEADER_ROLE_ID
+    };
+    const dbRole = normalizeAgentRole(
+      db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(member.id)?.role || ''
+    );
+    const dbPreferredRoleId = rankRoleIdByDbRole[dbRole];
+
+    const keepRoleId = (
+      (dbPreferredRoleId && presentRankRoleIds.includes(dbPreferredRoleId) && dbPreferredRoleId) ||
+      EXCLUSIVE_RANK_ROLE_PRIORITY.find(roleId => member.roles.cache.has(roleId)) ||
+      presentRankRoleIds[0]
+    );
     const removeRoleIds = presentRankRoleIds.filter(roleId => roleId !== keepRoleId);
     const removableRoles = removeRoleIds
       .map(roleId => guild.roles.cache.get(roleId))
@@ -2590,7 +2606,8 @@ async function enforceExclusiveRankRoles(member, guild, contextLabel = 'ROLE SYN
       await member.roles.remove(removableRoles);
       const keptRoleName = guild.roles.cache.get(keepRoleId)?.name || keepRoleId;
       const removedRoleNames = removableRoles.map(role => role.name).join(', ');
-      console.log(`[${contextLabel}] Enforced rank-role exclusivity for ${member.displayName || member.user?.username || member.id}: kept ${keptRoleName}, removed ${removedRoleNames}`);
+      const dbRoleLabel = dbRole ? getRoleLabel(dbRole) : 'none';
+      console.log(`[${contextLabel}] Enforced rank-role exclusivity for ${member.displayName || member.user?.username || member.id}: kept ${keptRoleName}, removed ${removedRoleNames}, dbRole=${dbRoleLabel}`);
     }
 
     return keepRoleId;
