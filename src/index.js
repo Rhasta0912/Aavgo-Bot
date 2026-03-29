@@ -591,7 +591,7 @@ client.on('interactionCreate', async interaction => {
       await auth.handleModalSubmit(interaction);
     } else if (interaction.customId.startsWith('newcomer_agent_pin_modal:')) {
       await auth.handleNewcomerAgentPinSubmit(interaction);
-    } else if (interaction.customId === 'devtodo_add_modal') {
+    } else if (interaction.customId === 'devtodo_add_modal' || interaction.customId === 'devtodo_log_done_modal') {
       await devTodo.handleModalSubmit(interaction);
     }
   } else if (interaction.isButton()) {
@@ -701,7 +701,7 @@ client.on('interactionCreate', async interaction => {
       await auth.handleActivityClick(interaction);
     }
   } else if (interaction.isStringSelectMenu()) {
-    if (interaction.customId.startsWith('devtodo_move_select:')) {
+    if (interaction.customId.startsWith('devtodo_')) {
       await devTodo.handleSelectMenu(interaction);
     } else if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleSelectMenu(interaction);
