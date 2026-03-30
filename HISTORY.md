@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Clarified practice-mode logging label for all practice users (Agent/SME/Team Leader).
+  - Summary: Updated the training-session start audit title from `Agent Training Started` to `Practice Mode Started` so logs match the Practice Mode flow name and remain role-neutral while routing to `training-logs` (`1488041967769358369`).
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Added dedicated training-shift login audit routing to `training-logs`.
   - Summary: Training login events (`🧭 Agent Training Started`) now route to channel `1488041967769358369` (`training-logs`) using a dedicated audit-log route flag, so training-mode starts are separated from normal shift/team audit traffic.
   - Files touched:

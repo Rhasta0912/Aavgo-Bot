@@ -5046,7 +5046,7 @@ async function handleModalSubmit(interaction) {
   const auditUnix = Math.floor(Date.now() / 1000);
   const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
   sendAuditLog(interaction.client, {
-    title: sessionMode === 'training' ? '🧭 Agent Training Started' : (hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In'),
+    title: sessionMode === 'training' ? '🧭 Practice Mode Started' : (hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In'),
     description: sessionMode === 'training'
       ? `**User:** ${nickname} (<@${interaction.user.id}>)\n**Training For:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`
       : `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
