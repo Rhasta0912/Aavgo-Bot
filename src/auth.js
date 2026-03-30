@@ -4297,6 +4297,68 @@ async function handleManagementRoutePick(interaction, roleLabel) {
       return;
     }
 
+    const resolvedRoleLabel = String(roleLabel || '').trim() || 'Management';
+    const embed = new EmbedBuilder()
+      .setTitle('🛡️ Aavgo Operations · Management Route')
+      .setDescription(
+        '### SESSION TYPE SELECTION\n' +
+        '────────────────────────\n' +
+        `**Role:** ${resolvedRoleLabel}\n` +
+        'Choose how this session should run.\n\n' +
+        '• **Live:** Shift coverage and management status.\n' +
+        '• **Training:** Monitor trainees/agents in practice.\n' +
+        '────────────────────────'
+      )
+      .setColor(0x5865F2)
+      .setFooter({ text: 'Aavgo Operations • Session Routing' })
+      .setTimestamp();
+
+    const liveBtn = new ButtonBuilder()
+      .setCustomId('shift_mgmt_mode_live_btn')
+      .setLabel('🟦 Live • Shift')
+      .setStyle(ButtonStyle.Primary);
+
+    const trainingBtn = new ButtonBuilder()
+      .setCustomId('training_start_btn')
+      .setLabel('🟪 Training')
+      .setStyle(ButtonStyle.Secondary);
+
+    return sendPrivateFlowPayload(interaction, {
+      embeds: [embed],
+      components: [new ActionRowBuilder().addComponents(liveBtn, trainingBtn)]
+    });
+  } catch (error) {
+    console.error('Error in handleManagementRoutePick:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'Failed to open management route picker.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'Failed to open management route picker.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleManagementLiveStart(interaction) {
+  try {
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(interaction.member, interaction.guild, 'MANAGEMENT LIVE START');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    }
+    if (!agent) {
+      return interaction.reply({ content: 'You are not registered as an agent.', ephemeral: true });
+    }
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return sendPrivateFlowPayload(interaction, {
+        content: 'Access denied. Team Leader or SME role required.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    if (await guardShiftPinFirst(interaction, agent, 'shift')) {
+      return;
+    }
+
     if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
       return sendPrivateFlowPayload(interaction, {
         embeds: [buildAgentTeamRequiredEmbed()],
@@ -4323,11 +4385,11 @@ async function handleManagementRoutePick(interaction, roleLabel) {
       'shift'
     );
   } catch (error) {
-    console.error('Error in handleManagementRoutePick:', error);
+    console.error('Error in handleManagementLiveStart:', error);
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: 'Failed to open management route picker.', embeds: [], components: [] }).catch(() => {});
+      await interaction.editReply({ content: 'Failed to start management live shift.', embeds: [], components: [] }).catch(() => {});
     } else {
-      await interaction.reply({ content: 'Failed to open management route picker.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'Failed to start management live shift.', ephemeral: true }).catch(() => {});
     }
   }
 }
@@ -8595,6 +8657,7 @@ module.exports = {
   handleShiftRolePrompt,
   handleAgentRoutePick,
   handleManagementRoutePick,
+  handleManagementLiveStart,
   handleManagementTeamStart,
   handleShiftModePrompt,
   handleStartShiftClick, 

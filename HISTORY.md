@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added SME/Team Leader session choice (Live or Training) with live-only team gate.
+  - Summary: SME/Team Leader management route now shows session selection with `Live • Shift` and `Training`. Team assignment requirement is now enforced only when pressing **Live**, while **Training** remains accessible even without team assignment so management can monitor training sessions. Management live button wording was updated from `Live • Hotel Shift` to `Live • Shift` for SME/TL flow only.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Renamed practice audit titles to Training wording.
   - Summary: Updated training-log audit titles from `Practice Mode Started/Ended` to `Training Started/Ended` so the log wording is simply Training while keeping the same training-log channel routing (`1488041967769358369`) and behavior.
   - Files touched:

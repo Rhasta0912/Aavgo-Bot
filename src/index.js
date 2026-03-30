@@ -624,6 +624,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleManagementRoutePick(interaction, 'Team Leader');
     } else if (interaction.customId === 'shift_role_sme_btn') {
       await auth.handleManagementRoutePick(interaction, 'SME');
+    } else if (interaction.customId === 'shift_mgmt_mode_live_btn') {
+      await auth.handleManagementLiveStart(interaction);
     } else if (interaction.customId === 'shift_mgmt_team_1_btn') {
       await auth.handleManagementTeamStart(interaction, 'Team 1');
     } else if (interaction.customId === 'shift_mgmt_team_2_btn') {
