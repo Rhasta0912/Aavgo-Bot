@@ -1629,7 +1629,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
   const isPracticeMode = sessionMode === 'training';
   sendAuditLog(interaction.client, {
-    title: isPracticeMode ? '🧭 Practice Mode Started' : (hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In'),
+    title: isPracticeMode ? '🧭 Training Started' : (hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In'),
     description: isPracticeMode
       ? `**User:** ${nickname} (<@${interaction.user.id}>)\n**Practice For:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`
       : `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
@@ -5050,7 +5050,7 @@ async function handleModalSubmit(interaction) {
   const auditUnix = Math.floor(Date.now() / 1000);
   const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
   sendAuditLog(interaction.client, {
-    title: sessionMode === 'training' ? '🧭 Practice Mode Started' : (hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In'),
+    title: sessionMode === 'training' ? '🧭 Training Started' : (hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In'),
     description: sessionMode === 'training'
       ? `**User:** ${nickname} (<@${interaction.user.id}>)\n**Training For:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`
       : `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
@@ -5239,7 +5239,7 @@ async function handleLogout(interaction) {
 
     if (hasPracticeSession) {
       await sendAuditLog(interaction.client, {
-        title: '🧭 Practice Mode Ended',
+        title: '🧭 Training Ended',
         description: `**Agent:** ${nickname}\n${forceEndedByManager ? `**Ended By:** ${endedByName}\n` : ''}**Practice For:** ${hotelNames}\n**Duration:** ${durationStr}`,
         color: 0xED4245,
         forceTrainingLog: true,
