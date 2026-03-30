@@ -1627,12 +1627,16 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   const auditUnix = Math.floor(Date.now() / 1000);
   const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
+  const isPracticeMode = sessionMode === 'training';
   sendAuditLog(interaction.client, {
-    title: hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In',
-    description: `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
+    title: isPracticeMode ? '🧭 Practice Mode Started' : (hotelId === 'TEAM_SHIFT' ? '🟢 Management Logged In' : '🟢 Agent Logged In'),
+    description: isPracticeMode
+      ? `**User:** ${nickname} (<@${interaction.user.id}>)\n**Practice For:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`
+      : `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
     color: 0x57F287,
     userId: interaction.user.id,
-    hotelId: hotelId === 'TEAM_SHIFT' ? 'TEAM_SHIFT' : undefined,
+    hotelId: !isPracticeMode && hotelId === 'TEAM_SHIFT' ? 'TEAM_SHIFT' : undefined,
+    forceTrainingLog: isPracticeMode,
     guild: interaction.guild
   });
 }
@@ -5158,6 +5162,12 @@ async function handleLogout(interaction) {
         .map(ref => (typeof ref === 'string' ? ref : (ref?.hotel_id || ref?.hotelId || null)))
         .filter(Boolean)
     )];
+    const closedSessionKinds = (closedSessionRefs || [])
+      .map(ref => String(
+        typeof ref === 'string' ? 'shift' : (ref?.session_kind || ref?.sessionKind || 'shift')
+      ).toLowerCase());
+    const hasPracticeSession = closedSessionKinds.includes('training');
+    const practiceOnlyLogout = closedSessionKinds.length > 0 && closedSessionKinds.every(kind => kind === 'training');
 
     // Reply early to avoid timeout
     await interaction.editReply({
@@ -5227,8 +5237,19 @@ async function handleLogout(interaction) {
       guild: interaction.guild
     });
 
+    if (hasPracticeSession) {
+      await sendAuditLog(interaction.client, {
+        title: '🧭 Practice Mode Ended',
+        description: `**Agent:** ${nickname}\n${forceEndedByManager ? `**Ended By:** ${endedByName}\n` : ''}**Practice For:** ${hotelNames}\n**Duration:** ${durationStr}`,
+        color: 0xED4245,
+        forceTrainingLog: true,
+        userId: targetDiscordId,
+        guild: interaction.guild
+      });
+    }
+
     // Simple Notice (Public Team Log)
-    if (closedHotelIds.some(id => TEAM_1_HOTELS.includes(id))) {
+    if (!practiceOnlyLogout && closedHotelIds.some(id => TEAM_1_HOTELS.includes(id))) {
       await sendAuditLog(interaction.client, {
         title: '🛑 Shift Ended',
         description: `**Agent:** ${nickname}\n${forceEndedByManager ? `**Ended By:** ${endedByName}\n` : ''}**Hotel(s):** ${hotelNames}\n**Duration:** ${durationStr}`,

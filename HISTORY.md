@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed practice-mode audit leakage into Team 1 log channel.
+  - Summary: The active login logger (`finalizeShiftLogin`) was still posting practice/training starts as `Agent Logged In`, which routed to Team 1 logs for Team 1 hotels. Practice sessions now log as `Practice Mode Started` with explicit training-log routing, and practice-mode end events now post `Practice Mode Ended` to `training-logs` (`1488041967769358369`) while skipping Team 1 end-notices for practice-only logouts.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Clarified practice-mode logging label for all practice users (Agent/SME/Team Leader).
   - Summary: Updated the training-session start audit title from `Agent Training Started` to `Practice Mode Started` so logs match the Practice Mode flow name and remain role-neutral while routing to `training-logs` (`1488041967769358369`).
   - Files touched:
