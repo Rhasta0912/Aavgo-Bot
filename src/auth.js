@@ -308,6 +308,7 @@ const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
+const TRAINING_LOG_CHANNEL_ID = '1488041967769358369';
 const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
@@ -528,7 +529,7 @@ function buildAuditFields(resolvedDescription) {
 }
 
 // ─── Audit Logger ────────────────────────────────────
-async function sendAuditLog(client, { title, description, color, hotelId, userId, forceManagerLog, guild }) {
+async function sendAuditLog(client, { title, description, color, hotelId, userId, forceManagerLog, forceTrainingLog, guild }) {
   try {
     let targetChannelId = AUDIT_LOG_CHANNEL_ID;
 
@@ -539,7 +540,9 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
     }
 
     // Categorized Logging
-    if (hotelId === 'TEAM_SHIFT') {
+    if (forceTrainingLog) {
+      targetChannelId = TRAINING_LOG_CHANNEL_ID;
+    } else if (hotelId === 'TEAM_SHIFT') {
       targetChannelId = TL_PORTAL_CHANNEL_ID;
     } else if (forceManagerLog) {
       targetChannelId = AUDIT_LOG_CHANNEL_ID; // Ensure manager audit
@@ -5048,6 +5051,7 @@ async function handleModalSubmit(interaction) {
       ? `**User:** ${nickname} (<@${interaction.user.id}>)\n**Training For:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`
       : `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
     color: 0x57F287,
+    forceTrainingLog: sessionMode === 'training',
     userId: interaction.user.id,
     guild: interaction.guild
   });

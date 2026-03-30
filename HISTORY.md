@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added dedicated training-shift login audit routing to `training-logs`.
+  - Summary: Training login events (`🧭 Agent Training Started`) now route to channel `1488041967769358369` (`training-logs`) using a dedicated audit-log route flag, so training-mode starts are separated from normal shift/team audit traffic.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Fixed logout analytics/log routing after session-ref return update.
   - Summary: `closeAllActiveSessionsForAgent()` now returns session references (`hotel_id` + `session_kind`), but logout analytics logic was still treating the result as plain hotel-ID strings. This caused hotel labels and TEAM_SHIFT/team-log routing checks to misread closed sessions. Logout now normalizes closed hotel IDs for analytics/routing while still passing full session refs to role cleanup.
   - Files touched:
