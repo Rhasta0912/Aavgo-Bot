@@ -6880,12 +6880,14 @@ function chunkPinAuditLines(lines, maxLength = 900) {
   return chunks;
 }
 
-function formatPinAuditLine(agent) {
+function formatPinAuditLine(agent, { revealPinValue = false } = {}) {
   const pinStatus = hasConfiguredPin(agent) ? '✅ PIN set' : '⚪ PIN missing';
   const roleLabel = getRoleLabel(agent.role);
   const teamLabel = agent.team || 'No team';
   const hotelLabel = agent.hotel_id ? getCombinedHotelLabel(agent.hotel_id) : 'Unlinked';
-  const pinLabel = hasConfiguredPin(agent) ? 'PIN: hidden' : 'PIN: not set';
+  const pinLabel = hasConfiguredPin(agent)
+    ? (revealPinValue && agent.pin ? `PIN: \`${agent.pin}\`` : 'PIN: hidden')
+    : 'PIN: not set';
   const agentLabel = agent.discord_id ? `<@${agent.discord_id}>` : agent.username;
   let compatibilityIds = [];
   try {
@@ -6926,9 +6928,10 @@ async function handleSeeAllPins(interaction) {
 
     const withPins = agents.filter(agent => hasConfiguredPin(agent));
     const missingPins = agents.filter(agent => !hasConfiguredPin(agent));
+    const revealPinValues = Boolean(targetUser);
 
-    const setLines = withPins.map(formatPinAuditLine);
-    const missingLines = missingPins.map(formatPinAuditLine);
+    const setLines = withPins.map(agent => formatPinAuditLine(agent, { revealPinValue: revealPinValues }));
+    const missingLines = missingPins.map(agent => formatPinAuditLine(agent, { revealPinValue: revealPinValues }));
     const setChunks = chunkPinAuditLines(setLines);
     const missingChunks = chunkPinAuditLines(missingLines);
 
@@ -6938,10 +6941,11 @@ async function handleSeeAllPins(interaction) {
         `### PIN Inventory\n` +
         '───────────────────\n' +
         `**🎯 Scope Filter:** ${targetUser ? `<@${targetUser.id}>` : 'All agents'}\n` +
+        `**🔎 PIN Display:** ${targetUser ? 'Raw PIN (single-user override)' : 'Hidden'}\n` +
         `**📊 Total Agents:** ${agents.length}\n` +
         `**✅ PIN Set:** ${withPins.length}\n` +
         `**⚪ PIN Missing:** ${missingPins.length}\n` +
-        `**🛡️ Scope:** Read-only audit of PIN status and access coverage.\n` +
+        `**🛡️ Scope:** Developer/OM audit with access coverage details.\n` +
         '───────────────────'
       )
       .setColor(withPins.length > 0 ? 0x57F287 : 0xFEE75C)
@@ -7196,7 +7200,8 @@ async function handleHelpStaff(interaction) {
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
         '> `/hours-export period:day|week|month`: Export a horizontal Excel-style timesheet.\n' +
-        '> `/see-all-pins` or `/see-all-pins user:@name`: Review PIN status without revealing PIN values.\n' +
+        '> `/see-all-pins`: Review PIN status with values hidden.\n' +
+        '> `/see-all-pins user:@name`: Reveal selected user PIN (Developer/OM only).\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +
         '### 📎 Useful SQL Snippets (`/db-query`)\n' +

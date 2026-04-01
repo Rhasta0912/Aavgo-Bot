@@ -141,11 +141,11 @@ const commandData = [
     .setDescription('(Developer Only) Show database path and table information'),
   new SlashCommandBuilder()
     .setName('see-all-pins')
-    .setDescription('(Developer Only) Show which agents have PINs set without revealing them')
+    .setDescription('(Developer/OM) Audit PIN status; add user:@name to reveal one PIN')
     .addUserOption(option =>
       option
         .setName('user')
-        .setDescription('Optional: filter PIN audit to one agent')
+        .setDescription('Optional: filter to one agent and reveal their PIN')
         .setRequired(false)
     ),
   new SlashCommandBuilder()

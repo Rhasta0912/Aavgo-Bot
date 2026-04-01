@@ -157,6 +157,7 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
   - channel messages
   - logs/history/update notes
 - Admin/developer flows may set/reset PINs, but user-facing responses must not display the PIN string.
+- Owner override (April 1, 2026): `/see-all-pins user:@name` may display the selected user's raw PIN for Operations Managers and Developers only. The full-list `/see-all-pins` output must keep PIN values hidden.
 
 ## Incident SOP
 1. Capture error/log evidence.
