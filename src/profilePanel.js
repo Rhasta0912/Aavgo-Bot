@@ -571,6 +571,8 @@ async function getProfileContext(guild, discordId) {
       a.id,
       a.discord_id,
       a.username,
+      a.pin,
+      a.pin_is_set,
       a.role,
       a.team,
       a.hotel_id,

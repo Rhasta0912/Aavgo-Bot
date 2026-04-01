@@ -847,7 +847,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Fixed rank promotion/demotion sync from Discord role changes: when someone is given a new ladder role (Applicant/Trainee/Agent/SME/Team Leader), the bot now treats that newly assigned rank as authoritative, removes the other ladder ranks, and mirrors the final rank to the database so manual promotions and demotions no longer stick on the previous higher role.
 - Fixed rank demotion race during Discord role edits: watcher sync no longer force-cleans rank roles before the role-update event resolves, so giving a lower ladder role (ex: Team Leader -> Agent) keeps the newly assigned role instead of stripping it; event-driven sync now preserves the selected rank in DB even when multiple rank roles are temporarily present.
 - Enhanced /see-all-pins with an optional user mention filter (/see-all-pins user:@name) so developers can audit one person directly, and tightened PIN privacy by showing PIN status only (hidden/not set) instead of exposing raw PIN digits in audit output.
-- Applied owner-approved PIN policy override (April 1, 2026): /see-all-pins still masks all PIN values by default, but /see-all-pins user:@name now reveals the selected user’s raw PIN to Operations Managers/Developers only for targeted support and recovery.
+- Applied owner-approved PIN policy override (April 1, 2026): /see-all-pins still masks all PIN values by default, but /see-all-pins user:@name now reveals the selected userï¿½s raw PIN to Operations Managers/Developers only for targeted support and recovery.
+- Fixed Profiles PIN display by selecting the correct DB fields.
+  - Summary: Profile view previously showed PIN: Not set even when /see-all-pins showed a saved PIN because the profile query did not include agents.pin (or pin_is_set) in its SELECT. Profiles now fetch the correct PIN columns so the PIN line reflects the stored DB value.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
+
 - Enforced promotion control for OM/Developer roles and aligned PIN audit visibility.
   - Summary: `/see-all-pins` now shows raw PIN values for both the full-list view and `user:@name` filter (Developer/OM only). Added `/promote` to request `Developer` or `Operations Manager` promotion with required dual approval (1 Developer + 1 Operations Manager). Manual Discord role-add attempts for Developer/OM are now blocked: unauthorized role adds are removed and a promotion request is posted to review channel `1483405048309354497`.
   - Files touched:
