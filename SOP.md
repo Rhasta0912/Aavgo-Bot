@@ -60,6 +60,16 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
   - `HISTORY.md` and desktop `History.md`
 - When a command changes, update every affected help command in the same change set so help text stays aligned with the live command surface.
 
+## Promotion Control SOP
+- Promotions to `developer` and `operations_manager` must go through `/promote`.
+- A promotion request is valid only when both approve:
+  - one Developer approval
+  - one Operations Manager approval
+- Direct Discord role-add is not an authority path for these roles.
+- If a Developer or Operations Manager role is added manually in Discord, the bot must:
+  - remove the unauthorized role add
+  - create/send a promotion request to channel `1483405048309354497`
+
 ## Deployment SOP
 1. Implement and verify changes locally.
 2. Run syntax checks (`node --check`) for changed files.
@@ -157,7 +167,7 @@ This SOP defines the standard way to operate, change, and deploy Aavgo Bot with 
   - channel messages
   - logs/history/update notes
 - Admin/developer flows may set/reset PINs, but user-facing responses must not display the PIN string.
-- Owner override (April 1, 2026): `/see-all-pins user:@name` may display the selected user's raw PIN for Operations Managers and Developers only. The full-list `/see-all-pins` output must keep PIN values hidden.
+- Owner override (April 1, 2026): `/see-all-pins` and `/see-all-pins user:@name` may display raw PIN values for Operations Managers and Developers only.
 
 ## Incident SOP
 1. Capture error/log evidence.

@@ -302,6 +302,7 @@ const HOTEL_LOGIN_CHANNELS = {
 };
 
 const APPROVAL_CHANNEL_ID = '1482240202503098398';
+const PROMOTION_REVIEW_CHANNEL_ID = '1483405048309354497';
 const AUDIT_LOG_CHANNEL_ID = '1482239767134339182';
 const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
@@ -318,7 +319,10 @@ const TRAINEE_ROLE_ID = '1484705126026449029';
 const SME_ROLE_ID = '1482382342621233153';
 const TEAM_LEADER_ROLE_ID = '1482732583660818636';
 const OPERATIONS_MANAGER_DISCORD_ROLE_ID = '1482226842047090809';
+const DEVELOPER_DISCORD_ROLE_ID = '1482312134875418737';
 const NO_PIN_ROLE_ID = '1485275671797436620';
+const DEVELOPER_FALLBACK_IDS = ['320128931971727360', '1186978205018632242'];
+const PROMOTION_REQUEST_KEY_PREFIX = 'PROMOTE';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + (5 * 60 * 1000);
 const OVERTIME_TEST_WARNING_MS = 3 * 60 * 1000;
@@ -2713,9 +2717,6 @@ function getDiscordRoleSyncSnapshot(member) {
 
   const teamName = normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null;
 
-  if (hasDiscordRoleName(roleNames, ['operations manager', 'operations_manager', 'operation manager'])) {
-    return { role: 'operations_manager', team: teamName };
-  }
   if (hasDiscordRoleName(roleNames, ['subject matter expert', 'subject_matter_expert', 'sme'])) {
     return { role: 'sme', team: teamName };
   }
@@ -2870,9 +2871,14 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
         params.push(displayName);
       }
 
-      if (snapshot.role && normalizeAgentRole(existing.role) !== snapshot.role) {
+      const existingRole = normalizeAgentRole(existing.role);
+      const snapshotRole = normalizeAgentRole(snapshot.role);
+      const allowDiscordRoleSync = !(existingRole === 'operations_manager' && snapshotRole !== 'operations_manager');
+      if (snapshotRole && allowDiscordRoleSync && existingRole !== snapshotRole) {
         updates.push('role = ?');
-        params.push(snapshot.role);
+        params.push(snapshotRole);
+      } else if (snapshotRole && !allowDiscordRoleSync && existingRole !== snapshotRole) {
+        console.log(`[${contextLabel}] Ignored Discord role downgrade for ${displayName}: kept Operations Manager despite snapshot=${snapshotRole}.`);
       }
 
       if (snapshot.team && existing.team !== snapshot.team) {
@@ -2888,14 +2894,14 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
       if (updates.length > 0) {
         params.push(member.id);
         db.prepare(`UPDATE agents SET ${updates.join(', ')} WHERE discord_id = ?`).run(...params);
-        const resolvedRole = snapshot.role || normalizeAgentRole(existing.role);
+        const resolvedRole = allowDiscordRoleSync ? (snapshotRole || existingRole) : existingRole;
         const resolvedTeam = snapshot.team || existing.team || 'none';
         console.log(`[${contextLabel}] Updated ${displayName}: role=${resolvedRole} team=${resolvedTeam} hotels=${formatHotelCompatibilityLabel(hotelCompatibility)}`);
       }
 
       const syncedExisting = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
       await syncNoPinRoleForMember(member, guild, syncedExisting || existing, contextLabel);
-      return { action: 'updated', role: snapshot.role || normalizeAgentRole(existing.role), team: snapshot.team || existing.team || null };
+      return { action: 'updated', role: allowDiscordRoleSync ? (snapshotRole || existingRole) : existingRole, team: snapshot.team || existing.team || null };
     }
 
     if (!snapshot.role) {
@@ -6121,19 +6127,24 @@ async function handleResetTeam(interaction) {
 }
 
 // ─── Developer Check ─────────────────────────────
-function isDeveloper(interaction) {
-  const discordId = interaction.user.id;
-  // Hardcoded backup for initial setup
-  const devIds = ['320128931971727360', '1186978205018632242'];
-  if (devIds.includes(discordId)) return true;
-
-  // Operations Manager has full developer-equivalent access.
-  const opsManager = db.prepare("SELECT discord_id FROM agents WHERE discord_id = ? AND role = 'operations_manager'").get(discordId);
-  if (opsManager) return true;
-
-  // Check database
+function isDeveloperId(discordId) {
+  if (!discordId) return false;
+  if (DEVELOPER_FALLBACK_IDS.includes(discordId)) return true;
   const dev = db.prepare("SELECT discord_id FROM developers WHERE discord_id = ?").get(discordId);
   return !!dev;
+}
+
+function isOperationsManagerId(discordId) {
+  if (!discordId) return false;
+  const opsManager = db.prepare("SELECT discord_id FROM agents WHERE discord_id = ? AND role = 'operations_manager'").get(discordId);
+  return !!opsManager;
+}
+
+function isDeveloper(interaction) {
+  const discordId = interaction.user.id;
+  if (isDeveloperId(discordId)) return true;
+  // Operations Manager has full developer-equivalent access.
+  return isOperationsManagerId(discordId);
 }
 
 function interactionHasRoleAtLeast(interaction, minimumRole, { allowDeveloper = true } = {}) {
@@ -6141,58 +6152,514 @@ function interactionHasRoleAtLeast(interaction, minimumRole, { allowDeveloper = 
   return hasAgentRoleAtLeast(getAgentRoleByDiscordId(interaction.user.id), minimumRole);
 }
 
-async function handleDbAddDeveloper(interaction) {
+function normalizePromotionTargetRole(roleValue) {
+  const normalized = normalizeAgentRole(roleValue);
+  if (normalized === 'operations_manager') return 'operations_manager';
+  if (normalized === 'developer') return 'developer';
+  return null;
+}
+
+function getPromotionTargetRoleLabel(targetRole) {
+  if (targetRole === 'operations_manager') return 'Operations Manager';
+  if (targetRole === 'developer') return 'Developer';
+  return 'Unknown Role';
+}
+
+function getPromotionRequestKey(targetRole, targetId) {
+  return `${PROMOTION_REQUEST_KEY_PREFIX}:${targetRole}:${targetId}`;
+}
+
+function parsePromotionRequestFromRow(row) {
+  if (!row?.target_id || !String(row.target_id).startsWith(`${PROMOTION_REQUEST_KEY_PREFIX}:`)) return null;
+  const [, targetRole, targetId] = String(row.target_id).split(':');
+  if (!targetRole || !targetId) return null;
+
+  let payload = {};
+  try {
+    payload = JSON.parse(row.approvals || '{}');
+  } catch {
+    payload = {};
+  }
+
+  return {
+    requestKey: row.target_id,
+    targetRole,
+    targetId,
+    status: payload.status || 'pending',
+    requestedBy: payload.requestedBy || row.proposed_by || null,
+    source: payload.source || 'manual',
+    developerApprovedBy: payload.developerApprovedBy || null,
+    operationsManagerApprovedBy: payload.operationsManagerApprovedBy || null,
+    deniedBy: payload.deniedBy || null,
+    messageId: payload.messageId || null,
+    channelId: payload.channelId || null,
+    createdAt: payload.createdAt || row.requested_at || new Date().toISOString(),
+    updatedAt: payload.updatedAt || new Date().toISOString()
+  };
+}
+
+function serializePromotionRequest(request) {
+  return JSON.stringify({
+    kind: 'promotion_request',
+    status: request.status || 'pending',
+    targetRole: request.targetRole,
+    targetId: request.targetId,
+    requestedBy: request.requestedBy || null,
+    source: request.source || 'manual',
+    developerApprovedBy: request.developerApprovedBy || null,
+    operationsManagerApprovedBy: request.operationsManagerApprovedBy || null,
+    deniedBy: request.deniedBy || null,
+    messageId: request.messageId || null,
+    channelId: request.channelId || PROMOTION_REVIEW_CHANNEL_ID,
+    createdAt: request.createdAt || new Date().toISOString(),
+    updatedAt: request.updatedAt || new Date().toISOString()
+  });
+}
+
+function upsertPromotionRequestRow(request) {
+  db.prepare(
+    "INSERT OR REPLACE INTO dev_approvals (target_id, proposed_by, approvals) VALUES (?, ?, ?)"
+  ).run(request.requestKey, request.requestedBy || 'SYSTEM', serializePromotionRequest(request));
+}
+
+async function fetchPromotionReviewChannel(client, guild = null) {
+  let channel =
+    client?.channels?.cache?.get(PROMOTION_REVIEW_CHANNEL_ID) ||
+    guild?.channels?.cache?.get(PROMOTION_REVIEW_CHANNEL_ID) ||
+    null;
+  if (!channel && client?.channels?.fetch) {
+    channel = await client.channels.fetch(PROMOTION_REVIEW_CHANNEL_ID).catch(() => null);
+  }
+  if (!channel || !channel.isTextBased?.()) return null;
+  return channel;
+}
+
+function buildPromotionRequestButtons(requestKey, disabled = false) {
+  return [
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`promote_req_approve:${requestKey}`)
+        .setLabel('Approve')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(disabled),
+      new ButtonBuilder()
+        .setCustomId(`promote_req_deny:${requestKey}`)
+        .setLabel('Deny')
+        .setStyle(ButtonStyle.Danger)
+        .setDisabled(disabled)
+    )
+  ];
+}
+
+function buildPromotionRequestEmbed(request, { requesterName = null } = {}) {
+  const requestedByLabel = request.requestedBy ? `<@${request.requestedBy}>` : (requesterName || 'System');
+  const devApproval = request.developerApprovedBy ? `<@${request.developerApprovedBy}>` : 'Pending';
+  const omApproval = request.operationsManagerApprovedBy ? `<@${request.operationsManagerApprovedBy}>` : 'Pending';
+  const statusLabel = request.status === 'approved'
+    ? 'Approved'
+    : (request.status === 'denied' ? 'Denied' : 'Pending');
+  const denialLine = request.deniedBy ? `\n**Denied By:** <@${request.deniedBy}>` : '';
+
+  return new EmbedBuilder()
+    .setTitle(`🧭 Promotion Request - ${getPromotionTargetRoleLabel(request.targetRole)}`)
+    .setDescription(
+      `**Candidate:** <@${request.targetId}>\n` +
+      `**Requested By:** ${requestedByLabel}\n` +
+      `**Source:** ${request.source}\n` +
+      `**Status:** ${statusLabel}${denialLine}\n\n` +
+      `**Developer Approval:** ${devApproval}\n` +
+      `**Operations Manager Approval:** ${omApproval}\n\n` +
+      `Both approvals are required to finalize this promotion.`
+    )
+    .setColor(request.status === 'approved' ? 0x57F287 : (request.status === 'denied' ? 0xED4245 : 0xF1C40F))
+    .setFooter({ text: 'Aavgo Promotion Control' })
+    .setTimestamp();
+}
+
+async function publishPromotionRequestMessage(client, guild, request) {
+  const channel = await fetchPromotionReviewChannel(client, guild);
+  if (!channel) {
+    return { ok: false, error: `Promotion review channel not found: ${PROMOTION_REVIEW_CHANNEL_ID}` };
+  }
+
+  const embed = buildPromotionRequestEmbed(request);
+  const components = request.status === 'pending' ? buildPromotionRequestButtons(request.requestKey) : [];
+  let message = null;
+
+  if (request.messageId) {
+    message = await channel.messages.fetch(request.messageId).catch(() => null);
+    if (message) {
+      await message.edit({ embeds: [embed], components });
+    }
+  }
+
+  if (!message) {
+    message = await channel.send({ embeds: [embed], components });
+    request.messageId = message.id;
+    request.channelId = channel.id;
+    request.updatedAt = new Date().toISOString();
+    upsertPromotionRequestRow(request);
+  }
+
+  return { ok: true, message, channel };
+}
+
+async function createPromotionRequest({
+  client,
+  guild,
+  targetUser,
+  targetRole,
+  requestedBy = null,
+  source = 'manual request'
+}) {
+  const normalizedRole = normalizePromotionTargetRole(targetRole);
+  if (!normalizedRole) {
+    return { ok: false, error: 'Unsupported promotion target role.' };
+  }
+
+  const targetId = targetUser?.id || null;
+  if (!targetId) {
+    return { ok: false, error: 'Invalid promotion target user.' };
+  }
+
+  const requestKey = getPromotionRequestKey(normalizedRole, targetId);
+  const existingRow = db.prepare("SELECT * FROM dev_approvals WHERE target_id = ?").get(requestKey);
+  const existing = parsePromotionRequestFromRow(existingRow);
+  const request = existing && existing.status === 'pending'
+    ? existing
+    : {
+      requestKey,
+      targetRole: normalizedRole,
+      targetId,
+      status: 'pending',
+      requestedBy,
+      source,
+      developerApprovedBy: null,
+      operationsManagerApprovedBy: null,
+      deniedBy: null,
+      messageId: null,
+      channelId: PROMOTION_REVIEW_CHANNEL_ID,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+  request.targetRole = normalizedRole;
+  request.targetId = targetId;
+  request.requestedBy = requestedBy || request.requestedBy || null;
+  request.source = source;
+  request.status = 'pending';
+  request.updatedAt = new Date().toISOString();
+
+  upsertPromotionRequestRow(request);
+  const publishResult = await publishPromotionRequestMessage(client, guild, request);
+  if (!publishResult.ok) {
+    return publishResult;
+  }
+  return { ok: true, request, message: publishResult.message, channel: publishResult.channel };
+}
+
+async function applyApprovedPromotion(guild, targetId, targetRole, approvedById = null) {
+  const member = guild ? await guild.members.fetch(targetId).catch(() => null) : null;
+  const username = member?.user?.username || member?.displayName || `User-${targetId}`;
+
+  if (targetRole === 'developer') {
+    db.prepare("INSERT OR REPLACE INTO developers (discord_id, username) VALUES (?, ?)").run(targetId, username);
+
+    if (member && guild) {
+      const developerRole =
+        guild.roles.cache.get(DEVELOPER_DISCORD_ROLE_ID) ||
+        guild.roles.cache.find(role => {
+          const normalized = normalizeDiscordRoleName(role?.name);
+          return normalized === 'developer' || normalized === 'developers';
+        });
+      if (developerRole && !member.roles.cache.has(developerRole.id)) {
+        await member.roles.add(developerRole).catch(() => {});
+      }
+    }
+
+    sendAuditLog(guild?.client || null, {
+      title: '🛡️ Developer Promotion Approved',
+      description: `**Candidate:** ${username} (<@${targetId}>)\n**New Role:** Developer\n**Approved By:** ${approvedById ? `<@${approvedById}>` : 'System'}`,
+      color: 0x57F287,
+      userId: approvedById || targetId,
+      guild
+    });
+    return { ok: true, label: 'Developer' };
+  }
+
+  if (targetRole === 'operations_manager') {
+    const existingAgent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetId);
+    if (!existingAgent) {
+      const generatedPin = String(Math.floor(100000 + Math.random() * 900000));
+      db.prepare(
+        "INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status) VALUES (?, ?, ?, 0, 'operations_manager', 'ready')"
+      ).run(targetId, username, generatedPin);
+    } else {
+      db.prepare("UPDATE agents SET role = 'operations_manager', username = ? WHERE discord_id = ?").run(username, targetId);
+    }
+
+    if (member && guild) {
+      const operationsManagerRole =
+        guild.roles.cache.get(OPERATIONS_MANAGER_DISCORD_ROLE_ID) ||
+        guild.roles.cache.find(role => normalizeDiscordRoleName(role?.name) === 'operations manager');
+      const agentsRole =
+        guild.roles.cache.get(AGENT_ROLE_ID) ||
+        guild.roles.cache.find(role => normalizeDiscordRoleName(role?.name) === normalizeDiscordRoleName(ROLE_NAMES.AGENTS));
+      const loggedOutRole = guild.roles.cache.find(role => normalizeDiscordRoleName(role?.name) === normalizeDiscordRoleName(ROLE_NAMES.LOGGED_OUT));
+      const rankRolesToRemove = [APPLICANT_ROLE_ID, TRAINEE_ROLE_ID, AGENT_ROLE_ID, SME_ROLE_ID, TEAM_LEADER_ROLE_ID]
+        .map(roleId => guild.roles.cache.get(roleId))
+        .filter(role => role && member.roles.cache.has(role.id));
+
+      if (rankRolesToRemove.length > 0) {
+        await member.roles.remove(rankRolesToRemove).catch(() => {});
+      }
+
+      const rolesToAdd = [operationsManagerRole, agentsRole, loggedOutRole].filter(Boolean);
+      if (rolesToAdd.length > 0) {
+        await member.roles.add(rolesToAdd).catch(() => {});
+      }
+    }
+
+    sendAuditLog(guild?.client || null, {
+      title: '🛡️ Operations Manager Promotion Approved',
+      description: `**Candidate:** ${username} (<@${targetId}>)\n**New Role:** Operations Manager\n**Approved By:** ${approvedById ? `<@${approvedById}>` : 'System'}`,
+      color: 0xF1C40F,
+      userId: approvedById || targetId,
+      guild
+    });
+    return { ok: true, label: 'Operations Manager' };
+  }
+
+  return { ok: false, error: 'Unsupported promotion target role.' };
+}
+
+async function handlePromote(interaction) {
   try {
     if (!isDeveloper(interaction)) {
-      return interaction.reply({ content: '❌ Only existing Developers can propose new developers.', ephemeral: true });
+      return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
     }
 
     const targetUser = interaction.options.getUser('user');
-    const existing = db.prepare("SELECT * FROM developers WHERE discord_id = ?").get(targetUser.id);
-    if (existing) {
-      return interaction.reply({ content: `⚠️ **${targetUser.username}** is already a developer.`, ephemeral: true });
+    const targetRole = normalizePromotionTargetRole(interaction.options.getString('role'));
+    if (!targetRole) {
+      return interaction.reply({ content: '❌ Invalid target role. Choose Developer or Operations Manager.', ephemeral: true });
     }
 
-    const currentDevs = db.prepare("SELECT discord_id FROM developers").all();
-    const currentDevIds = currentDevs.map(d => d.discord_id);
+    if (targetRole === 'developer' && isDeveloperId(targetUser.id)) {
+      return interaction.reply({ content: `⚠️ <@${targetUser.id}> is already in Developer authority scope.`, ephemeral: true });
+    }
+    if (targetRole === 'operations_manager') {
+      const existingAgent = db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(targetUser.id);
+      if (normalizeAgentRole(existingAgent?.role) === 'operations_manager') {
+        return interaction.reply({ content: `⚠️ <@${targetUser.id}> is already an Operations Manager in DB.`, ephemeral: true });
+      }
+    }
 
-    // Create unique approval record
-    db.prepare("INSERT OR REPLACE INTO dev_approvals (target_id, proposed_by, approvals) VALUES (?, ?, '[]')").run(targetUser.id, interaction.user.id);
+    await interaction.deferReply({ ephemeral: true });
+    const result = await createPromotionRequest({
+      client: interaction.client,
+      guild: interaction.guild,
+      targetUser,
+      targetRole,
+      requestedBy: interaction.user.id,
+      source: '/promote command'
+    });
 
-    const embed = new EmbedBuilder()
-      .setTitle('🛡️ Developer Promotion Request')
-      .setDescription(
-        `**Candidate:** ${targetUser.username} (<@${targetUser.id}>)\n` +
-        `**Proposed By:** ${interaction.user.username} (<@${interaction.user.id}>)\n\n` +
-        `**Requirement:** All existing developers must approve this promotion.\n` +
-        `**Approvals:** 0 / ${currentDevIds.length}`
-      )
-      .setColor(0xFFA500)
-      .setTimestamp();
+    if (!result.ok) {
+      return interaction.editReply({ content: `❌ Failed to create promotion request: ${result.error}` });
+    }
 
-    const approveBtn = new ButtonBuilder()
-      .setCustomId(`dev_approve_${targetUser.id}`)
-      .setLabel('✅ Approve')
-      .setStyle(ButtonStyle.Success);
-
-    const denyBtn = new ButtonBuilder()
-      .setCustomId(`dev_deny_${targetUser.id}`)
-      .setLabel('❌ Deny')
-      .setStyle(ButtonStyle.Danger);
-
-    const row = new ActionRowBuilder().addComponents(approveBtn, denyBtn);
-
-    await interaction.reply({ embeds: [embed], components: [row] });
-  } catch (e) {
-    console.error('Error in handleDbAddDeveloper:', e);
+    const roleLabel = getPromotionTargetRoleLabel(targetRole);
+    await interaction.editReply({
+      content:
+        `✅ Promotion request created for <@${targetUser.id}> -> **${roleLabel}**.\n` +
+        `Review channel: <#${PROMOTION_REVIEW_CHANNEL_ID}>.\n` +
+        `Required: **1 Developer approval + 1 Operations Manager approval**.`
+    });
+  } catch (error) {
+    console.error('Error in handlePromote:', error);
     if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: '❌ Failed to create developer approval request.' }).catch(() => {});
+      await interaction.editReply({ content: '❌ Failed to create promotion request.' }).catch(() => {});
     } else {
-      await interaction.reply({ content: '❌ Failed to create developer approval request.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: '❌ Failed to create promotion request.', ephemeral: true }).catch(() => {});
     }
   }
 }
 
+async function handlePromotionRequestApprove(interaction) {
+  try {
+    const requestKey = String(interaction.customId || '').replace('promote_req_approve:', '');
+    const row = db.prepare("SELECT * FROM dev_approvals WHERE target_id = ?").get(requestKey);
+    const request = parsePromotionRequestFromRow(row);
+    if (!request) {
+      return interaction.reply({ content: '❌ Promotion request not found.', ephemeral: true });
+    }
+    if (request.status !== 'pending') {
+      return interaction.reply({ content: '⚠️ This promotion request is no longer pending.', ephemeral: true });
+    }
+
+    const approverId = interaction.user.id;
+    const canApproveAsDeveloper = isDeveloperId(approverId);
+    const canApproveAsOperationsManager = isOperationsManagerId(approverId);
+    if (!canApproveAsDeveloper && !canApproveAsOperationsManager) {
+      return interaction.reply({ content: '❌ Only Developer or Operations Manager can approve this request.', ephemeral: true });
+    }
+    if (request.developerApprovedBy === approverId || request.operationsManagerApprovedBy === approverId) {
+      return interaction.reply({ content: '⚠️ You have already approved this request.', ephemeral: true });
+    }
+
+    let approvalType = null;
+    if (canApproveAsDeveloper && !request.developerApprovedBy) {
+      request.developerApprovedBy = approverId;
+      approvalType = 'Developer';
+    } else if (canApproveAsOperationsManager && !request.operationsManagerApprovedBy) {
+      request.operationsManagerApprovedBy = approverId;
+      approvalType = 'Operations Manager';
+    } else if (!request.developerApprovedBy || !request.operationsManagerApprovedBy) {
+      return interaction.reply({ content: '⚠️ Your role is already filled for this request. A different approver role is still required.', ephemeral: true });
+    }
+
+    request.updatedAt = new Date().toISOString();
+    const isFullyApproved = Boolean(request.developerApprovedBy && request.operationsManagerApprovedBy);
+    if (isFullyApproved) {
+      const applyResult = await applyApprovedPromotion(interaction.guild, request.targetId, request.targetRole, approverId);
+      if (!applyResult.ok) {
+        return interaction.reply({ content: `❌ Could not apply promotion: ${applyResult.error}`, ephemeral: true });
+      }
+      request.status = 'approved';
+    }
+
+    upsertPromotionRequestRow(request);
+    const embed = buildPromotionRequestEmbed(request);
+    await interaction.update({
+      embeds: [embed],
+      components: request.status === 'pending' ? buildPromotionRequestButtons(request.requestKey) : []
+    });
+
+    if (request.status === 'pending') {
+      await interaction.followUp({
+        content: `✅ ${approvalType} approval captured. Waiting for the second required approval.`,
+        ephemeral: true
+      }).catch(() => {});
+    }
+  } catch (error) {
+    console.error('Error in handlePromotionRequestApprove:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp({ content: '❌ Failed to process approval.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to process approval.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handlePromotionRequestDeny(interaction) {
+  try {
+    const approverId = interaction.user.id;
+    if (!isDeveloperId(approverId) && !isOperationsManagerId(approverId)) {
+      return interaction.reply({ content: '❌ Only Developer or Operations Manager can deny this request.', ephemeral: true });
+    }
+
+    const requestKey = String(interaction.customId || '').replace('promote_req_deny:', '');
+    const row = db.prepare("SELECT * FROM dev_approvals WHERE target_id = ?").get(requestKey);
+    const request = parsePromotionRequestFromRow(row);
+    if (!request) {
+      return interaction.reply({ content: '❌ Promotion request not found.', ephemeral: true });
+    }
+
+    request.status = 'denied';
+    request.deniedBy = approverId;
+    request.updatedAt = new Date().toISOString();
+    upsertPromotionRequestRow(request);
+
+    await interaction.update({
+      embeds: [buildPromotionRequestEmbed(request)],
+      components: []
+    });
+  } catch (error) {
+    console.error('Error in handlePromotionRequestDeny:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp({ content: '❌ Failed to deny promotion request.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to deny promotion request.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleSensitivePromotionRoleAddAttempt(oldMember, newMember) {
+  try {
+    if (!oldMember || !newMember?.guild || !newMember?.client) return;
+    const sensitiveRoles = [
+      { roleId: OPERATIONS_MANAGER_DISCORD_ROLE_ID, targetRole: 'operations_manager' },
+      { roleId: DEVELOPER_DISCORD_ROLE_ID, targetRole: 'developer' }
+    ];
+
+    for (const entry of sensitiveRoles) {
+      const gainedRole = !oldMember.roles.cache.has(entry.roleId) && newMember.roles.cache.has(entry.roleId);
+      if (!gainedRole) continue;
+
+      const isAuthorized = entry.targetRole === 'operations_manager'
+        ? normalizeAgentRole(db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(newMember.id)?.role) === 'operations_manager'
+        : isDeveloperId(newMember.id);
+      if (isAuthorized) continue;
+
+      const sensitiveRole = newMember.guild.roles.cache.get(entry.roleId);
+      if (sensitiveRole && sensitiveRole.editable && newMember.roles.cache.has(sensitiveRole.id)) {
+        await newMember.roles.remove(sensitiveRole).catch(() => {});
+      }
+
+      await createPromotionRequest({
+        client: newMember.client,
+        guild: newMember.guild,
+        targetUser: newMember.user,
+        targetRole: entry.targetRole,
+        requestedBy: null,
+        source: 'Discord role-add attempt detected'
+      });
+    }
+  } catch (error) {
+    console.warn('[ROLE GUARD] Sensitive promotion role detection warning:', error.message);
+  }
+}
+
+async function handleDbAddDeveloper(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: 'Access denied: Developer or Operations Manager required.', ephemeral: true });
+    }
+
+    const targetUser = interaction.options.getUser('user');
+    if (isDeveloperId(targetUser.id)) {
+      return interaction.reply({ content: `Target <@${targetUser.id}> is already in Developer authority scope.`, ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const result = await createPromotionRequest({
+      client: interaction.client,
+      guild: interaction.guild,
+      targetUser,
+      targetRole: 'developer',
+      requestedBy: interaction.user.id,
+      source: '/db-add-developer legacy alias'
+    });
+    if (!result.ok) {
+      return interaction.editReply({ content: `Failed to create promotion request: ${result.error}` });
+    }
+
+    await interaction.editReply({
+      content:
+        `Developer promotion request created for <@${targetUser.id}>.\n` +
+        `Use /promote going forward.\n` +
+        `Review channel: <#${PROMOTION_REVIEW_CHANNEL_ID}> (requires 1 Developer + 1 Operations Manager approval).`
+    });
+  } catch (e) {
+    console.error('Error in handleDbAddDeveloper:', e);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'Failed to create promotion request.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'Failed to create promotion request.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
 async function handleDevApprove(interaction) {
   try {
     if (!isDeveloper(interaction)) {
@@ -6444,47 +6911,45 @@ async function handlePromoteSME(interaction) {
 
 
 async function handleSetOperationManager(interaction) {
-  if (!isDeveloper(interaction)) return interaction.reply({ content: 'Access Denied: Developer Only.', ephemeral: true });
   try {
-    const targetUser = interaction.options.getUser('user');
-    const existingAgent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(targetUser.id);
-
-    if (!existingAgent) {
-      const generatedPin = String(Math.floor(100000 + Math.random() * 900000));
-      db.prepare("INSERT INTO agents (discord_id, username, pin, pin_is_set, role, agent_status) VALUES (?, ?, ?, 0, 'operations_manager', 'ready')").run(
-        targetUser.id,
-        targetUser.username,
-        generatedPin
-      );
-    } else {
-      db.prepare("UPDATE agents SET role = 'operations_manager' WHERE discord_id = ?").run(targetUser.id);
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: 'Access denied: Developer or Operations Manager required.', ephemeral: true });
     }
 
-    try {
-      const member = await interaction.guild.members.fetch(targetUser.id);
-      const agentsRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.AGENTS.toLowerCase());
-      const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
-      const managerRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === 'operations manager');
+    const targetUser = interaction.options.getUser('user');
+    const existingAgent = db.prepare("SELECT role FROM agents WHERE discord_id = ?").get(targetUser.id);
+    if (normalizeAgentRole(existingAgent?.role) === 'operations_manager') {
+      return interaction.reply({ content: `Target <@${targetUser.id}> is already an Operations Manager in DB.`, ephemeral: true });
+    }
 
-      const rolesToAdd = [agentsRole, loggedOutRole, managerRole].filter(Boolean);
-      if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
-    } catch (e) { console.warn('[PROMOTE] Operations Manager Discord role sync failed:', e.message); }
+    await interaction.deferReply({ ephemeral: true });
+    const result = await createPromotionRequest({
+      client: interaction.client,
+      guild: interaction.guild,
+      targetUser,
+      targetRole: 'operations_manager',
+      requestedBy: interaction.user.id,
+      source: '/db-set-operation-manager legacy alias'
+    });
+    if (!result.ok) {
+      return interaction.editReply({ content: `Failed to create promotion request: ${result.error}` });
+    }
 
-    await interaction.reply({ content: `Success: **${targetUser.username}** has been set as **Operations Manager**.\nAgent base roles were synced where available.`, ephemeral: true });
-
-    sendAuditLog(interaction.client, {
-      title: 'Management Promotion',
-      description: `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n**New Role:** Operations Manager\n**Auto-Created:** ${existingAgent ? 'No' : 'Yes'}\n**Admin:** {{AGENT_NAME}}`,
-      color: 0xF1C40F,
-      userId: interaction.user.id,
-      guild: interaction.guild
+    await interaction.editReply({
+      content:
+        `Operations Manager promotion request created for <@${targetUser.id}>.\n` +
+        `Use /promote going forward.\n` +
+        `Review channel: <#${PROMOTION_REVIEW_CHANNEL_ID}> (requires 1 Developer + 1 Operations Manager approval).`
     });
   } catch (e) {
     console.error('Error in handleSetOperationManager:', e);
-    await interaction.reply({ content: 'Error during operations manager promotion.', ephemeral: true });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'Failed to create promotion request.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'Failed to create promotion request.', ephemeral: true }).catch(() => {});
+    }
   }
 }
-
 async function handleDemote(interaction) {
   if (!isDeveloper(interaction)) return interaction.reply({ content: '❌ Access Denied: Developer Only.', ephemeral: true });
   try {
@@ -6880,7 +7345,7 @@ function chunkPinAuditLines(lines, maxLength = 900) {
   return chunks;
 }
 
-function formatPinAuditLine(agent, { revealPinValue = false } = {}) {
+function formatPinAuditLine(agent, { revealPinValue = true } = {}) {
   const pinStatus = hasConfiguredPin(agent) ? '✅ PIN set' : '⚪ PIN missing';
   const roleLabel = getRoleLabel(agent.role);
   const teamLabel = agent.team || 'No team';
@@ -6928,7 +7393,7 @@ async function handleSeeAllPins(interaction) {
 
     const withPins = agents.filter(agent => hasConfiguredPin(agent));
     const missingPins = agents.filter(agent => !hasConfiguredPin(agent));
-    const revealPinValues = Boolean(targetUser);
+    const revealPinValues = true;
 
     const setLines = withPins.map(agent => formatPinAuditLine(agent, { revealPinValue: revealPinValues }));
     const missingLines = missingPins.map(agent => formatPinAuditLine(agent, { revealPinValue: revealPinValues }));
@@ -6941,7 +7406,7 @@ async function handleSeeAllPins(interaction) {
         `### PIN Inventory\n` +
         '───────────────────\n' +
         `**🎯 Scope Filter:** ${targetUser ? `<@${targetUser.id}>` : 'All agents'}\n` +
-        `**🔎 PIN Display:** ${targetUser ? 'Raw PIN (single-user override)' : 'Hidden'}\n` +
+        `**🔎 PIN Display:** Raw PIN values\n` +
         `**📊 Total Agents:** ${agents.length}\n` +
         `**✅ PIN Set:** ${withPins.length}\n` +
         `**⚪ PIN Missing:** ${missingPins.length}\n` +
@@ -7171,10 +7636,12 @@ async function handleHelpStaff(interaction) {
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
         '> `/assign-team`: Move an agent between Team 1 and Team 2.\n' +
         '> `/db-assign-hotel`: Permanently link an agent to a hotel (`sync`: permission/ghost/both).\n' +
-        '> `/db-add-developer`: Add a developer record.\n' +
+        '> `/promote user:@name role:Developer|Operations Manager`: Create a dual-approval promotion request.\n' +
+        '> `/db-add-developer`: Legacy alias that now routes to approval request flow.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
-        '> `/db-promote-tl`, `/db-promote-sme`, `/db-set-operation-manager`, `/db-demote`: Change leadership roles (`/db-demote` steps down one rank).\n\n' +
+        '> `/db-promote-tl`, `/db-promote-sme`, `/db-demote`: Change leadership roles (`/db-demote` steps down one rank).\n' +
+        '> `/db-set-operation-manager`: Legacy alias that now routes to approval request flow.\n\n' +
         '### 🧰 Database & Recovery\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/db-info`: Inspect DB path, schema, and table layout.\n' +
@@ -7200,8 +7667,7 @@ async function handleHelpStaff(interaction) {
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
         '> `/hours-export period:day|week|month`: Export a horizontal Excel-style timesheet.\n' +
-        '> `/see-all-pins`: Review PIN status with values hidden.\n' +
-        '> `/see-all-pins user:@name`: Reveal selected user PIN (Developer/OM only).\n' +
+        '> `/see-all-pins` or `/see-all-pins user:@name`: View stored PIN values (Developer/OM only).\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +
         '### 📎 Useful SQL Snippets (`/db-query`)\n' +
@@ -8710,9 +9176,13 @@ module.exports = {
   handleResetPin,
   handleSetupLoginTeam,
   updateTeamStatusEmbed,
+  handlePromote,
   handleDbAddDeveloper,
   handleDevApprove,
   handleDevDeny,
+  handlePromotionRequestApprove,
+  handlePromotionRequestDeny,
+  handleSensitivePromotionRoleAddAttempt,
   handleDbSetPhone,
   handleDbLogCheckin,
   handlePromoteTL,
@@ -8771,13 +9241,3 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
-
-
-
-
-
-
-
-
-
-

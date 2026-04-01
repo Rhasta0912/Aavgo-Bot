@@ -409,6 +409,8 @@ client.on('guildMemberAdd', async member => {
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
   try {
+    await auth.handleSensitivePromotionRoleAddAttempt(oldMember, newMember);
+
     const applicantRoleId = '1484919969689894912';
     const traineeRoleId = '1484705126026449029';
     const agentRoleId = '1482227287159078964';
@@ -546,6 +548,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handlePromoteSME(interaction);
     } else if (commandName === 'db-set-operation-manager') {
       await auth.handleSetOperationManager(interaction);
+    } else if (commandName === 'promote') {
+      await auth.handlePromote(interaction);
     } else if (commandName === 'db-demote') {
       await auth.handleDemote(interaction);
     } else if (commandName === 'db-remove-user') {
@@ -708,6 +712,10 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDevApprove(interaction);
     } else if (interaction.customId.startsWith('dev_deny_')) {
       await auth.handleDevDeny(interaction);
+    } else if (interaction.customId.startsWith('promote_req_approve:')) {
+      await auth.handlePromotionRequestApprove(interaction);
+    } else if (interaction.customId.startsWith('promote_req_deny:')) {
+      await auth.handlePromotionRequestDeny(interaction);
     } else if (
       interaction.customId === 'tl_start_shift_btn' ||
       interaction.customId === 'tl_start_shift_single_confirm_btn' ||

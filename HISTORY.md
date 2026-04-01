@@ -848,3 +848,11 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - Fixed rank demotion race during Discord role edits: watcher sync no longer force-cleans rank roles before the role-update event resolves, so giving a lower ladder role (ex: Team Leader -> Agent) keeps the newly assigned role instead of stripping it; event-driven sync now preserves the selected rank in DB even when multiple rank roles are temporarily present.
 - Enhanced /see-all-pins with an optional user mention filter (/see-all-pins user:@name) so developers can audit one person directly, and tightened PIN privacy by showing PIN status only (hidden/not set) instead of exposing raw PIN digits in audit output.
 - Applied owner-approved PIN policy override (April 1, 2026): /see-all-pins still masks all PIN values by default, but /see-all-pins user:@name now reveals the selected user’s raw PIN to Operations Managers/Developers only for targeted support and recovery.
+- Enforced promotion control for OM/Developer roles and aligned PIN audit visibility.
+  - Summary: `/see-all-pins` now shows raw PIN values for both the full-list view and `user:@name` filter (Developer/OM only). Added `/promote` to request `Developer` or `Operations Manager` promotion with required dual approval (1 Developer + 1 Operations Manager). Manual Discord role-add attempts for Developer/OM are now blocked: unauthorized role adds are removed and a promotion request is posted to review channel `1483405048309354497`.
+  - Files touched:
+    - src/auth.js
+    - src/commands.js
+    - src/index.js
+    - SOP.md
+    - HISTORY.md

@@ -141,11 +141,11 @@ const commandData = [
     .setDescription('(Developer Only) Show database path and table information'),
   new SlashCommandBuilder()
     .setName('see-all-pins')
-    .setDescription('(Developer/OM) Audit PIN status; add user:@name to reveal one PIN')
+    .setDescription('(Developer/OM) View stored agent PINs (optional user filter)')
     .addUserOption(option =>
       option
         .setName('user')
-        .setDescription('Optional: filter to one agent and reveal their PIN')
+        .setDescription('Optional: filter PIN audit to one agent')
         .setRequired(false)
     ),
   new SlashCommandBuilder()
@@ -179,6 +179,18 @@ const commandData = [
     .setName('db-set-operation-manager')
     .setDescription('(Developer Only) Promote an agent to Operations Manager')
     .addUserOption(option => option.setName('user').setDescription('The user to promote').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('promote')
+    .setDescription('(Developer/OM) Request promotion to Developer or Operations Manager')
+    .addUserOption(option => option.setName('user').setDescription('The user to promote').setRequired(true))
+    .addStringOption(option => option
+      .setName('role')
+      .setDescription('Target promotion role')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Developer', value: 'developer' },
+        { name: 'Operations Manager', value: 'operations_manager' }
+      )),
   new SlashCommandBuilder()
     .setName('db-demote')
     .setDescription('(Developer Only) Demote a user by one rank step')
