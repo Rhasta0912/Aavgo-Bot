@@ -6885,7 +6885,8 @@ function formatPinAuditLine(agent) {
   const roleLabel = getRoleLabel(agent.role);
   const teamLabel = agent.team || 'No team';
   const hotelLabel = agent.hotel_id ? getCombinedHotelLabel(agent.hotel_id) : 'Unlinked';
-  const pinLabel = hasConfiguredPin(agent) && agent.pin ? `PIN: \`${agent.pin}\`` : 'PIN: not set';
+  const pinLabel = hasConfiguredPin(agent) ? 'PIN: hidden' : 'PIN: not set';
+  const agentLabel = agent.discord_id ? `<@${agent.discord_id}>` : agent.username;
   let compatibilityIds = [];
   try {
     compatibilityIds = JSON.parse(agent.hotel_compatibility || '[]');
@@ -6894,7 +6895,7 @@ function formatPinAuditLine(agent) {
   }
   const compatibilityLabel = formatHotelCompatibilityLabel(compatibilityIds);
 
-  return `• ${agent.username} | ${roleLabel} | ${teamLabel} | ${hotelLabel} | ${pinStatus} | ${pinLabel}${compatibilityLabel !== 'none' ? ` | Access: ${compatibilityLabel}` : ''}`;
+  return `• ${agentLabel} | ${roleLabel} | ${teamLabel} | ${hotelLabel} | ${pinStatus} | ${pinLabel}${compatibilityLabel !== 'none' ? ` | Access: ${compatibilityLabel}` : ''}`;
 }
 
 async function handleSeeAllPins(interaction) {
@@ -6905,13 +6906,21 @@ async function handleSeeAllPins(interaction) {
 
     await interaction.deferReply({ ephemeral: true });
 
-    const agents = db.prepare(`
+    const targetUser = interaction.options.getUser('user');
+    const query = `
       SELECT discord_id, username, role, team, hotel_id, pin, pin_is_set, hotel_compatibility
       FROM agents
+      ${targetUser ? 'WHERE discord_id = ?' : ''}
       ORDER BY pin_is_set DESC, username COLLATE NOCASE ASC
-    `).all();
+    `;
+    const agents = targetUser
+      ? db.prepare(query).all(targetUser.id)
+      : db.prepare(query).all();
 
     if (agents.length === 0) {
+      if (targetUser) {
+        return interaction.editReply({ content: `🔐 No agent record found for <@${targetUser.id}>.` });
+      }
       return interaction.editReply({ content: '🔐 No agents were found in the database.' });
     }
 
@@ -6924,14 +6933,15 @@ async function handleSeeAllPins(interaction) {
     const missingChunks = chunkPinAuditLines(missingLines);
 
     const embed = new EmbedBuilder()
-      .setTitle('🔐 Aavgo PIN Audit')
+      .setTitle(targetUser ? `🔐 Aavgo PIN Audit - ${targetUser.username}` : '🔐 Aavgo PIN Audit')
       .setDescription(
         `### PIN Inventory\n` +
         '───────────────────\n' +
+        `**🎯 Scope Filter:** ${targetUser ? `<@${targetUser.id}>` : 'All agents'}\n` +
         `**📊 Total Agents:** ${agents.length}\n` +
         `**✅ PIN Set:** ${withPins.length}\n` +
         `**⚪ PIN Missing:** ${missingPins.length}\n` +
-        `**🛡️ Scope:** Read-only audit of stored PIN values and access coverage.\n` +
+        `**🛡️ Scope:** Read-only audit of PIN status and access coverage.\n` +
         '───────────────────'
       )
       .setColor(withPins.length > 0 ? 0x57F287 : 0xFEE75C)
@@ -7186,7 +7196,7 @@ async function handleHelpStaff(interaction) {
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
         '> `/hours-export period:day|week|month`: Export a horizontal Excel-style timesheet.\n' +
-        '> `/see-all-pins`: Review which agents have a PIN set without revealing the PIN itself.\n' +
+        '> `/see-all-pins` or `/see-all-pins user:@name`: Review PIN status without revealing PIN values.\n' +
         '> `/schedule-view`, `/schedule-export`, `/schedule-import`: Manage schedule sheets.\n' +
         '> `/attendance-report`: Audit missed shifts and late logins.\n\n' +
         '### 📎 Useful SQL Snippets (`/db-query`)\n' +
