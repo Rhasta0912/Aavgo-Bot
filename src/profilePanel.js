@@ -638,6 +638,7 @@ async function getProfileContext(guild, discordId) {
 
 function buildProfileEmbed(profile, reviewerTag, notice = null) {
   const { agent, member, shortName, phone, appliedAt, pair, activeSession, hourTotals } = profile;
+  const pinText = agent?.pin ? `\`${agent.pin}\`` : 'Not set';
   const pairText = pair
     ? `${hotelName(pair.primary_hotel_id)} + ${hotelName(pair.secondary_hotel_id)}`
     : 'Not set';
@@ -658,6 +659,7 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
       '──────────────────────────────\n' +
       `> 🧑 Discord: <@${agent.discord_id}> (\`${agent.discord_id}\`)\n` +
       `> 📱 Phone (PH): ${phone}\n` +
+      `> 🔐 PIN: ${pinText}\n` +
       `> ⏰ Applied At: ${dateTag(appliedAt)}\n` +
       `> 🧩 Role: ${roleLabel(agent.role)}\n` +
       `> 🏨 Team: ${agent.team || profile.agent.effective_team || TEAM_1}\n` +

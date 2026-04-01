@@ -55,6 +55,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added PIN visibility in Profiles member view.
+  - Summary: Profile review cards now show the user PIN line directly in the details section (`🔐 PIN`) so management/developer profile checks can see the stored PIN while reviewing agent records.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
 - Added SME/Team Leader session choice (Live or Training) with live-only team gate.
   - Summary: SME/Team Leader management route now shows session selection with `Live • Shift` and `Training`. Team assignment requirement is now enforced only when pressing **Live**, while **Training** remains accessible even without team assignment so management can monitor training sessions. Management live button wording was updated from `Live • Hotel Shift` to `Live • Shift` for SME/TL flow only.
   - Files touched:
