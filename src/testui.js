@@ -15,6 +15,12 @@ const {
 
 const COMPONENTS_V2_FLAGS = MessageFlags.IsComponentsV2;
 const EPHEMERAL_COMPONENTS_V2_FLAGS = MessageFlags.Ephemeral | MessageFlags.IsComponentsV2;
+const DEFAULT_UI_TEAM_LABEL = 'Team 1';
+
+const TEST_UI_MODE = {
+  simple: 'simple',
+  advanced: 'advanced'
+};
 
 const TEST_UI_THEMES = {
   aavgo: {
@@ -82,16 +88,16 @@ const TEST_UI_PROFILE = {
 const TEST_UI_VIEWS = {
   overview: {
     label: 'Overview',
-    pickerHint: 'Command hub and first impression',
-    summary: 'High-level test of spacing, copy clarity, and action hierarchy.',
-    goal: 'Help a new user identify the right entry point in under 5 seconds.',
-    primaryAction: 'Initialize Shift',
-    secondaryAction: 'Open Profiles',
-    beginnerCopy: 'Choose Live -> Hotel Shift for real work, or Practice -> Training if you are still learning.',
+    pickerHint: 'Clean hotel assignment card',
+    summary: 'Single-task card with one clear dropdown action.',
+    goal: 'Keep hotel selection obvious for new users.',
+    primaryAction: 'Choose Hotel',
+    secondaryAction: 'Open Lab Controls',
+    beginnerCopy: 'Use the dropdown below to choose your hotel assignment.',
     previewLines: [
-      'Header: Shift Control Center',
-      'Card: Active Agents, Pending Alerts, Coverage',
-      'Actions: Initialize Shift | Check Hours | End Shift'
+      'Header: Choose Your Hotel Location',
+      'Section: Assignment Selection - Team 1',
+      'Action: Choose your hotel assignment...'
     ]
   },
   login: {
@@ -152,6 +158,29 @@ const TEST_UI_VIEWS = {
   }
 };
 
+const TEST_UI_DEMO_HOTELS = {
+  bw_to: {
+    label: 'Indianhead / Magnuson',
+    short: 'Indianhead/Magnuson',
+    emoji: '🏨'
+  },
+  gicp: {
+    label: 'The Garden Inn At Campsite',
+    short: 'Garden Inn',
+    emoji: '🌿'
+  },
+  rmda_sup8: {
+    label: 'Ramada / Super 8',
+    short: 'Ramada/Super 8',
+    emoji: '🛎️'
+  },
+  ad1: {
+    label: 'AD1',
+    short: 'AD1',
+    emoji: '📞'
+  }
+};
+
 const TEST_UI_DENSITIES = {
   cozy: {
     label: 'Cozy',
@@ -184,14 +213,28 @@ function normalizeTestUiDensity(density) {
   return 'cozy';
 }
 
+function normalizeTestUiMode(mode) {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (normalized === TEST_UI_MODE.advanced || normalized === 'adv') return TEST_UI_MODE.advanced;
+  return TEST_UI_MODE.simple;
+}
+
+function normalizeTestUiHotel(hotel) {
+  const normalized = String(hotel || '').trim().toLowerCase();
+  if (TEST_UI_DEMO_HOTELS[normalized]) return normalized;
+  return 'bw_to';
+}
+
 function pickRandomTestUiState() {
   const themes = Object.keys(TEST_UI_THEMES);
   const views = Object.keys(TEST_UI_VIEWS);
   const densities = Object.keys(TEST_UI_DENSITIES);
+  const hotels = Object.keys(TEST_UI_DEMO_HOTELS);
   return {
     themeKey: themes[Math.floor(Math.random() * themes.length)] || 'aavgo',
     viewKey: views[Math.floor(Math.random() * views.length)] || 'overview',
-    densityKey: densities[Math.floor(Math.random() * densities.length)] || 'cozy'
+    densityKey: densities[Math.floor(Math.random() * densities.length)] || 'cozy',
+    hotelKey: hotels[Math.floor(Math.random() * hotels.length)] || 'bw_to'
   };
 }
 
@@ -231,15 +274,22 @@ function buildTextDisplay(content) {
   return new TextDisplayBuilder().setContent(content);
 }
 
-function buildSoftSeparator(spacing = SeparatorSpacingSize.Large) {
+function buildSoftSeparator(spacing = SeparatorSpacingSize.Large, divider = false) {
   return new SeparatorBuilder()
-    .setDivider(false)
+    .setDivider(Boolean(divider))
     .setSpacing(spacing);
 }
 
-function buildThemeSelect(themeKey, viewKey, densityKey) {
+function getDefaultViewAccent(theme, viewKey) {
+  if (viewKey === 'overview') return 0x22C55E;
+  if (viewKey === 'alert') return 0xEF4444;
+  if (viewKey === 'approval') return 0xF59E0B;
+  return theme.color;
+}
+
+function buildThemeSelect(themeKey, viewKey, densityKey, hotelKey, mode) {
   return new StringSelectMenuBuilder()
-    .setCustomId(`test_ui_theme_select:${viewKey}:${densityKey}`)
+    .setCustomId(`test_ui_theme_select:${viewKey}:${densityKey}:${hotelKey}:${mode}`)
     .setPlaceholder('Choose style preset')
     .addOptions(
       Object.entries(TEST_UI_THEMES).map(([key, theme]) =>
@@ -252,9 +302,9 @@ function buildThemeSelect(themeKey, viewKey, densityKey) {
     );
 }
 
-function buildViewSelect(themeKey, viewKey, densityKey) {
+function buildViewSelect(themeKey, viewKey, densityKey, hotelKey, mode) {
   return new StringSelectMenuBuilder()
-    .setCustomId(`test_ui_view_select:${themeKey}:${densityKey}`)
+    .setCustomId(`test_ui_view_select:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
     .setPlaceholder('Choose screen preview')
     .addOptions(
       Object.entries(TEST_UI_VIEWS).map(([key, view]) =>
@@ -267,21 +317,32 @@ function buildViewSelect(themeKey, viewKey, densityKey) {
     );
 }
 
-function buildControlButtons(viewKey, themeKey, densityKey) {
-  const densityLabel = TEST_UI_DENSITIES[densityKey]?.label || 'Cozy';
+function buildHotelSelect(viewKey, themeKey, densityKey, hotelKey, mode) {
+  return new StringSelectMenuBuilder()
+    .setCustomId(`test_ui_demo_hotel_select:${viewKey}:${themeKey}:${densityKey}:${mode}`)
+    .setPlaceholder('Choose your hotel assignment...')
+    .addOptions(
+      Object.entries(TEST_UI_DEMO_HOTELS).map(([key, hotel]) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(hotel.label)
+          .setValue(key)
+          .setDescription(`Demo assignment for ${hotel.short}`)
+          .setDefault(key === hotelKey)
+      )
+    );
+}
+
+function buildSimpleButtons(viewKey, themeKey, densityKey, hotelKey, mode) {
+  const nextMode = mode === TEST_UI_MODE.advanced ? TEST_UI_MODE.simple : TEST_UI_MODE.advanced;
   return [
     new ButtonBuilder()
-      .setCustomId(`test_ui_density_toggle:${viewKey}:${themeKey}:${densityKey}`)
-      .setLabel(`Spacing: ${densityLabel}`)
-      .setStyle(densityKey === 'compact' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+      .setCustomId(`test_ui_mode_toggle:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
+      .setLabel(nextMode === TEST_UI_MODE.advanced ? 'Open Lab Controls' : 'Back to Simple')
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId('test_ui_shuffle')
+      .setCustomId(`test_ui_shuffle:${mode}`)
       .setLabel('Try Another')
       .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`test_ui_refresh:${viewKey}:${themeKey}:${densityKey}`)
-      .setLabel('Retry Render')
-      .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('test_ui_close')
       .setLabel('Close')
@@ -289,105 +350,145 @@ function buildControlButtons(viewKey, themeKey, densityKey) {
   ];
 }
 
-function buildTestUiContainer(themeKey, viewKey, densityKey) {
+function buildAdvancedButtons(viewKey, themeKey, densityKey, hotelKey, mode) {
+  const densityLabel = TEST_UI_DENSITIES[densityKey]?.label || 'Cozy';
+  const nextMode = mode === TEST_UI_MODE.advanced ? TEST_UI_MODE.simple : TEST_UI_MODE.advanced;
+  return [
+    new ButtonBuilder()
+      .setCustomId(`test_ui_density_toggle:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
+      .setLabel(`Spacing: ${densityLabel}`)
+      .setStyle(densityKey === 'compact' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`test_ui_shuffle:${mode}`)
+      .setLabel('Try Another')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`test_ui_refresh:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
+      .setLabel('Retry Render')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`test_ui_mode_toggle:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
+      .setLabel(nextMode === TEST_UI_MODE.simple ? 'Back to Simple' : 'Open Lab Controls')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('test_ui_close')
+      .setLabel('Close')
+      .setStyle(ButtonStyle.Danger)
+  ];
+}
+
+function buildLeadText(view, hotelKey) {
+  const hotel = TEST_UI_DEMO_HOTELS[hotelKey] || TEST_UI_DEMO_HOTELS.bw_to;
+  if (view.label === 'Overview') {
+    return (
+      '## 🏨 Choose Your Hotel Location\n' +
+      `📍 **ASSIGNMENT SELECTION — ${DEFAULT_UI_TEAM_LABEL}**\n\n` +
+      `Selected: ${hotel.emoji} **${hotel.label}**`
+    );
+  }
+  return (
+    `## ${view.label}\n` +
+    `${view.summary}\n\n` +
+    `Selected Demo Hotel: ${hotel.emoji} **${hotel.label}**`
+  );
+}
+
+function buildHintText(view) {
+  return (
+    `> ▌ ${view.beginnerCopy}\n\n` +
+    '> ▌ ⚠️ Permanent choice. You cannot switch hotels\n' +
+    '> ▌ without contacting a Developer or Team Leader.'
+  );
+}
+
+function buildLabNotesText(theme, density, viewKey, densityKey) {
+  return (
+    '### 🧪 Lab Notes\n' +
+    `- Theme: ${theme.label}\n` +
+    `- Mood: ${theme.mood}\n` +
+    `- Spacing: ${density.label} (${density.spacing})\n` +
+    `- Style: ${TEST_UI_PROFILE.styleBlend}\n` +
+    `- State Cues:\n${buildStateLegend(viewKey)}\n\n` +
+    `### Preview Outline\n${buildTestUiPreviewText(viewKey, densityKey)}`
+  );
+}
+
+function buildTestUiContainer(themeKey, viewKey, densityKey, hotelKey = 'bw_to', mode = TEST_UI_MODE.simple) {
   const theme = TEST_UI_THEMES[themeKey] || TEST_UI_THEMES.aavgo;
   const view = TEST_UI_VIEWS[viewKey] || TEST_UI_VIEWS.overview;
   const density = TEST_UI_DENSITIES[densityKey] || TEST_UI_DENSITIES.cozy;
+  const normalizedHotel = normalizeTestUiHotel(hotelKey);
+  const normalizedMode = normalizeTestUiMode(mode);
 
-  const profileSection = new SectionBuilder()
-    .addTextDisplayComponents(
-      buildTextDisplay(
-        `### 🧭 UI Profile\n` +
-        `- Audience: ${TEST_UI_PROFILE.audience}\n` +
-        `- Style: ${TEST_UI_PROFILE.styleBlend}\n` +
-        `- Flow: ${TEST_UI_PROFILE.flow}\n` +
-        `- Errors: ${TEST_UI_PROFILE.errors}`
-      )
-    );
+  const leadSection = new SectionBuilder()
+    .addTextDisplayComponents(buildTextDisplay(buildLeadText(view, normalizedHotel)));
 
   if (theme.iconUrl) {
-    profileSection.setThumbnailAccessory(
+    leadSection.setThumbnailAccessory(
       new ThumbnailBuilder().setURL(theme.iconUrl)
     );
   }
 
   const container = new ContainerBuilder()
-    .setAccentColor(theme.color)
-    .addTextDisplayComponents(
-      buildTextDisplay(
-        `## 🎛️ Test GUI • ${view.label}\n` +
-        `${view.summary}\n` +
-        `Using Components V2 containers + transparent separators.`
-      )
-    )
+    .setAccentColor(getDefaultViewAccent(theme, viewKey))
+    .addSectionComponents(leadSection)
     .addSeparatorComponents(buildSoftSeparator())
-    .addSectionComponents(profileSection)
-    .addSeparatorComponents(buildSoftSeparator())
-    .addTextDisplayComponents(
-      buildTextDisplay(
-        `### 🎨 Style Preset\n` +
-        `- Preset: ${theme.label}\n` +
-        `- Mood: ${theme.mood}\n` +
-        `- Feel: ${theme.shortDescription}\n` +
-        `- Surface: ${theme.surface}\n` +
-        `- Accent: ${theme.accent}\n` +
-        `- Text: ${theme.text}\n` +
-        `- Muted: ${theme.muted}`
-      )
-    )
-    .addSeparatorComponents(buildSoftSeparator())
-    .addTextDisplayComponents(
-      buildTextDisplay(
-        `### 📐 Layout Rules\n` +
-        `- Spacing: ${density.label} (${density.spacing})\n` +
-        `- Language: ${TEST_UI_PROFILE.language}\n` +
-        `- Icons: ${TEST_UI_PROFILE.icons}\n` +
-        `- Radius: ${theme.radius}\n` +
-        `- Confirm Style: ${TEST_UI_PROFILE.confirms}`
-      )
-    )
-    .addSeparatorComponents(buildSoftSeparator())
-    .addTextDisplayComponents(
-      buildTextDisplay(
-        `### 🗂 Screen Goal\n` +
-        `${view.goal}\n\n` +
-        `Primary: ${view.primaryAction}\n` +
-        `Secondary: ${view.secondaryAction}\n\n` +
-        `### 🧪 Preview\n` +
-        `${buildTestUiPreviewText(viewKey, densityKey)}`
-      )
-    )
-    .addSeparatorComponents(buildSoftSeparator())
-    .addTextDisplayComponents(
-      buildTextDisplay(
-        `### 🗣 Copy Check\n` +
-        `"${view.beginnerCopy}"\n\n` +
-        `### 🚦 State Colors\n` +
-        `${buildStateLegend(viewKey)}`
-      )
-    )
-    .addSeparatorComponents(buildSoftSeparator())
+    .addTextDisplayComponents(buildTextDisplay(buildHintText(view)))
+    .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small, true))
     .addActionRowComponents(
-      new ActionRowBuilder().addComponents(buildThemeSelect(themeKey, viewKey, densityKey))
+      new ActionRowBuilder().addComponents(buildHotelSelect(viewKey, themeKey, densityKey, normalizedHotel, normalizedMode))
     )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(buildViewSelect(themeKey, viewKey, densityKey))
-    )
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(...buildControlButtons(viewKey, themeKey, densityKey))
-    );
+    .addSeparatorComponents(buildSoftSeparator());
+
+  if (normalizedMode === TEST_UI_MODE.advanced) {
+    container
+      .addTextDisplayComponents(
+        buildTextDisplay(
+          `### 🧭 Lab Controls\n` +
+          `- Audience: ${TEST_UI_PROFILE.audience}\n` +
+          `- Style: ${TEST_UI_PROFILE.styleBlend}\n` +
+          `- Flow: ${TEST_UI_PROFILE.flow}`
+        )
+      )
+      .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(buildThemeSelect(themeKey, viewKey, densityKey, normalizedHotel, normalizedMode))
+      )
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(buildViewSelect(themeKey, viewKey, densityKey, normalizedHotel, normalizedMode))
+      )
+      .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
+      .addTextDisplayComponents(buildTextDisplay(buildLabNotesText(theme, density, viewKey, densityKey)))
+      .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(...buildAdvancedButtons(viewKey, themeKey, densityKey, normalizedHotel, normalizedMode))
+      );
+  } else {
+    container
+      .addActionRowComponents(
+        new ActionRowBuilder().addComponents(...buildSimpleButtons(viewKey, themeKey, densityKey, normalizedHotel, normalizedMode))
+      );
+  }
 
   return container;
 }
 
-function buildTestUiPayload(themeKey = 'aavgo', viewKey = 'overview', densityKey = 'cozy') {
+function buildTestUiPayload(
+  themeKey = 'aavgo',
+  viewKey = 'overview',
+  densityKey = 'cozy',
+  hotelKey = 'bw_to',
+  mode = TEST_UI_MODE.simple
+) {
   const normalizedTheme = normalizeTestUiTheme(themeKey);
   const normalizedView = normalizeTestUiView(viewKey);
   const normalizedDensity = normalizeTestUiDensity(densityKey);
+  const normalizedHotel = normalizeTestUiHotel(hotelKey);
+  const normalizedMode = normalizeTestUiMode(mode);
 
   return {
     flags: COMPONENTS_V2_FLAGS,
-    components: [buildTestUiContainer(normalizedTheme, normalizedView, normalizedDensity)]
+    components: [buildTestUiContainer(normalizedTheme, normalizedView, normalizedDensity, normalizedHotel, normalizedMode)]
   };
 }
 
@@ -450,7 +551,7 @@ function createTestUiHandlers(deps) {
 
       interaction.__aavgoEphemeral = true;
       return interaction.reply({
-        ...buildTestUiPayload(themeOption, viewOption, densityOption),
+        ...buildTestUiPayload(themeOption, viewOption, densityOption, 'bw_to', TEST_UI_MODE.simple),
         flags: EPHEMERAL_COMPONENTS_V2_FLAGS
       });
     } catch (error) {
@@ -478,34 +579,87 @@ function createTestUiHandlers(deps) {
 
       if (customId === 'test_ui_shuffle') {
         const randomState = pickRandomTestUiState();
-        return sendComponentUpdate(interaction, buildTestUiPayload(randomState.themeKey, randomState.viewKey, randomState.densityKey));
+        return sendComponentUpdate(
+          interaction,
+          buildTestUiPayload(randomState.themeKey, randomState.viewKey, randomState.densityKey, randomState.hotelKey, TEST_UI_MODE.simple)
+        );
+      }
+
+      if (customId.startsWith('test_ui_shuffle:')) {
+        const [, modeRaw] = customId.split(':');
+        const randomState = pickRandomTestUiState();
+        return sendComponentUpdate(
+          interaction,
+          buildTestUiPayload(
+            randomState.themeKey,
+            randomState.viewKey,
+            randomState.densityKey,
+            randomState.hotelKey,
+            normalizeTestUiMode(modeRaw)
+          )
+        );
+      }
+
+      if (customId.startsWith('test_ui_mode_toggle:')) {
+        const [, viewRaw, themeRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
+        const nextMode = normalizeTestUiMode(modeRaw) === TEST_UI_MODE.advanced
+          ? TEST_UI_MODE.simple
+          : TEST_UI_MODE.advanced;
+        return sendComponentUpdate(
+          interaction,
+          buildTestUiPayload(
+            normalizeTestUiTheme(themeRaw),
+            normalizeTestUiView(viewRaw),
+            normalizeTestUiDensity(densityRaw),
+            normalizeTestUiHotel(hotelRaw),
+            nextMode
+          )
+        );
       }
 
       if (customId.startsWith('test_ui_density_toggle:')) {
-        const [, viewRaw, themeRaw, densityRaw] = customId.split(':');
+        const [, viewRaw, themeRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
         const nextDensity = normalizeTestUiDensity(densityRaw) === 'compact' ? 'cozy' : 'compact';
         return sendComponentUpdate(
           interaction,
-          buildTestUiPayload(normalizeTestUiTheme(themeRaw), normalizeTestUiView(viewRaw), nextDensity)
+          buildTestUiPayload(
+            normalizeTestUiTheme(themeRaw),
+            normalizeTestUiView(viewRaw),
+            nextDensity,
+            normalizeTestUiHotel(hotelRaw),
+            normalizeTestUiMode(modeRaw)
+          )
         );
       }
 
       if (customId.startsWith('test_ui_refresh:')) {
-        const [, viewRaw, themeRaw, densityRaw] = customId.split(':');
+        const [, viewRaw, themeRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
         return sendComponentUpdate(
           interaction,
-          buildTestUiPayload(normalizeTestUiTheme(themeRaw), normalizeTestUiView(viewRaw), normalizeTestUiDensity(densityRaw))
+          buildTestUiPayload(
+            normalizeTestUiTheme(themeRaw),
+            normalizeTestUiView(viewRaw),
+            normalizeTestUiDensity(densityRaw),
+            normalizeTestUiHotel(hotelRaw),
+            normalizeTestUiMode(modeRaw)
+          )
         );
       }
 
       if (customId.startsWith('test_ui_tab_overview:')) {
         const themeKey = normalizeTestUiTheme(customId.split(':')[1]);
-        return sendComponentUpdate(interaction, buildTestUiPayload(themeKey, 'overview', 'cozy'));
+        return sendComponentUpdate(
+          interaction,
+          buildTestUiPayload(themeKey, 'overview', 'cozy', 'bw_to', TEST_UI_MODE.simple)
+        );
       }
 
       if (customId.startsWith('test_ui_tab_components:')) {
         const themeKey = normalizeTestUiTheme(customId.split(':')[1]);
-        return sendComponentUpdate(interaction, buildTestUiPayload(themeKey, 'status', 'compact'));
+        return sendComponentUpdate(
+          interaction,
+          buildTestUiPayload(themeKey, 'status', 'compact', 'bw_to', TEST_UI_MODE.advanced)
+        );
       }
 
       return sendComponentReply(interaction, {
@@ -535,20 +689,47 @@ function createTestUiHandlers(deps) {
       const customId = String(interaction.customId || '');
 
       if (customId.startsWith('test_ui_theme_select:')) {
-        const [, viewRaw, densityRaw] = customId.split(':');
+        const [, viewRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
         const selectedTheme = normalizeTestUiTheme(interaction.values?.[0]);
         return sendComponentUpdate(
           interaction,
-          buildTestUiPayload(selectedTheme, normalizeTestUiView(viewRaw), normalizeTestUiDensity(densityRaw))
+          buildTestUiPayload(
+            selectedTheme,
+            normalizeTestUiView(viewRaw),
+            normalizeTestUiDensity(densityRaw),
+            normalizeTestUiHotel(hotelRaw),
+            normalizeTestUiMode(modeRaw)
+          )
         );
       }
 
       if (customId.startsWith('test_ui_view_select:')) {
-        const [, themeRaw, densityRaw] = customId.split(':');
+        const [, themeRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
         const selectedView = normalizeTestUiView(interaction.values?.[0]);
         return sendComponentUpdate(
           interaction,
-          buildTestUiPayload(normalizeTestUiTheme(themeRaw), selectedView, normalizeTestUiDensity(densityRaw))
+          buildTestUiPayload(
+            normalizeTestUiTheme(themeRaw),
+            selectedView,
+            normalizeTestUiDensity(densityRaw),
+            normalizeTestUiHotel(hotelRaw),
+            normalizeTestUiMode(modeRaw)
+          )
+        );
+      }
+
+      if (customId.startsWith('test_ui_demo_hotel_select:')) {
+        const [, viewRaw, themeRaw, densityRaw, modeRaw] = customId.split(':');
+        const selectedHotel = normalizeTestUiHotel(interaction.values?.[0]);
+        return sendComponentUpdate(
+          interaction,
+          buildTestUiPayload(
+            normalizeTestUiTheme(themeRaw),
+            normalizeTestUiView(viewRaw),
+            normalizeTestUiDensity(densityRaw),
+            selectedHotel,
+            normalizeTestUiMode(modeRaw)
+          )
         );
       }
 

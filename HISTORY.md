@@ -931,3 +931,12 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - Keeps `/test-gui` and `/test-ui` routing compatibility unchanged.
     - Keeps role gating (Developer/Operations Manager only) unchanged.
+- Refined `/test-gui` default card to match the cleaner assignment-style layout (single task card + one dropdown), with advanced controls moved behind a toggle.
+  - Summary: The default `/test-gui` view now opens in a focused "Choose Your Hotel Location" style card with short guidance, warning copy, a subtle separator, and one primary hotel-assignment dropdown. Theme/screen/density controls are still available, but now live under `Open Lab Controls` so the first impression stays clean and beginner-friendly.
+  - Files touched:
+    - src/testui.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Keeps Components V2 container/separator usage intact.
+    - Keeps timeout-safe single-message replace flow and legacy custom ID compatibility paths.
