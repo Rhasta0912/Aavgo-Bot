@@ -940,3 +940,12 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - Keeps Components V2 container/separator usage intact.
     - Keeps timeout-safe single-message replace flow and legacy custom ID compatibility paths.
+- Adjusted `/test-gui` default wording/layout to be reference-inspired but clearly distinct from external mockups.
+  - Summary: Kept the same clean single-card structure and subtle separators, but replaced copied-looking header/section/warning language with Aavgo-specific copy (`Set Your Shift Destination`, `Route Setup`, and revised guidance text). This preserves the visual direction while avoiding a near-clone presentation.
+  - Files touched:
+    - src/testui.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - No permission, routing, or interaction model changes.
+    - Keeps Components V2 container/separator system and timeout-safe single-message flow.

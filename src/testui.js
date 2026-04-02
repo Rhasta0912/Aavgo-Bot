@@ -381,9 +381,9 @@ function buildLeadText(view, hotelKey) {
   const hotel = TEST_UI_DEMO_HOTELS[hotelKey] || TEST_UI_DEMO_HOTELS.bw_to;
   if (view.label === 'Overview') {
     return (
-      '## 🏨 Choose Your Hotel Location\n' +
-      `📍 **ASSIGNMENT SELECTION — ${DEFAULT_UI_TEAM_LABEL}**\n\n` +
-      `Selected: ${hotel.emoji} **${hotel.label}**`
+      '## 🧭 Set Your Shift Destination\n' +
+      `🗂️ **Route Setup | ${DEFAULT_UI_TEAM_LABEL}**\n\n` +
+      `Current Preview: ${hotel.emoji} **${hotel.label}**`
     );
   }
   return (
@@ -396,8 +396,8 @@ function buildLeadText(view, hotelKey) {
 function buildHintText(view) {
   return (
     `> ▌ ${view.beginnerCopy}\n\n` +
-    '> ▌ ⚠️ Permanent choice. You cannot switch hotels\n' +
-    '> ▌ without contacting a Developer or Team Leader.'
+    '> ▌ ⚠️ If you need to change destination later,\n' +
+    '> ▌ request assistance from Team Leader or Developer.'
   );
 }
 
@@ -447,7 +447,8 @@ function buildTestUiContainer(themeKey, viewKey, densityKey, hotelKey = 'bw_to',
           `### 🧭 Lab Controls\n` +
           `- Audience: ${TEST_UI_PROFILE.audience}\n` +
           `- Style: ${TEST_UI_PROFILE.styleBlend}\n` +
-          `- Flow: ${TEST_UI_PROFILE.flow}`
+          `- Flow: ${TEST_UI_PROFILE.flow}\n` +
+          '- Layout Intent: inspired by clean assignment cards, not a direct clone'
         )
       )
       .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
