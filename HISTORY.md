@@ -922,3 +922,12 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - Keeps single-message ephemeral flow (replace in place, no stacked temporary cards).
     - Keeps fast component acknowledgement behavior for timeout safety (`10062` risk reduction).
+- Upgraded `/test-gui` to Discord Components V2 using real Containers and Separators.
+  - Summary: Rebuilt the test GUI output from embed fields into Components V2 layout blocks (`Container`, `Section`, `Text Display`, `Separator`, and action rows) and enabled `MessageFlags.IsComponentsV2`. This now uses true Discord container/separator capabilities (including transparent separators with divider disabled) while preserving single-message replacement flow and fast component acknowledgement for timeout safety.
+  - Files touched:
+    - src/testui.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Keeps `/test-gui` and `/test-ui` routing compatibility unchanged.
+    - Keeps role gating (Developer/Operations Manager only) unchanged.

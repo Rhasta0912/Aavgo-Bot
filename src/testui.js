@@ -2,12 +2,19 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  EmbedBuilder,
+  ContainerBuilder,
+  MessageFlags,
+  SectionBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
   StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder
+  StringSelectMenuOptionBuilder,
+  TextDisplayBuilder,
+  ThumbnailBuilder
 } = require('discord.js');
 
-const TRANSPARENT_SEPARATOR = '\u200B';
+const COMPONENTS_V2_FLAGS = MessageFlags.IsComponentsV2;
+const EPHEMERAL_COMPONENTS_V2_FLAGS = MessageFlags.Ephemeral | MessageFlags.IsComponentsV2;
 
 const TEST_UI_THEMES = {
   aavgo: {
@@ -19,7 +26,8 @@ const TEST_UI_THEMES = {
     accent: '#F1C40F',
     text: '#F9FAFB',
     muted: '#9CA3AF',
-    radius: '10px'
+    radius: '10px',
+    iconUrl: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f7e1.png'
   },
   vercel: {
     label: 'Vercel Mono',
@@ -30,7 +38,8 @@ const TEST_UI_THEMES = {
     accent: '#FFFFFF',
     text: '#FAFAFA',
     muted: '#A3A3A3',
-    radius: '8px'
+    radius: '8px',
+    iconUrl: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/26ab.png'
   },
   stripe: {
     label: 'Stripe Gradient',
@@ -41,7 +50,8 @@ const TEST_UI_THEMES = {
     accent: '#635BFF',
     text: '#E7E9FF',
     muted: '#B8BEEA',
-    radius: '12px'
+    radius: '12px',
+    iconUrl: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f535.png'
   },
   notion: {
     label: 'Notion Warm',
@@ -52,7 +62,8 @@ const TEST_UI_THEMES = {
     accent: '#2F3437',
     text: '#191919',
     muted: '#6B6F76',
-    radius: '6px'
+    radius: '6px',
+    iconUrl: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/26aa.png'
   }
 };
 
@@ -154,13 +165,6 @@ const TEST_UI_DENSITIES = {
   }
 };
 
-function buildTransparentSeparatorField() {
-  return {
-    name: TRANSPARENT_SEPARATOR,
-    value: TRANSPARENT_SEPARATOR
-  };
-}
-
 function normalizeTestUiTheme(themeKey) {
   const key = String(themeKey || '').trim().toLowerCase();
   if (TEST_UI_THEMES[key]) return key;
@@ -223,86 +227,19 @@ function buildStateLegend(viewKey) {
   ].join('\n');
 }
 
-function buildTestUiEmbed(themeKey, viewKey, densityKey) {
-  const theme = TEST_UI_THEMES[themeKey] || TEST_UI_THEMES.aavgo;
-  const view = TEST_UI_VIEWS[viewKey] || TEST_UI_VIEWS.overview;
-  const density = TEST_UI_DENSITIES[densityKey] || TEST_UI_DENSITIES.cozy;
-
-  return new EmbedBuilder()
-    .setTitle(`Test GUI | ${view.label}`)
-    .setDescription(
-      `${view.summary}\n` +
-      'Single-card preview with transparent separators, beginner copy, and strong state colors.'
-    )
-    .setColor(theme.color)
-    .addFields(
-      {
-        name: '🧭 UI Profile',
-        value:
-          `Audience: ${TEST_UI_PROFILE.audience}\n` +
-          `Style: ${TEST_UI_PROFILE.styleBlend}\n` +
-          `Flow: ${TEST_UI_PROFILE.flow}\n` +
-          `Errors: ${TEST_UI_PROFILE.errors}`
-      },
-      buildTransparentSeparatorField(),
-      {
-        name: '🎨 Style Preset',
-        value:
-          `Preset: ${theme.label}\n` +
-          `Mood: ${theme.mood}\n` +
-          `Feel: ${theme.shortDescription}\n` +
-          `Surface: ${theme.surface}\n` +
-          `Accent: ${theme.accent}\n` +
-          `Text: ${theme.text}\n` +
-          `Muted: ${theme.muted}`
-      },
-      buildTransparentSeparatorField(),
-      {
-        name: '📐 Layout Rules',
-        value:
-          `Spacing: ${density.label} (${density.spacing})\n` +
-          `Language: ${TEST_UI_PROFILE.language}\n` +
-          `Icons: ${TEST_UI_PROFILE.icons}\n` +
-          `Radius: ${theme.radius}`
-      },
-      buildTransparentSeparatorField(),
-      {
-        name: '🗂 Screen Goal',
-        value:
-          `${view.goal}\n` +
-          `Primary Action: ${view.primaryAction}\n` +
-          `Secondary Action: ${view.secondaryAction}\n` +
-          `Confirm Style: ${TEST_UI_PROFILE.confirms}`
-      },
-      buildTransparentSeparatorField(),
-      {
-        name: '🧪 Preview',
-        value: buildTestUiPreviewText(viewKey, densityKey)
-      },
-      buildTransparentSeparatorField(),
-      {
-        name: '🗣 Copy Check',
-        value: `"${view.beginnerCopy}"`
-      },
-      buildTransparentSeparatorField(),
-      {
-        name: '🚦 State Colors',
-        value: buildStateLegend(viewKey)
-      }
-    )
-    .setFooter({
-      text: `Theme ${theme.label} · Screen ${view.label} · Density ${density.label}`
-    })
-    .setTimestamp();
+function buildTextDisplay(content) {
+  return new TextDisplayBuilder().setContent(content);
 }
 
-function buildTestUiComponents(themeKey, viewKey, densityKey) {
-  const normalizedTheme = normalizeTestUiTheme(themeKey);
-  const normalizedView = normalizeTestUiView(viewKey);
-  const normalizedDensity = normalizeTestUiDensity(densityKey);
+function buildSoftSeparator(spacing = SeparatorSpacingSize.Large) {
+  return new SeparatorBuilder()
+    .setDivider(false)
+    .setSpacing(spacing);
+}
 
-  const themeSelect = new StringSelectMenuBuilder()
-    .setCustomId(`test_ui_theme_select:${normalizedView}:${normalizedDensity}`)
+function buildThemeSelect(themeKey, viewKey, densityKey) {
+  return new StringSelectMenuBuilder()
+    .setCustomId(`test_ui_theme_select:${viewKey}:${densityKey}`)
     .setPlaceholder('Choose style preset')
     .addOptions(
       Object.entries(TEST_UI_THEMES).map(([key, theme]) =>
@@ -310,12 +247,14 @@ function buildTestUiComponents(themeKey, viewKey, densityKey) {
           .setLabel(theme.label)
           .setValue(key)
           .setDescription(theme.shortDescription)
-          .setDefault(key === normalizedTheme)
+          .setDefault(key === themeKey)
       )
     );
+}
 
-  const viewSelect = new StringSelectMenuBuilder()
-    .setCustomId(`test_ui_view_select:${normalizedTheme}:${normalizedDensity}`)
+function buildViewSelect(themeKey, viewKey, densityKey) {
+  return new StringSelectMenuBuilder()
+    .setCustomId(`test_ui_view_select:${themeKey}:${densityKey}`)
     .setPlaceholder('Choose screen preview')
     .addOptions(
       Object.entries(TEST_UI_VIEWS).map(([key, view]) =>
@@ -323,45 +262,166 @@ function buildTestUiComponents(themeKey, viewKey, densityKey) {
           .setLabel(view.label)
           .setValue(key)
           .setDescription(view.pickerHint)
-          .setDefault(key === normalizedView)
+          .setDefault(key === viewKey)
+      )
+    );
+}
+
+function buildControlButtons(viewKey, themeKey, densityKey) {
+  const densityLabel = TEST_UI_DENSITIES[densityKey]?.label || 'Cozy';
+  return [
+    new ButtonBuilder()
+      .setCustomId(`test_ui_density_toggle:${viewKey}:${themeKey}:${densityKey}`)
+      .setLabel(`Spacing: ${densityLabel}`)
+      .setStyle(densityKey === 'compact' ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('test_ui_shuffle')
+      .setLabel('Try Another')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`test_ui_refresh:${viewKey}:${themeKey}:${densityKey}`)
+      .setLabel('Retry Render')
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('test_ui_close')
+      .setLabel('Close')
+      .setStyle(ButtonStyle.Danger)
+  ];
+}
+
+function buildTestUiContainer(themeKey, viewKey, densityKey) {
+  const theme = TEST_UI_THEMES[themeKey] || TEST_UI_THEMES.aavgo;
+  const view = TEST_UI_VIEWS[viewKey] || TEST_UI_VIEWS.overview;
+  const density = TEST_UI_DENSITIES[densityKey] || TEST_UI_DENSITIES.cozy;
+
+  const profileSection = new SectionBuilder()
+    .addTextDisplayComponents(
+      buildTextDisplay(
+        `### 🧭 UI Profile\n` +
+        `- Audience: ${TEST_UI_PROFILE.audience}\n` +
+        `- Style: ${TEST_UI_PROFILE.styleBlend}\n` +
+        `- Flow: ${TEST_UI_PROFILE.flow}\n` +
+        `- Errors: ${TEST_UI_PROFILE.errors}`
       )
     );
 
-  const densityToggle = new ButtonBuilder()
-    .setCustomId(`test_ui_density_toggle:${normalizedView}:${normalizedTheme}:${normalizedDensity}`)
-    .setLabel(`Spacing: ${TEST_UI_DENSITIES[normalizedDensity]?.label || 'Cozy'}`)
-    .setStyle(normalizedDensity === 'compact' ? ButtonStyle.Primary : ButtonStyle.Secondary);
+  if (theme.iconUrl) {
+    profileSection.setThumbnailAccessory(
+      new ThumbnailBuilder().setURL(theme.iconUrl)
+    );
+  }
 
-  const shuffleButton = new ButtonBuilder()
-    .setCustomId('test_ui_shuffle')
-    .setLabel('Try Another')
-    .setStyle(ButtonStyle.Success);
+  const container = new ContainerBuilder()
+    .setAccentColor(theme.color)
+    .addTextDisplayComponents(
+      buildTextDisplay(
+        `## 🎛️ Test GUI • ${view.label}\n` +
+        `${view.summary}\n` +
+        `Using Components V2 containers + transparent separators.`
+      )
+    )
+    .addSeparatorComponents(buildSoftSeparator())
+    .addSectionComponents(profileSection)
+    .addSeparatorComponents(buildSoftSeparator())
+    .addTextDisplayComponents(
+      buildTextDisplay(
+        `### 🎨 Style Preset\n` +
+        `- Preset: ${theme.label}\n` +
+        `- Mood: ${theme.mood}\n` +
+        `- Feel: ${theme.shortDescription}\n` +
+        `- Surface: ${theme.surface}\n` +
+        `- Accent: ${theme.accent}\n` +
+        `- Text: ${theme.text}\n` +
+        `- Muted: ${theme.muted}`
+      )
+    )
+    .addSeparatorComponents(buildSoftSeparator())
+    .addTextDisplayComponents(
+      buildTextDisplay(
+        `### 📐 Layout Rules\n` +
+        `- Spacing: ${density.label} (${density.spacing})\n` +
+        `- Language: ${TEST_UI_PROFILE.language}\n` +
+        `- Icons: ${TEST_UI_PROFILE.icons}\n` +
+        `- Radius: ${theme.radius}\n` +
+        `- Confirm Style: ${TEST_UI_PROFILE.confirms}`
+      )
+    )
+    .addSeparatorComponents(buildSoftSeparator())
+    .addTextDisplayComponents(
+      buildTextDisplay(
+        `### 🗂 Screen Goal\n` +
+        `${view.goal}\n\n` +
+        `Primary: ${view.primaryAction}\n` +
+        `Secondary: ${view.secondaryAction}\n\n` +
+        `### 🧪 Preview\n` +
+        `${buildTestUiPreviewText(viewKey, densityKey)}`
+      )
+    )
+    .addSeparatorComponents(buildSoftSeparator())
+    .addTextDisplayComponents(
+      buildTextDisplay(
+        `### 🗣 Copy Check\n` +
+        `"${view.beginnerCopy}"\n\n` +
+        `### 🚦 State Colors\n` +
+        `${buildStateLegend(viewKey)}`
+      )
+    )
+    .addSeparatorComponents(buildSoftSeparator())
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(buildThemeSelect(themeKey, viewKey, densityKey))
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(buildViewSelect(themeKey, viewKey, densityKey))
+    )
+    .addActionRowComponents(
+      new ActionRowBuilder().addComponents(...buildControlButtons(viewKey, themeKey, densityKey))
+    );
 
-  const refreshButton = new ButtonBuilder()
-    .setCustomId(`test_ui_refresh:${normalizedView}:${normalizedTheme}:${normalizedDensity}`)
-    .setLabel('Retry Render')
-    .setStyle(ButtonStyle.Primary);
-
-  const closeButton = new ButtonBuilder()
-    .setCustomId('test_ui_close')
-    .setLabel('Close')
-    .setStyle(ButtonStyle.Danger);
-
-  return [
-    new ActionRowBuilder().addComponents(themeSelect),
-    new ActionRowBuilder().addComponents(viewSelect),
-    new ActionRowBuilder().addComponents(densityToggle, shuffleButton, refreshButton, closeButton)
-  ];
+  return container;
 }
 
 function buildTestUiPayload(themeKey = 'aavgo', viewKey = 'overview', densityKey = 'cozy') {
   const normalizedTheme = normalizeTestUiTheme(themeKey);
   const normalizedView = normalizeTestUiView(viewKey);
   const normalizedDensity = normalizeTestUiDensity(densityKey);
+
   return {
-    content: null,
-    embeds: [buildTestUiEmbed(normalizedTheme, normalizedView, normalizedDensity)],
-    components: buildTestUiComponents(normalizedTheme, normalizedView, normalizedDensity)
+    flags: COMPONENTS_V2_FLAGS,
+    components: [buildTestUiContainer(normalizedTheme, normalizedView, normalizedDensity)]
+  };
+}
+
+function buildClosedPayload() {
+  const container = new ContainerBuilder()
+    .setAccentColor(0x6B7280)
+    .addTextDisplayComponents(
+      buildTextDisplay(
+        '## ✅ Test GUI Closed\n' +
+        'Panel closed successfully.\n\n' +
+        'Run `/test-gui` again to reopen.'
+      )
+    );
+
+  return {
+    flags: COMPONENTS_V2_FLAGS,
+    components: [container]
+  };
+}
+
+function buildFailurePayload(message) {
+  const container = new ContainerBuilder()
+    .setAccentColor(0xEF4444)
+    .addTextDisplayComponents(
+      buildTextDisplay(
+        `## ⚠️ Test GUI Error\n` +
+        `${message}\n\n` +
+        'Retry `/test-gui`.'
+      )
+    );
+
+  return {
+    flags: COMPONENTS_V2_FLAGS,
+    components: [container]
   };
 }
 
@@ -388,15 +448,17 @@ function createTestUiHandlers(deps) {
       const viewOption = normalizeTestUiView(interaction.options?.getString('screen'));
       const densityOption = normalizeTestUiDensity(interaction.options?.getString('density'));
 
-      await interaction.deferReply({ ephemeral: true });
       interaction.__aavgoEphemeral = true;
-      await interaction.editReply(buildTestUiPayload(themeOption, viewOption, densityOption));
+      return interaction.reply({
+        ...buildTestUiPayload(themeOption, viewOption, densityOption),
+        flags: EPHEMERAL_COMPONENTS_V2_FLAGS
+      });
     } catch (error) {
       console.error('Error in handleTestUiCommand:', error);
       if (interaction.deferred || interaction.replied) {
-        await interaction.editReply({ content: 'Failed to open UI test lab.', embeds: [], components: [] }).catch(() => {});
+        await interaction.editReply(buildFailurePayload('Failed to open UI test lab.')).catch(() => {});
       } else {
-        await interaction.reply({ content: 'Failed to open UI test lab.', ephemeral: true }).catch(() => {});
+        await interaction.reply({ content: 'Failed to open UI test lab. Retry /test-gui.', ephemeral: true }).catch(() => {});
       }
     }
   }
@@ -411,11 +473,7 @@ function createTestUiHandlers(deps) {
       const customId = String(interaction.customId || '');
 
       if (customId === 'test_ui_close') {
-        return sendComponentUpdate(interaction, {
-          content: 'UI test panel closed.',
-          embeds: [],
-          components: []
-        });
+        return sendComponentUpdate(interaction, buildClosedPayload());
       }
 
       if (customId === 'test_ui_shuffle') {
