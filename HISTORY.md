@@ -913,3 +913,12 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - Keeps `/test-gui` + `/test-ui` compatibility unchanged.
     - Keeps single-message ephemeral flow and timeout-safety handling unchanged.
+- Revamped `/test-gui` visual style using the new UI preference profile and transparent separators.
+  - Summary: Updated the test GUI card to a beginner-first, cozy, consistent layout with stronger state-color guidance, simpler copy, and moderate icon use. Added transparent section separators (zero-width spacer fields) between content blocks for cleaner readability without heavy divider lines. Button and error labels were also rewritten to be shorter with clear cause + retry wording.
+  - Files touched:
+    - src/testui.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Keeps single-message ephemeral flow (replace in place, no stacked temporary cards).
+    - Keeps fast component acknowledgement behavior for timeout safety (`10062` risk reduction).

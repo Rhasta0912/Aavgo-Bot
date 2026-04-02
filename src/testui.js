@@ -7,6 +7,8 @@ const {
   StringSelectMenuOptionBuilder
 } = require('discord.js');
 
+const TRANSPARENT_SEPARATOR = '\u200B';
+
 const TEST_UI_THEMES = {
   aavgo: {
     label: 'Aavgo Ops Amber',
@@ -52,6 +54,18 @@ const TEST_UI_THEMES = {
     muted: '#6B6F76',
     radius: '6px'
   }
+};
+
+const TEST_UI_PROFILE = {
+  audience: 'Beginner-first staff flow',
+  styleBlend: 'Ops Warm + Clean Minimal',
+  spacing: 'Cozy default spacing',
+  language: 'Plain + short labels',
+  states: 'Strong color-coded status cues',
+  icons: 'Moderate icon usage',
+  flow: 'Single-card interaction (replace, do not stack)',
+  confirms: 'Confirm important + destructive actions',
+  errors: 'Short cause + clear retry'
 };
 
 const TEST_UI_VIEWS = {
@@ -140,6 +154,13 @@ const TEST_UI_DENSITIES = {
   }
 };
 
+function buildTransparentSeparatorField() {
+  return {
+    name: TRANSPARENT_SEPARATOR,
+    value: TRANSPARENT_SEPARATOR
+  };
+}
+
 function normalizeTestUiTheme(themeKey) {
   const key = String(themeKey || '').trim().toLowerCase();
   if (TEST_UI_THEMES[key]) return key;
@@ -178,54 +199,99 @@ function buildTestUiPreviewText(viewKey, densityKey) {
   return `${formattedLines}\n- Density Profile: ${density.label} (${density.spacing})`;
 }
 
+function buildStateLegend(viewKey) {
+  if (viewKey === 'alert') {
+    return [
+      '🟢 Recovery Ready: Safe retry is available',
+      '🟡 Watch: Slow response or missing step',
+      '🔴 Action Needed: Interaction expired, restart flow'
+    ].join('\n');
+  }
+
+  if (viewKey === 'approval') {
+    return [
+      '🟢 Approved: Request passed required checks',
+      '🟡 Pending: Waiting for dual approval',
+      '🔴 Blocked: Requirement or policy failed'
+    ].join('\n');
+  }
+
+  return [
+    '🟢 Good: User can move forward now',
+    '🟡 Caution: Review before continuing',
+    '🔴 Action Needed: Retry or escalate'
+  ].join('\n');
+}
+
 function buildTestUiEmbed(themeKey, viewKey, densityKey) {
   const theme = TEST_UI_THEMES[themeKey] || TEST_UI_THEMES.aavgo;
   const view = TEST_UI_VIEWS[viewKey] || TEST_UI_VIEWS.overview;
   const density = TEST_UI_DENSITIES[densityKey] || TEST_UI_DENSITIES.cozy;
 
   return new EmbedBuilder()
-    .setTitle(`Test GUI Lab | ${view.label}`)
+    .setTitle(`Test GUI | ${view.label}`)
     .setDescription(
       `${view.summary}\n` +
-      'Use the controls below to test theme, screen type, and spacing in one message without clutter.'
+      'Single-card preview with transparent separators, beginner copy, and strong state colors.'
     )
     .setColor(theme.color)
     .addFields(
       {
-        name: 'Theme Preset',
+        name: '🧭 UI Profile',
         value:
-          `${theme.label}\n` +
-          `${theme.shortDescription}\n` +
-          `Mood: ${theme.mood}`
+          `Audience: ${TEST_UI_PROFILE.audience}\n` +
+          `Style: ${TEST_UI_PROFILE.styleBlend}\n` +
+          `Flow: ${TEST_UI_PROFILE.flow}\n` +
+          `Errors: ${TEST_UI_PROFILE.errors}`
       },
+      buildTransparentSeparatorField(),
       {
-        name: 'Design Tokens',
+        name: '🎨 Style Preset',
         value:
+          `Preset: ${theme.label}\n` +
+          `Mood: ${theme.mood}\n` +
+          `Feel: ${theme.shortDescription}\n` +
           `Surface: ${theme.surface}\n` +
           `Accent: ${theme.accent}\n` +
           `Text: ${theme.text}\n` +
-          `Muted: ${theme.muted}\n` +
+          `Muted: ${theme.muted}`
+      },
+      buildTransparentSeparatorField(),
+      {
+        name: '📐 Layout Rules',
+        value:
+          `Spacing: ${density.label} (${density.spacing})\n` +
+          `Language: ${TEST_UI_PROFILE.language}\n` +
+          `Icons: ${TEST_UI_PROFILE.icons}\n` +
           `Radius: ${theme.radius}`
       },
+      buildTransparentSeparatorField(),
       {
-        name: 'Screen Goal',
+        name: '🗂 Screen Goal',
         value:
           `${view.goal}\n` +
           `Primary Action: ${view.primaryAction}\n` +
           `Secondary Action: ${view.secondaryAction}\n` +
-          `Density: ${density.label} (${density.summary})`
+          `Confirm Style: ${TEST_UI_PROFILE.confirms}`
       },
+      buildTransparentSeparatorField(),
       {
-        name: 'Mock Preview',
+        name: '🧪 Preview',
         value: buildTestUiPreviewText(viewKey, densityKey)
       },
+      buildTransparentSeparatorField(),
       {
-        name: 'Beginner Copy Check',
+        name: '🗣 Copy Check',
         value: `"${view.beginnerCopy}"`
+      },
+      buildTransparentSeparatorField(),
+      {
+        name: '🚦 State Colors',
+        value: buildStateLegend(viewKey)
       }
     )
     .setFooter({
-      text: `Theme: ${theme.label} | Screen: ${view.label} | Density: ${density.label}`
+      text: `Theme ${theme.label} · Screen ${view.label} · Density ${density.label}`
     })
     .setTimestamp();
 }
@@ -237,7 +303,7 @@ function buildTestUiComponents(themeKey, viewKey, densityKey) {
 
   const themeSelect = new StringSelectMenuBuilder()
     .setCustomId(`test_ui_theme_select:${normalizedView}:${normalizedDensity}`)
-    .setPlaceholder('Theme preset')
+    .setPlaceholder('Choose style preset')
     .addOptions(
       Object.entries(TEST_UI_THEMES).map(([key, theme]) =>
         new StringSelectMenuOptionBuilder()
@@ -250,7 +316,7 @@ function buildTestUiComponents(themeKey, viewKey, densityKey) {
 
   const viewSelect = new StringSelectMenuBuilder()
     .setCustomId(`test_ui_view_select:${normalizedTheme}:${normalizedDensity}`)
-    .setPlaceholder('Preview screen')
+    .setPlaceholder('Choose screen preview')
     .addOptions(
       Object.entries(TEST_UI_VIEWS).map(([key, view]) =>
         new StringSelectMenuOptionBuilder()
@@ -263,18 +329,18 @@ function buildTestUiComponents(themeKey, viewKey, densityKey) {
 
   const densityToggle = new ButtonBuilder()
     .setCustomId(`test_ui_density_toggle:${normalizedView}:${normalizedTheme}:${normalizedDensity}`)
-    .setLabel(`Density: ${TEST_UI_DENSITIES[normalizedDensity]?.label || 'Cozy'}`)
+    .setLabel(`Spacing: ${TEST_UI_DENSITIES[normalizedDensity]?.label || 'Cozy'}`)
     .setStyle(normalizedDensity === 'compact' ? ButtonStyle.Primary : ButtonStyle.Secondary);
 
   const shuffleButton = new ButtonBuilder()
     .setCustomId('test_ui_shuffle')
-    .setLabel('Surprise Me')
+    .setLabel('Try Another')
     .setStyle(ButtonStyle.Success);
 
   const refreshButton = new ButtonBuilder()
     .setCustomId(`test_ui_refresh:${normalizedView}:${normalizedTheme}:${normalizedDensity}`)
-    .setLabel('Re-render')
-    .setStyle(ButtonStyle.Secondary);
+    .setLabel('Retry Render')
+    .setStyle(ButtonStyle.Primary);
 
   const closeButton = new ButtonBuilder()
     .setCustomId('test_ui_close')
@@ -385,7 +451,7 @@ function createTestUiHandlers(deps) {
       }
 
       return sendComponentReply(interaction, {
-        content: 'Test UI action is no longer valid. Run /test-gui again.',
+        content: 'Action unavailable (old panel). Retry: run /test-gui.',
         ephemeral: true
       });
     } catch (error) {
@@ -394,7 +460,10 @@ function createTestUiHandlers(deps) {
         return;
       }
       console.error('Error in handleTestUiButton:', error);
-      await sendComponentReply(interaction, { content: 'Failed to process test UI action.', ephemeral: true }).catch(() => {});
+      await sendComponentReply(interaction, {
+        content: 'Action failed: panel changed or timed out. Retry /test-gui.',
+        ephemeral: true
+      }).catch(() => {});
     }
   }
 
@@ -426,7 +495,7 @@ function createTestUiHandlers(deps) {
       }
 
       return sendComponentReply(interaction, {
-        content: 'Test UI selection is no longer valid. Run /test-gui again.',
+        content: 'Selection unavailable (old panel). Retry: run /test-gui.',
         ephemeral: true
       });
     } catch (error) {
@@ -435,7 +504,10 @@ function createTestUiHandlers(deps) {
         return;
       }
       console.error('Error in handleTestUiSelect:', error);
-      await sendComponentReply(interaction, { content: 'Failed to switch test UI preset.', ephemeral: true }).catch(() => {});
+      await sendComponentReply(interaction, {
+        content: 'Selection failed: panel changed or timed out. Retry /test-gui.',
+        ephemeral: true
+      }).catch(() => {});
     }
   }
 
