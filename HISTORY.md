@@ -903,3 +903,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - `/test-gui` stays the primary command.
     - `/test-ui` remains a legacy alias for compatibility.
+- Moved `/test-gui` UI lab logic into a dedicated `src/testui.js` module to reduce blast radius for future UI experiments.
+  - Summary: Extracted all test GUI builders and handlers out of `auth.js` into `testui.js`, then wired `auth.js` to use injected helper callbacks (`isDeveloper`, safe defer/update/reply helpers). Runtime behavior and permissions stay the same, but UI iteration is now isolated in one file so changes are safer and easier to maintain.
+  - Files touched:
+    - src/testui.js
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Keeps `/test-gui` + `/test-ui` compatibility unchanged.
+    - Keeps single-message ephemeral flow and timeout-safety handling unchanged.
