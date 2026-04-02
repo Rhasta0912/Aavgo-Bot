@@ -949,3 +949,12 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - No permission, routing, or interaction model changes.
     - Keeps Components V2 container/separator system and timeout-safe single-message flow.
+- Reworked `/test-gui` default card to be clearly Aavgo-original (reference-inspired, not look-alike).
+  - Summary: Redesigned the default simple-mode composition away from the prior look-alike structure by switching to a new `Shift Route Sandbox` header, numbered quick-start guidance, explicit sandbox guardrails, updated dropdown wording, and different button labels (`More Options`, `Shuffle Layout`, `Dismiss`). Also removed simple-mode section thumbnail dependency so the layout no longer mirrors the reference card silhouette.
+  - Files touched:
+    - src/testui.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Keeps Components V2 containers/separators and advanced controls toggle.
+    - Keeps timeout-safe single-message interaction flow and compatibility IDs.

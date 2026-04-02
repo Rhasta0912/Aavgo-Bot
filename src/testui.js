@@ -281,7 +281,7 @@ function buildSoftSeparator(spacing = SeparatorSpacingSize.Large, divider = fals
 }
 
 function getDefaultViewAccent(theme, viewKey) {
-  if (viewKey === 'overview') return 0x22C55E;
+  if (viewKey === 'overview') return 0x06B6D4;
   if (viewKey === 'alert') return 0xEF4444;
   if (viewKey === 'approval') return 0xF59E0B;
   return theme.color;
@@ -320,13 +320,13 @@ function buildViewSelect(themeKey, viewKey, densityKey, hotelKey, mode) {
 function buildHotelSelect(viewKey, themeKey, densityKey, hotelKey, mode) {
   return new StringSelectMenuBuilder()
     .setCustomId(`test_ui_demo_hotel_select:${viewKey}:${themeKey}:${densityKey}:${mode}`)
-    .setPlaceholder('Choose your hotel assignment...')
+    .setPlaceholder('Select preview destination')
     .addOptions(
       Object.entries(TEST_UI_DEMO_HOTELS).map(([key, hotel]) =>
         new StringSelectMenuOptionBuilder()
           .setLabel(hotel.label)
           .setValue(key)
-          .setDescription(`Demo assignment for ${hotel.short}`)
+          .setDescription(`Preview card for ${hotel.short}`)
           .setDefault(key === hotelKey)
       )
     );
@@ -337,15 +337,15 @@ function buildSimpleButtons(viewKey, themeKey, densityKey, hotelKey, mode) {
   return [
     new ButtonBuilder()
       .setCustomId(`test_ui_mode_toggle:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
-      .setLabel(nextMode === TEST_UI_MODE.advanced ? 'Open Lab Controls' : 'Back to Simple')
+      .setLabel(nextMode === TEST_UI_MODE.advanced ? 'More Options' : 'Back to Simple')
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId(`test_ui_shuffle:${mode}`)
-      .setLabel('Try Another')
+      .setLabel('Shuffle Layout')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('test_ui_close')
-      .setLabel('Close')
+      .setLabel('Dismiss')
       .setStyle(ButtonStyle.Danger)
   ];
 }
@@ -381,9 +381,10 @@ function buildLeadText(view, hotelKey) {
   const hotel = TEST_UI_DEMO_HOTELS[hotelKey] || TEST_UI_DEMO_HOTELS.bw_to;
   if (view.label === 'Overview') {
     return (
-      '## 🧭 Set Your Shift Destination\n' +
-      `🗂️ **Route Setup | ${DEFAULT_UI_TEAM_LABEL}**\n\n` +
-      `Current Preview: ${hotel.emoji} **${hotel.label}**`
+      '## Shift Route Sandbox\n' +
+      `### Team Lane: ${DEFAULT_UI_TEAM_LABEL}\n\n` +
+      `Preview Destination: ${hotel.emoji} **${hotel.label}**\n` +
+      'Mode: UI simulation only (no live assignment changes)'
     );
   }
   return (
@@ -395,9 +396,19 @@ function buildLeadText(view, hotelKey) {
 
 function buildHintText(view) {
   return (
-    `> ▌ ${view.beginnerCopy}\n\n` +
-    '> ▌ ⚠️ If you need to change destination later,\n' +
-    '> ▌ request assistance from Team Leader or Developer.'
+    `### Quick Start\n` +
+    `1. ${view.beginnerCopy}\n` +
+    '2. Watch the preview section update instantly.\n' +
+    '3. Use More Options for theme/screen experiments.'
+  );
+}
+
+function buildSimpleSafetyText() {
+  return (
+    '### Guardrails\n' +
+    '- This panel is a test sandbox.\n' +
+    '- It does not write to the database.\n' +
+    '- For real assignment updates use the managed staff commands.'
   );
 }
 
@@ -420,21 +431,24 @@ function buildTestUiContainer(themeKey, viewKey, densityKey, hotelKey = 'bw_to',
   const normalizedHotel = normalizeTestUiHotel(hotelKey);
   const normalizedMode = normalizeTestUiMode(mode);
 
-  const leadSection = new SectionBuilder()
-    .addTextDisplayComponents(buildTextDisplay(buildLeadText(view, normalizedHotel)));
+  const container = new ContainerBuilder()
+    .setAccentColor(getDefaultViewAccent(theme, viewKey));
 
-  if (theme.iconUrl) {
-    leadSection.setThumbnailAccessory(
-      new ThumbnailBuilder().setURL(theme.iconUrl)
-    );
+  if (normalizedMode === TEST_UI_MODE.advanced && theme.iconUrl) {
+    const leadSection = new SectionBuilder()
+      .addTextDisplayComponents(buildTextDisplay(buildLeadText(view, normalizedHotel)))
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(theme.iconUrl));
+    container.addSectionComponents(leadSection);
+  } else {
+    container.addTextDisplayComponents(buildTextDisplay(buildLeadText(view, normalizedHotel)));
   }
 
-  const container = new ContainerBuilder()
-    .setAccentColor(getDefaultViewAccent(theme, viewKey))
-    .addSectionComponents(leadSection)
+  container
     .addSeparatorComponents(buildSoftSeparator())
     .addTextDisplayComponents(buildTextDisplay(buildHintText(view)))
-    .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small, true))
+    .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(buildTextDisplay(buildSimpleSafetyText()))
+    .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
     .addActionRowComponents(
       new ActionRowBuilder().addComponents(buildHotelSelect(viewKey, themeKey, densityKey, normalizedHotel, normalizedMode))
     )
