@@ -892,3 +892,14 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
   - Notes:
     - No permission model change; still Developer/Operations Manager only.
+- Upgraded `/test-gui` into a richer interactive Discord UI lab while keeping timeout-safe single-message behavior.
+  - Summary: Reworked the test GUI card into a multi-screen preview tool with selectable `theme`, `screen`, and `density` states, plus `Surprise Me`, `Re-render`, and `Close` controls. Added command options (`theme/screen/density`) so developers can open directly into a target preview. All test UI actions still acknowledge quickly and replace the same ephemeral message to reduce `Unknown interaction` errors and avoid stacked temporary cards.
+  - Files touched:
+    - src/auth.js
+    - src/commands.js
+    - src/index.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - `/test-gui` stays the primary command.
+    - `/test-ui` remains a legacy alias for compatibility.

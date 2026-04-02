@@ -7616,6 +7616,7 @@ const TEST_UI_THEMES = {
   aavgo: {
     label: 'Aavgo Ops Amber',
     shortDescription: 'Warm operations dashboard look',
+    mood: 'Reliable and grounded',
     color: 0xF1C40F,
     surface: '#1F2937',
     accent: '#F1C40F',
@@ -7626,6 +7627,7 @@ const TEST_UI_THEMES = {
   vercel: {
     label: 'Vercel Mono',
     shortDescription: 'Minimal black and white',
+    mood: 'Calm and technical',
     color: 0x111111,
     surface: '#0A0A0A',
     accent: '#FFFFFF',
@@ -7636,6 +7638,7 @@ const TEST_UI_THEMES = {
   stripe: {
     label: 'Stripe Gradient',
     shortDescription: 'Bright and polished fintech',
+    mood: 'Confident and modern',
     color: 0x635BFF,
     surface: '#1B1642',
     accent: '#635BFF',
@@ -7646,12 +7649,99 @@ const TEST_UI_THEMES = {
   notion: {
     label: 'Notion Warm',
     shortDescription: 'Soft paper-like neutral',
+    mood: 'Readable and gentle',
     color: 0x2F3437,
     surface: '#F7F6F3',
     accent: '#2F3437',
     text: '#191919',
     muted: '#6B6F76',
     radius: '6px'
+  }
+};
+
+const TEST_UI_VIEWS = {
+  overview: {
+    label: 'Overview',
+    pickerHint: 'Command hub and first impression',
+    summary: 'High-level test of spacing, copy clarity, and action hierarchy.',
+    goal: 'Help a new user identify the right entry point in under 5 seconds.',
+    primaryAction: 'Initialize Shift',
+    secondaryAction: 'Open Profiles',
+    beginnerCopy: 'Choose Live -> Hotel Shift for real work, or Practice -> Training if you are still learning.',
+    previewLines: [
+      'Header: Shift Control Center',
+      'Card: Active Agents, Pending Alerts, Coverage',
+      'Actions: Initialize Shift | Check Hours | End Shift'
+    ]
+  },
+  login: {
+    label: 'Login Portal',
+    pickerHint: 'PIN-first setup and route picker',
+    summary: 'Tests the PIN-first flow card and role-aware routing language.',
+    goal: 'Prevent wrong-route clicks while keeping language beginner-friendly.',
+    primaryAction: 'Continue with PIN',
+    secondaryAction: 'Need Help',
+    beginnerCopy: 'Start by confirming your PIN, then choose the path that matches your current role.',
+    previewLines: [
+      'Step 1: Verify PIN',
+      'Step 2: Pick Route (Agent / Team Leader / SME)',
+      'Step 3: Choose Live -> Hotel Shift or Practice -> Training'
+    ]
+  },
+  status: {
+    label: 'Live Status',
+    pickerHint: 'On-shift board and health signals',
+    summary: 'Tests readability for active coverage boards and activity strips.',
+    goal: 'Let management scan who is online/offline without opening profiles.',
+    primaryAction: 'Refresh Status',
+    secondaryAction: 'Open Shift Card',
+    beginnerCopy: 'Green means active, yellow means caution, red means needs attention now.',
+    previewLines: [
+      'Board: Team 1 / Team 2 / Training',
+      'Rows: Agent Name, Hotel, Last Activity, State',
+      'Controls: Refresh | Filter Team | View Details'
+    ]
+  },
+  approval: {
+    label: 'Approval Flow',
+    pickerHint: 'Promotion and admin confirmation cards',
+    summary: 'Tests action clarity for approve/deny requests with audit context.',
+    goal: 'Make approval decisions obvious and reduce accidental clicks.',
+    primaryAction: 'Approve Request',
+    secondaryAction: 'Deny Request',
+    beginnerCopy: 'Review who requested it, what role is requested, and why, then approve or deny.',
+    previewLines: [
+      'Request: Promote User -> Operations Manager',
+      'Required: 1 Developer + 1 Operations Manager',
+      'Actions: Approve | Deny | View Reason'
+    ]
+  },
+  alert: {
+    label: 'Alert States',
+    pickerHint: 'Warnings, failures, and recovery cues',
+    summary: 'Tests how warning/error cards feel during incidents and timeouts.',
+    goal: 'Show what happened, what to do next, and who to contact.',
+    primaryAction: 'Retry Step',
+    secondaryAction: 'Escalate',
+    beginnerCopy: 'If this keeps happening, contact a Developer or Operations Manager with the timestamp.',
+    previewLines: [
+      'Warning: Slow response detected',
+      'Error: Interaction expired (safe retry offered)',
+      'Recovery: Retry | Open Status | Contact Staff'
+    ]
+  }
+};
+
+const TEST_UI_DENSITIES = {
+  cozy: {
+    label: 'Cozy',
+    summary: 'More breathing room for newer users.',
+    spacing: '16-20px blocks, larger labels'
+  },
+  compact: {
+    label: 'Compact',
+    summary: 'Denser layout for experienced staff.',
+    spacing: '8-12px blocks, shorter labels'
   }
 };
 
@@ -7663,63 +7753,96 @@ function normalizeTestUiTheme(themeKey) {
 
 function normalizeTestUiView(view) {
   const normalized = String(view || '').trim().toLowerCase();
-  if (normalized === 'components') return 'components';
+  if (normalized === 'components') return 'status'; // legacy mapping
+  if (TEST_UI_VIEWS[normalized]) return normalized;
   return 'overview';
 }
 
-function buildTestUiEmbed(themeKey, view) {
-  const theme = TEST_UI_THEMES[themeKey] || TEST_UI_THEMES.aavgo;
-  const isComponentsView = view === 'components';
+function normalizeTestUiDensity(density) {
+  const normalized = String(density || '').trim().toLowerCase();
+  if (TEST_UI_DENSITIES[normalized]) return normalized;
+  return 'cozy';
+}
 
-  const embed = new EmbedBuilder()
-    .setTitle(`UI Test Lab - ${theme.label}`)
+function pickRandomTestUiState() {
+  const themes = Object.keys(TEST_UI_THEMES);
+  const views = Object.keys(TEST_UI_VIEWS);
+  const densities = Object.keys(TEST_UI_DENSITIES);
+  return {
+    themeKey: themes[Math.floor(Math.random() * themes.length)] || 'aavgo',
+    viewKey: views[Math.floor(Math.random() * views.length)] || 'overview',
+    densityKey: densities[Math.floor(Math.random() * densities.length)] || 'cozy'
+  };
+}
+
+function buildTestUiPreviewText(viewKey, densityKey) {
+  const view = TEST_UI_VIEWS[viewKey] || TEST_UI_VIEWS.overview;
+  const density = TEST_UI_DENSITIES[densityKey] || TEST_UI_DENSITIES.cozy;
+  const lines = Array.isArray(view.previewLines) ? view.previewLines : [];
+  const formattedLines = lines.length ? lines.map(line => `- ${line}`).join('\n') : '- Preview unavailable';
+  return `${formattedLines}\n- Density Profile: ${density.label} (${density.spacing})`;
+}
+
+function buildTestUiEmbed(themeKey, viewKey, densityKey) {
+  const theme = TEST_UI_THEMES[themeKey] || TEST_UI_THEMES.aavgo;
+  const view = TEST_UI_VIEWS[viewKey] || TEST_UI_VIEWS.overview;
+  const density = TEST_UI_DENSITIES[densityKey] || TEST_UI_DENSITIES.cozy;
+
+  return new EmbedBuilder()
+    .setTitle(`Test GUI Lab | ${view.label}`)
     .setDescription(
-      isComponentsView
-        ? 'This is a Discord-native component preview card for testing style direction before deeper implementation.\nUse the controls below to switch style presets or return to overview.'
-        : 'This card previews how a DESIGN.md-style direction can map into Discord embeds and components.\nUse it to compare visual mood before building full command surfaces.'
+      `${view.summary}\n` +
+      'Use the controls below to test theme, screen type, and spacing in one message without clutter.'
     )
     .setColor(theme.color)
     .addFields(
       {
-        name: 'Palette',
+        name: 'Theme Preset',
+        value:
+          `${theme.label}\n` +
+          `${theme.shortDescription}\n` +
+          `Mood: ${theme.mood}`
+      },
+      {
+        name: 'Design Tokens',
         value:
           `Surface: ${theme.surface}\n` +
           `Accent: ${theme.accent}\n` +
           `Text: ${theme.text}\n` +
-          `Muted: ${theme.muted}`
+          `Muted: ${theme.muted}\n` +
+          `Radius: ${theme.radius}`
       },
       {
-        name: 'Visual Rules',
+        name: 'Screen Goal',
         value:
-          `Border Radius: ${theme.radius}\n` +
-          `Density: ${isComponentsView ? 'Compact controls' : 'Balanced card spacing'}\n` +
-          `Tone: ${theme.shortDescription}`
+          `${view.goal}\n` +
+          `Primary Action: ${view.primaryAction}\n` +
+          `Secondary Action: ${view.secondaryAction}\n` +
+          `Density: ${density.label} (${density.summary})`
+      },
+      {
+        name: 'Mock Preview',
+        value: buildTestUiPreviewText(viewKey, densityKey)
+      },
+      {
+        name: 'Beginner Copy Check',
+        value: `"${view.beginnerCopy}"`
       }
     )
-    .setFooter({ text: `Aavgo UI Test - ${isComponentsView ? 'Components' : 'Overview'}` })
+    .setFooter({
+      text: `Theme: ${theme.label} | Screen: ${view.label} | Density: ${density.label}`
+    })
     .setTimestamp();
-
-  if (isComponentsView) {
-    embed.addFields({
-      name: 'Component Preview',
-      value:
-        'Primary Action Button\n' +
-        'Secondary Utility Button\n' +
-        'Danger Close Button\n' +
-        'Theme Select Menu'
-    });
-  }
-
-  return embed;
 }
 
-function buildTestUiComponents(themeKey, view) {
+function buildTestUiComponents(themeKey, viewKey, densityKey) {
   const normalizedTheme = normalizeTestUiTheme(themeKey);
-  const normalizedView = normalizeTestUiView(view);
+  const normalizedView = normalizeTestUiView(viewKey);
+  const normalizedDensity = normalizeTestUiDensity(densityKey);
 
   const themeSelect = new StringSelectMenuBuilder()
-    .setCustomId(`test_ui_theme_select:${normalizedView}`)
-    .setPlaceholder('Choose a style preset')
+    .setCustomId(`test_ui_theme_select:${normalizedView}:${normalizedDensity}`)
+    .setPlaceholder('Theme preset')
     .addOptions(
       Object.entries(TEST_UI_THEMES).map(([key, theme]) =>
         new StringSelectMenuOptionBuilder()
@@ -7730,20 +7853,33 @@ function buildTestUiComponents(themeKey, view) {
       )
     );
 
-  const overviewButton = new ButtonBuilder()
-    .setCustomId(`test_ui_tab_overview:${normalizedTheme}`)
-    .setLabel('Overview')
-    .setStyle(normalizedView === 'overview' ? ButtonStyle.Primary : ButtonStyle.Secondary);
+  const viewSelect = new StringSelectMenuBuilder()
+    .setCustomId(`test_ui_view_select:${normalizedTheme}:${normalizedDensity}`)
+    .setPlaceholder('Preview screen')
+    .addOptions(
+      Object.entries(TEST_UI_VIEWS).map(([key, view]) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(view.label)
+          .setValue(key)
+          .setDescription(view.pickerHint)
+          .setDefault(key === normalizedView)
+      )
+    );
 
-  const componentsButton = new ButtonBuilder()
-    .setCustomId(`test_ui_tab_components:${normalizedTheme}`)
-    .setLabel('Components')
-    .setStyle(normalizedView === 'components' ? ButtonStyle.Primary : ButtonStyle.Secondary);
+  const densityToggle = new ButtonBuilder()
+    .setCustomId(`test_ui_density_toggle:${normalizedView}:${normalizedTheme}:${normalizedDensity}`)
+    .setLabel(`Density: ${TEST_UI_DENSITIES[normalizedDensity]?.label || 'Cozy'}`)
+    .setStyle(normalizedDensity === 'compact' ? ButtonStyle.Primary : ButtonStyle.Secondary);
+
+  const shuffleButton = new ButtonBuilder()
+    .setCustomId('test_ui_shuffle')
+    .setLabel('Surprise Me')
+    .setStyle(ButtonStyle.Success);
 
   const refreshButton = new ButtonBuilder()
-    .setCustomId(`test_ui_refresh:${normalizedView}:${normalizedTheme}`)
-    .setLabel('Refresh')
-    .setStyle(ButtonStyle.Success);
+    .setCustomId(`test_ui_refresh:${normalizedView}:${normalizedTheme}:${normalizedDensity}`)
+    .setLabel('Re-render')
+    .setStyle(ButtonStyle.Secondary);
 
   const closeButton = new ButtonBuilder()
     .setCustomId('test_ui_close')
@@ -7752,17 +7888,19 @@ function buildTestUiComponents(themeKey, view) {
 
   return [
     new ActionRowBuilder().addComponents(themeSelect),
-    new ActionRowBuilder().addComponents(overviewButton, componentsButton, refreshButton, closeButton)
+    new ActionRowBuilder().addComponents(viewSelect),
+    new ActionRowBuilder().addComponents(densityToggle, shuffleButton, refreshButton, closeButton)
   ];
 }
 
-function buildTestUiPayload(themeKey = 'aavgo', view = 'overview') {
+function buildTestUiPayload(themeKey = 'aavgo', viewKey = 'overview', densityKey = 'cozy') {
   const normalizedTheme = normalizeTestUiTheme(themeKey);
-  const normalizedView = normalizeTestUiView(view);
+  const normalizedView = normalizeTestUiView(viewKey);
+  const normalizedDensity = normalizeTestUiDensity(densityKey);
   return {
     content: null,
-    embeds: [buildTestUiEmbed(normalizedTheme, normalizedView)],
-    components: buildTestUiComponents(normalizedTheme, normalizedView)
+    embeds: [buildTestUiEmbed(normalizedTheme, normalizedView, normalizedDensity)],
+    components: buildTestUiComponents(normalizedTheme, normalizedView, normalizedDensity)
   };
 }
 
@@ -7772,9 +7910,13 @@ async function handleTestUiCommand(interaction) {
       return interaction.reply({ content: 'Access denied: Developer or Operations Manager required.', ephemeral: true });
     }
 
+    const themeOption = normalizeTestUiTheme(interaction.options?.getString('theme'));
+    const viewOption = normalizeTestUiView(interaction.options?.getString('screen'));
+    const densityOption = normalizeTestUiDensity(interaction.options?.getString('density'));
+
     await interaction.deferReply({ ephemeral: true });
     interaction.__aavgoEphemeral = true;
-    await interaction.editReply(buildTestUiPayload('aavgo', 'overview'));
+    await interaction.editReply(buildTestUiPayload(themeOption, viewOption, densityOption));
   } catch (error) {
     console.error('Error in handleTestUiCommand:', error);
     if (interaction.deferred || interaction.replied) {
@@ -7802,22 +7944,42 @@ async function handleTestUiButton(interaction) {
       });
     }
 
+    if (customId === 'test_ui_shuffle') {
+      const randomState = pickRandomTestUiState();
+      return sendComponentUpdate(interaction, buildTestUiPayload(randomState.themeKey, randomState.viewKey, randomState.densityKey));
+    }
+
+    if (customId.startsWith('test_ui_density_toggle:')) {
+      const [, viewRaw, themeRaw, densityRaw] = customId.split(':');
+      const nextDensity = normalizeTestUiDensity(densityRaw) === 'compact' ? 'cozy' : 'compact';
+      return sendComponentUpdate(
+        interaction,
+        buildTestUiPayload(normalizeTestUiTheme(themeRaw), normalizeTestUiView(viewRaw), nextDensity)
+      );
+    }
+
+    if (customId.startsWith('test_ui_refresh:')) {
+      const [, viewRaw, themeRaw, densityRaw] = customId.split(':');
+      return sendComponentUpdate(
+        interaction,
+        buildTestUiPayload(normalizeTestUiTheme(themeRaw), normalizeTestUiView(viewRaw), normalizeTestUiDensity(densityRaw))
+      );
+    }
+
     if (customId.startsWith('test_ui_tab_overview:')) {
       const themeKey = normalizeTestUiTheme(customId.split(':')[1]);
-      return sendComponentUpdate(interaction, buildTestUiPayload(themeKey, 'overview'));
+      return sendComponentUpdate(interaction, buildTestUiPayload(themeKey, 'overview', 'cozy'));
     }
 
     if (customId.startsWith('test_ui_tab_components:')) {
       const themeKey = normalizeTestUiTheme(customId.split(':')[1]);
-      return sendComponentUpdate(interaction, buildTestUiPayload(themeKey, 'components'));
+      return sendComponentUpdate(interaction, buildTestUiPayload(themeKey, 'status', 'compact'));
     }
 
-    if (customId.startsWith('test_ui_refresh:')) {
-      const [, viewRaw, themeRaw] = customId.split(':');
-      return sendComponentUpdate(interaction, buildTestUiPayload(normalizeTestUiTheme(themeRaw), normalizeTestUiView(viewRaw)));
-    }
-
-    return sendComponentReply(interaction, { content: 'Test UI action is no longer valid. Run /test-gui again.', ephemeral: true });
+    return sendComponentReply(interaction, {
+      content: 'Test UI action is no longer valid. Run /test-gui again.',
+      ephemeral: true
+    });
   } catch (error) {
     if (error?.code === 10062) {
       console.warn('[TEST-UI] Button interaction expired before response (10062).');
@@ -7828,24 +7990,49 @@ async function handleTestUiButton(interaction) {
   }
 }
 
-async function handleTestUiThemeSelect(interaction) {
+async function handleTestUiSelect(interaction) {
   try {
     if (!isDeveloper(interaction)) {
       return interaction.reply({ content: 'Access denied: Developer or Operations Manager required.', ephemeral: true });
     }
 
     await safeDeferComponentUpdate(interaction);
-    const selectedTheme = normalizeTestUiTheme(interaction.values?.[0]);
-    const viewFromId = normalizeTestUiView(String(interaction.customId || '').split(':')[1]);
-    return sendComponentUpdate(interaction, buildTestUiPayload(selectedTheme, viewFromId));
+    const customId = String(interaction.customId || '');
+
+    if (customId.startsWith('test_ui_theme_select:')) {
+      const [, viewRaw, densityRaw] = customId.split(':');
+      const selectedTheme = normalizeTestUiTheme(interaction.values?.[0]);
+      return sendComponentUpdate(
+        interaction,
+        buildTestUiPayload(selectedTheme, normalizeTestUiView(viewRaw), normalizeTestUiDensity(densityRaw))
+      );
+    }
+
+    if (customId.startsWith('test_ui_view_select:')) {
+      const [, themeRaw, densityRaw] = customId.split(':');
+      const selectedView = normalizeTestUiView(interaction.values?.[0]);
+      return sendComponentUpdate(
+        interaction,
+        buildTestUiPayload(normalizeTestUiTheme(themeRaw), selectedView, normalizeTestUiDensity(densityRaw))
+      );
+    }
+
+    return sendComponentReply(interaction, {
+      content: 'Test UI selection is no longer valid. Run /test-gui again.',
+      ephemeral: true
+    });
   } catch (error) {
     if (error?.code === 10062) {
       console.warn('[TEST-UI] Select interaction expired before response (10062).');
       return;
     }
-    console.error('Error in handleTestUiThemeSelect:', error);
-    await sendComponentReply(interaction, { content: 'Failed to switch style preset.', ephemeral: true }).catch(() => {});
+    console.error('Error in handleTestUiSelect:', error);
+    await sendComponentReply(interaction, { content: 'Failed to switch test UI preset.', ephemeral: true }).catch(() => {});
   }
+}
+
+async function handleTestUiThemeSelect(interaction) {
+  return handleTestUiSelect(interaction);
 }
 
 async function handleHelpStaff(interaction) {
@@ -7863,7 +8050,7 @@ async function handleHelpStaff(interaction) {
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
         '> `/setup-profiles`: Deploy the staff profiles dashboard panel.\n' +
         '> `/setup-dev-todo`: Deploy or refresh the shared developer launch board.\n' +
-        '> `/test-gui` (`/test-ui` legacy alias): Open the Discord UI test lab for style and component previews.\n' +
+        '> `/test-gui` (`/test-ui` legacy alias): Open the interactive UI lab (theme + screen + density + shuffle) for Discord previews.\n' +
         '> `/todo-add`, `/todo-move`, `/todo-refresh`: Manage centralized developer tasks.\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
@@ -9428,6 +9615,7 @@ module.exports = {
   handleHelpStaff,
   handleTestUiCommand,
   handleTestUiButton,
+  handleTestUiSelect,
   handleTestUiThemeSelect,
   handleHelpAgent,
   handleOvertimeConfirm,

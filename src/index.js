@@ -736,8 +736,8 @@ client.on('interactionCreate', async interaction => {
       await devTodo.handleSelectMenu(interaction);
     } else if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleSelectMenu(interaction);
-    } else if (interaction.customId.startsWith('test_ui_theme_select')) {
-      await auth.handleTestUiThemeSelect(interaction);
+    } else if (interaction.customId.startsWith('test_ui_')) {
+      await auth.handleTestUiSelect(interaction);
     } else if (interaction.customId === 'tl_call_select_agent') {
       await tools.handleAgentCallStart(interaction);
     } else if (interaction.customId.startsWith('shift_hotel_pick_menu')) {

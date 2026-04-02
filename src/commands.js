@@ -204,10 +204,68 @@ const commandData = [
     .setDescription('(Developer/Operations Manager) Show a comprehensive guide of staff tools'),
   new SlashCommandBuilder()
     .setName('test-ui')
-    .setDescription('(Developer/Operations Manager) Open the Discord UI test lab (legacy alias)'),
+    .setDescription('(Developer/Operations Manager) Open the Discord UI test lab (legacy alias)')
+    .addStringOption(option => option
+      .setName('theme')
+      .setDescription('Start with a specific style preset')
+      .setRequired(false)
+      .addChoices(
+        { name: 'Aavgo Ops Amber', value: 'aavgo' },
+        { name: 'Vercel Mono', value: 'vercel' },
+        { name: 'Stripe Gradient', value: 'stripe' },
+        { name: 'Notion Warm', value: 'notion' }
+      ))
+    .addStringOption(option => option
+      .setName('screen')
+      .setDescription('Start on a specific preview screen')
+      .setRequired(false)
+      .addChoices(
+        { name: 'Overview', value: 'overview' },
+        { name: 'Login Portal', value: 'login' },
+        { name: 'Live Status', value: 'status' },
+        { name: 'Approval Flow', value: 'approval' },
+        { name: 'Alert States', value: 'alert' }
+      ))
+    .addStringOption(option => option
+      .setName('density')
+      .setDescription('Choose spacing style for the mockup')
+      .setRequired(false)
+      .addChoices(
+        { name: 'Cozy', value: 'cozy' },
+        { name: 'Compact', value: 'compact' }
+      )),
   new SlashCommandBuilder()
     .setName('test-gui')
-    .setDescription('(Developer/Operations Manager) Open the Discord UI test lab'),
+    .setDescription('(Developer/Operations Manager) Open the Discord UI test lab')
+    .addStringOption(option => option
+      .setName('theme')
+      .setDescription('Start with a specific style preset')
+      .setRequired(false)
+      .addChoices(
+        { name: 'Aavgo Ops Amber', value: 'aavgo' },
+        { name: 'Vercel Mono', value: 'vercel' },
+        { name: 'Stripe Gradient', value: 'stripe' },
+        { name: 'Notion Warm', value: 'notion' }
+      ))
+    .addStringOption(option => option
+      .setName('screen')
+      .setDescription('Start on a specific preview screen')
+      .setRequired(false)
+      .addChoices(
+        { name: 'Overview', value: 'overview' },
+        { name: 'Login Portal', value: 'login' },
+        { name: 'Live Status', value: 'status' },
+        { name: 'Approval Flow', value: 'approval' },
+        { name: 'Alert States', value: 'alert' }
+      ))
+    .addStringOption(option => option
+      .setName('density')
+      .setDescription('Choose spacing style for the mockup')
+      .setRequired(false)
+      .addChoices(
+        { name: 'Cozy', value: 'cozy' },
+        { name: 'Compact', value: 'compact' }
+      )),
   new SlashCommandBuilder()
     .setName('help-agent')
     .setDescription('Show a quick guide for core agent commands and daily workflow'),
