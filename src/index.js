@@ -562,6 +562,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleDbSetPin(interaction);
     } else if (commandName === 'help-staff') {
       await auth.handleHelpStaff(interaction);
+    } else if (commandName === 'test-ui' || commandName === 'test-gui') {
+      await auth.handleTestUiCommand(interaction);
     } else if (commandName === 'help-agent') {
       await auth.handleHelpAgent(interaction);
     } else if (commandName === 'limit-warning') {
@@ -620,6 +622,8 @@ client.on('interactionCreate', async interaction => {
       await devTodo.handleButton(interaction);
     } else if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleButton(interaction);
+    } else if (interaction.customId.startsWith('test_ui_')) {
+      await auth.handleTestUiButton(interaction);
     } else if (interaction.customId === 'start_shift_btn') {
       await auth.handleShiftRolePrompt(interaction);
     } else if (interaction.customId === 'shift_role_agent_btn') {
@@ -732,6 +736,8 @@ client.on('interactionCreate', async interaction => {
       await devTodo.handleSelectMenu(interaction);
     } else if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleSelectMenu(interaction);
+    } else if (interaction.customId.startsWith('test_ui_theme_select')) {
+      await auth.handleTestUiThemeSelect(interaction);
     } else if (interaction.customId === 'tl_call_select_agent') {
       await tools.handleAgentCallStart(interaction);
     } else if (interaction.customId.startsWith('shift_hotel_pick_menu')) {

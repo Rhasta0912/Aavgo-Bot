@@ -862,3 +862,33 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/index.js
     - SOP.md
     - HISTORY.md
+- Hardened promotion approval and shift picker interaction reliability for timeout safety.
+  - Summary: Added immediate component acknowledgement (`deferUpdate`) to promotion-request approve/deny buttons and shift picker confirmation components before DB/role work, then completed replies through safe component response helpers. This reduces Discord timeout/`10062 Unknown interaction` failures on slower operations.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Keeps temporary flow cleaner by updating/replacing the active step instead of stacking extra temporary messages.
+    - Focused on the newest high-risk approval and shift-selection component paths.
+- Added `/test-ui` developer UI lab for Discord-native style prototyping.
+  - Summary: Implemented a new Developer/Operations Manager command that opens an interactive ephemeral UI test card with style presets (Aavgo Ops Amber, Vercel Mono, Stripe Gradient, Notion Warm), overview/components tabs, refresh, and close controls. Component handlers acknowledge quickly before updates to reduce timeout/Unknown interaction risk while keeping a single-message replace flow.
+  - Files touched:
+    - src/commands.js
+    - src/index.js
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - `/help-staff` now includes `/test-ui` in Core Setup and Portals.
+    - Access is restricted to Developer or Operations Manager scope.
+- Added `/test-gui` command name and kept `/test-ui` as compatibility alias for the Discord UI test lab.
+  - Summary: The UI test lab now responds to `/test-gui` (primary) while `/test-ui` remains available as a legacy alias. Help text and invalid-action guidance were updated to point staff to `/test-gui` first.
+  - Files touched:
+    - src/commands.js
+    - src/index.js
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - No permission model change; still Developer/Operations Manager only.

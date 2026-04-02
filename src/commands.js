@@ -203,6 +203,12 @@ const commandData = [
     .setName('help-staff')
     .setDescription('(Developer/Operations Manager) Show a comprehensive guide of staff tools'),
   new SlashCommandBuilder()
+    .setName('test-ui')
+    .setDescription('(Developer/Operations Manager) Open the Discord UI test lab (legacy alias)'),
+  new SlashCommandBuilder()
+    .setName('test-gui')
+    .setDescription('(Developer/Operations Manager) Open the Discord UI test lab'),
+  new SlashCommandBuilder()
     .setName('help-agent')
     .setDescription('Show a quick guide for core agent commands and daily workflow'),
   new SlashCommandBuilder()

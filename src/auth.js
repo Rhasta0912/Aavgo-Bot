@@ -3800,11 +3800,13 @@ async function showAssignedHotelShiftPicker(interaction, hotelIds, allowMultiHot
 
 async function handleShiftHotelPickMenu(interaction) {
   try {
+    await safeDeferComponentUpdate(interaction);
+
     const hotelId = normalizeCombinedHotelId(interaction.values[0]);
     const allowMultiHotel = false;
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
-      return interaction.reply({ content: '❌ You are not registered as an agent.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'You are not registered as an agent.', ephemeral: true });
     }
 
     const hotelSession = db.prepare(
@@ -3818,12 +3820,12 @@ async function handleShiftHotelPickMenu(interaction) {
       const takeoverId = `takeover_btn_${hotelId}`;
       const takeOverBtn = new ButtonBuilder()
         .setCustomId(takeoverId)
-        .setLabel('🚧 Take Over Shift')
+        .setLabel('Take Over Shift')
         .setStyle(ButtonStyle.Success);
 
       const cancelBtn = new ButtonBuilder()
         .setCustomId('cancel_takeover_btn')
-        .setLabel('⬅️ Cancel')
+        .setLabel('Cancel')
         .setStyle(ButtonStyle.Secondary);
 
       return sendPrivateFlowPayload(interaction, {
@@ -3848,7 +3850,7 @@ async function handleShiftHotelPickMenu(interaction) {
 
     if (uniqueAssignedHotelIds.length > 1 && lastSessionHotelId && lastSessionHotelId === hotelId) {
       const confirmEmbed = new EmbedBuilder()
-        .setTitle('🏨 Same Hotel Confirm')
+        .setTitle('Same Hotel Confirm')
         .setDescription(
           `You selected **${getCombinedHotelLabel(hotelId)}** again.\n\n` +
           `Your previous session also used this hotel.\n\n` +
@@ -3872,21 +3874,16 @@ async function handleShiftHotelPickMenu(interaction) {
       });
     }
 
-    return interaction.update(buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
+    return sendComponentUpdate(interaction, buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
   } catch (error) {
     console.error('Error in handleShiftHotelPickMenu:', error);
     if (error?.code === 10062) {
       console.warn('[SHIFT-PICKER] Interaction expired before response (10062).');
       return;
     }
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: '❌ Failed to select hotel for shift.', embeds: [], components: [] }).catch(() => {});
-    } else {
-      await interaction.reply({ content: '❌ Failed to select hotel for shift.', ephemeral: true }).catch(() => {});
-    }
+    await sendComponentReply(interaction, { content: 'Failed to select hotel for shift.', ephemeral: true }).catch(() => {});
   }
 }
-
 async function handleSameHotelConfirm(interaction) {
   try {
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
@@ -6488,24 +6485,26 @@ async function handlePromote(interaction) {
 
 async function handlePromotionRequestApprove(interaction) {
   try {
+    await safeDeferComponentUpdate(interaction);
+
     const requestKey = String(interaction.customId || '').replace('promote_req_approve:', '');
     const row = db.prepare("SELECT * FROM dev_approvals WHERE target_id = ?").get(requestKey);
     const request = parsePromotionRequestFromRow(row);
     if (!request) {
-      return interaction.reply({ content: '❌ Promotion request not found.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'Promotion request not found.', ephemeral: true });
     }
     if (request.status !== 'pending') {
-      return interaction.reply({ content: '⚠️ This promotion request is no longer pending.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'This promotion request is no longer pending.', ephemeral: true });
     }
 
     const approverId = interaction.user.id;
     const canApproveAsDeveloper = isDeveloperId(approverId);
     const canApproveAsOperationsManager = isOperationsManagerId(approverId);
     if (!canApproveAsDeveloper && !canApproveAsOperationsManager) {
-      return interaction.reply({ content: '❌ Only Developer or Operations Manager can approve this request.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'Only Developer or Operations Manager can approve this request.', ephemeral: true });
     }
     if (request.developerApprovedBy === approverId || request.operationsManagerApprovedBy === approverId) {
-      return interaction.reply({ content: '⚠️ You have already approved this request.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'You have already approved this request.', ephemeral: true });
     }
 
     let approvalType = null;
@@ -6516,7 +6515,7 @@ async function handlePromotionRequestApprove(interaction) {
       request.operationsManagerApprovedBy = approverId;
       approvalType = 'Operations Manager';
     } else if (!request.developerApprovedBy || !request.operationsManagerApprovedBy) {
-      return interaction.reply({ content: '⚠️ Your role is already filled for this request. A different approver role is still required.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'Your role is already filled for this request. A different approver role is still required.', ephemeral: true });
     }
 
     request.updatedAt = new Date().toISOString();
@@ -6524,46 +6523,48 @@ async function handlePromotionRequestApprove(interaction) {
     if (isFullyApproved) {
       const applyResult = await applyApprovedPromotion(interaction.guild, request.targetId, request.targetRole, approverId);
       if (!applyResult.ok) {
-        return interaction.reply({ content: `❌ Could not apply promotion: ${applyResult.error}`, ephemeral: true });
+        return sendComponentReply(interaction, { content: `Could not apply promotion: ${applyResult.error}`, ephemeral: true });
       }
       request.status = 'approved';
     }
 
     upsertPromotionRequestRow(request);
     const embed = buildPromotionRequestEmbed(request);
-    await interaction.update({
+    await sendComponentUpdate(interaction, {
       embeds: [embed],
       components: request.status === 'pending' ? buildPromotionRequestButtons(request.requestKey) : []
     });
 
     if (request.status === 'pending') {
-      await interaction.followUp({
-        content: `✅ ${approvalType} approval captured. Waiting for the second required approval.`,
+      await sendComponentReply(interaction, {
+        content: `${approvalType} approval captured. Waiting for the second required approval.`,
         ephemeral: true
       }).catch(() => {});
     }
   } catch (error) {
-    console.error('Error in handlePromotionRequestApprove:', error);
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content: '❌ Failed to process approval.', ephemeral: true }).catch(() => {});
-    } else {
-      await interaction.reply({ content: '❌ Failed to process approval.', ephemeral: true }).catch(() => {});
+    if (error?.code === 10062) {
+      console.warn('[PROMOTION] Approve interaction expired before response (10062).');
+      return;
     }
+    console.error('Error in handlePromotionRequestApprove:', error);
+    await sendComponentReply(interaction, { content: 'Failed to process approval.', ephemeral: true }).catch(() => {});
   }
 }
 
 async function handlePromotionRequestDeny(interaction) {
   try {
+    await safeDeferComponentUpdate(interaction);
+
     const approverId = interaction.user.id;
     if (!isDeveloperId(approverId) && !isOperationsManagerId(approverId)) {
-      return interaction.reply({ content: '❌ Only Developer or Operations Manager can deny this request.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'Only Developer or Operations Manager can deny this request.', ephemeral: true });
     }
 
     const requestKey = String(interaction.customId || '').replace('promote_req_deny:', '');
     const row = db.prepare("SELECT * FROM dev_approvals WHERE target_id = ?").get(requestKey);
     const request = parsePromotionRequestFromRow(row);
     if (!request) {
-      return interaction.reply({ content: '❌ Promotion request not found.', ephemeral: true });
+      return sendComponentReply(interaction, { content: 'Promotion request not found.', ephemeral: true });
     }
 
     request.status = 'denied';
@@ -6571,20 +6572,19 @@ async function handlePromotionRequestDeny(interaction) {
     request.updatedAt = new Date().toISOString();
     upsertPromotionRequestRow(request);
 
-    await interaction.update({
+    await sendComponentUpdate(interaction, {
       embeds: [buildPromotionRequestEmbed(request)],
       components: []
     });
   } catch (error) {
-    console.error('Error in handlePromotionRequestDeny:', error);
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content: '❌ Failed to deny promotion request.', ephemeral: true }).catch(() => {});
-    } else {
-      await interaction.reply({ content: '❌ Failed to deny promotion request.', ephemeral: true }).catch(() => {});
+    if (error?.code === 10062) {
+      console.warn('[PROMOTION] Deny interaction expired before response (10062).');
+      return;
     }
+    console.error('Error in handlePromotionRequestDeny:', error);
+    await sendComponentReply(interaction, { content: 'Failed to deny promotion request.', ephemeral: true }).catch(() => {});
   }
 }
-
 async function handleSensitivePromotionRoleAddAttempt(oldMember, newMember) {
   try {
     if (!oldMember || !newMember?.guild || !newMember?.client) return;
@@ -7612,6 +7612,242 @@ async function handleMaintenanceList(interaction) {
   }
 }
 
+const TEST_UI_THEMES = {
+  aavgo: {
+    label: 'Aavgo Ops Amber',
+    shortDescription: 'Warm operations dashboard look',
+    color: 0xF1C40F,
+    surface: '#1F2937',
+    accent: '#F1C40F',
+    text: '#F9FAFB',
+    muted: '#9CA3AF',
+    radius: '10px'
+  },
+  vercel: {
+    label: 'Vercel Mono',
+    shortDescription: 'Minimal black and white',
+    color: 0x111111,
+    surface: '#0A0A0A',
+    accent: '#FFFFFF',
+    text: '#FAFAFA',
+    muted: '#A3A3A3',
+    radius: '8px'
+  },
+  stripe: {
+    label: 'Stripe Gradient',
+    shortDescription: 'Bright and polished fintech',
+    color: 0x635BFF,
+    surface: '#1B1642',
+    accent: '#635BFF',
+    text: '#E7E9FF',
+    muted: '#B8BEEA',
+    radius: '12px'
+  },
+  notion: {
+    label: 'Notion Warm',
+    shortDescription: 'Soft paper-like neutral',
+    color: 0x2F3437,
+    surface: '#F7F6F3',
+    accent: '#2F3437',
+    text: '#191919',
+    muted: '#6B6F76',
+    radius: '6px'
+  }
+};
+
+function normalizeTestUiTheme(themeKey) {
+  const key = String(themeKey || '').trim().toLowerCase();
+  if (TEST_UI_THEMES[key]) return key;
+  return 'aavgo';
+}
+
+function normalizeTestUiView(view) {
+  const normalized = String(view || '').trim().toLowerCase();
+  if (normalized === 'components') return 'components';
+  return 'overview';
+}
+
+function buildTestUiEmbed(themeKey, view) {
+  const theme = TEST_UI_THEMES[themeKey] || TEST_UI_THEMES.aavgo;
+  const isComponentsView = view === 'components';
+
+  const embed = new EmbedBuilder()
+    .setTitle(`UI Test Lab - ${theme.label}`)
+    .setDescription(
+      isComponentsView
+        ? 'This is a Discord-native component preview card for testing style direction before deeper implementation.\nUse the controls below to switch style presets or return to overview.'
+        : 'This card previews how a DESIGN.md-style direction can map into Discord embeds and components.\nUse it to compare visual mood before building full command surfaces.'
+    )
+    .setColor(theme.color)
+    .addFields(
+      {
+        name: 'Palette',
+        value:
+          `Surface: ${theme.surface}\n` +
+          `Accent: ${theme.accent}\n` +
+          `Text: ${theme.text}\n` +
+          `Muted: ${theme.muted}`
+      },
+      {
+        name: 'Visual Rules',
+        value:
+          `Border Radius: ${theme.radius}\n` +
+          `Density: ${isComponentsView ? 'Compact controls' : 'Balanced card spacing'}\n` +
+          `Tone: ${theme.shortDescription}`
+      }
+    )
+    .setFooter({ text: `Aavgo UI Test - ${isComponentsView ? 'Components' : 'Overview'}` })
+    .setTimestamp();
+
+  if (isComponentsView) {
+    embed.addFields({
+      name: 'Component Preview',
+      value:
+        'Primary Action Button\n' +
+        'Secondary Utility Button\n' +
+        'Danger Close Button\n' +
+        'Theme Select Menu'
+    });
+  }
+
+  return embed;
+}
+
+function buildTestUiComponents(themeKey, view) {
+  const normalizedTheme = normalizeTestUiTheme(themeKey);
+  const normalizedView = normalizeTestUiView(view);
+
+  const themeSelect = new StringSelectMenuBuilder()
+    .setCustomId(`test_ui_theme_select:${normalizedView}`)
+    .setPlaceholder('Choose a style preset')
+    .addOptions(
+      Object.entries(TEST_UI_THEMES).map(([key, theme]) =>
+        new StringSelectMenuOptionBuilder()
+          .setLabel(theme.label)
+          .setValue(key)
+          .setDescription(theme.shortDescription)
+          .setDefault(key === normalizedTheme)
+      )
+    );
+
+  const overviewButton = new ButtonBuilder()
+    .setCustomId(`test_ui_tab_overview:${normalizedTheme}`)
+    .setLabel('Overview')
+    .setStyle(normalizedView === 'overview' ? ButtonStyle.Primary : ButtonStyle.Secondary);
+
+  const componentsButton = new ButtonBuilder()
+    .setCustomId(`test_ui_tab_components:${normalizedTheme}`)
+    .setLabel('Components')
+    .setStyle(normalizedView === 'components' ? ButtonStyle.Primary : ButtonStyle.Secondary);
+
+  const refreshButton = new ButtonBuilder()
+    .setCustomId(`test_ui_refresh:${normalizedView}:${normalizedTheme}`)
+    .setLabel('Refresh')
+    .setStyle(ButtonStyle.Success);
+
+  const closeButton = new ButtonBuilder()
+    .setCustomId('test_ui_close')
+    .setLabel('Close')
+    .setStyle(ButtonStyle.Danger);
+
+  return [
+    new ActionRowBuilder().addComponents(themeSelect),
+    new ActionRowBuilder().addComponents(overviewButton, componentsButton, refreshButton, closeButton)
+  ];
+}
+
+function buildTestUiPayload(themeKey = 'aavgo', view = 'overview') {
+  const normalizedTheme = normalizeTestUiTheme(themeKey);
+  const normalizedView = normalizeTestUiView(view);
+  return {
+    content: null,
+    embeds: [buildTestUiEmbed(normalizedTheme, normalizedView)],
+    components: buildTestUiComponents(normalizedTheme, normalizedView)
+  };
+}
+
+async function handleTestUiCommand(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: 'Access denied: Developer or Operations Manager required.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    interaction.__aavgoEphemeral = true;
+    await interaction.editReply(buildTestUiPayload('aavgo', 'overview'));
+  } catch (error) {
+    console.error('Error in handleTestUiCommand:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: 'Failed to open UI test lab.', embeds: [], components: [] }).catch(() => {});
+    } else {
+      await interaction.reply({ content: 'Failed to open UI test lab.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleTestUiButton(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: 'Access denied: Developer or Operations Manager required.', ephemeral: true });
+    }
+
+    await safeDeferComponentUpdate(interaction);
+    const customId = String(interaction.customId || '');
+
+    if (customId === 'test_ui_close') {
+      return sendComponentUpdate(interaction, {
+        content: 'UI test panel closed.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    if (customId.startsWith('test_ui_tab_overview:')) {
+      const themeKey = normalizeTestUiTheme(customId.split(':')[1]);
+      return sendComponentUpdate(interaction, buildTestUiPayload(themeKey, 'overview'));
+    }
+
+    if (customId.startsWith('test_ui_tab_components:')) {
+      const themeKey = normalizeTestUiTheme(customId.split(':')[1]);
+      return sendComponentUpdate(interaction, buildTestUiPayload(themeKey, 'components'));
+    }
+
+    if (customId.startsWith('test_ui_refresh:')) {
+      const [, viewRaw, themeRaw] = customId.split(':');
+      return sendComponentUpdate(interaction, buildTestUiPayload(normalizeTestUiTheme(themeRaw), normalizeTestUiView(viewRaw)));
+    }
+
+    return sendComponentReply(interaction, { content: 'Test UI action is no longer valid. Run /test-gui again.', ephemeral: true });
+  } catch (error) {
+    if (error?.code === 10062) {
+      console.warn('[TEST-UI] Button interaction expired before response (10062).');
+      return;
+    }
+    console.error('Error in handleTestUiButton:', error);
+    await sendComponentReply(interaction, { content: 'Failed to process test UI action.', ephemeral: true }).catch(() => {});
+  }
+}
+
+async function handleTestUiThemeSelect(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: 'Access denied: Developer or Operations Manager required.', ephemeral: true });
+    }
+
+    await safeDeferComponentUpdate(interaction);
+    const selectedTheme = normalizeTestUiTheme(interaction.values?.[0]);
+    const viewFromId = normalizeTestUiView(String(interaction.customId || '').split(':')[1]);
+    return sendComponentUpdate(interaction, buildTestUiPayload(selectedTheme, viewFromId));
+  } catch (error) {
+    if (error?.code === 10062) {
+      console.warn('[TEST-UI] Select interaction expired before response (10062).');
+      return;
+    }
+    console.error('Error in handleTestUiThemeSelect:', error);
+    await sendComponentReply(interaction, { content: 'Failed to switch style preset.', ephemeral: true }).catch(() => {});
+  }
+}
+
 async function handleHelpStaff(interaction) {
   try {
     if (!isDeveloper(interaction)) {
@@ -7627,6 +7863,7 @@ async function handleHelpStaff(interaction) {
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
         '> `/setup-profiles`: Deploy the staff profiles dashboard panel.\n' +
         '> `/setup-dev-todo`: Deploy or refresh the shared developer launch board.\n' +
+        '> `/test-gui` (`/test-ui` legacy alias): Open the Discord UI test lab for style and component previews.\n' +
         '> `/todo-add`, `/todo-move`, `/todo-refresh`: Manage centralized developer tasks.\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
@@ -9009,10 +9246,12 @@ async function handleAgentRoutePick(interaction) {
 
 async function handleSameHotelConfirm(interaction) {
   try {
+    await safeDeferComponentUpdate(interaction);
+
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return sendPrivateFlowPayload(interaction, {
-        content: '❌ You are not registered as an agent.',
+        content: 'You are not registered as an agent.',
         embeds: [],
         components: []
       });
@@ -9031,7 +9270,7 @@ async function handleSameHotelConfirm(interaction) {
     if (interaction.customId.startsWith('same_hotel_confirm_no')) {
       if (uniqueAssignedHotelIds.length === 0) {
         return sendPrivateFlowPayload(interaction, {
-          content: '❌ No assigned hotels were found for your account.',
+          content: 'No assigned hotels were found for your account.',
           embeds: [],
           components: []
         });
@@ -9048,21 +9287,16 @@ async function handleSameHotelConfirm(interaction) {
     const hotelId = normalizeCombinedHotelId(hotelIdRaw);
     const allowMultiHotel = false;
 
-    return interaction.update(buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
+    return sendComponentUpdate(interaction, buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
   } catch (error) {
     if (error?.code === 10062) {
       console.warn('[SAME-HOTEL] Interaction expired before response (10062).');
       return;
     }
     console.error('Error in handleSameHotelConfirm:', error);
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply({ content: '❌ Failed to continue with this hotel.', embeds: [], components: [] }).catch(() => {});
-    } else {
-      await interaction.reply({ content: '❌ Failed to continue with this hotel.', ephemeral: true }).catch(() => {});
-    }
+    await sendComponentReply(interaction, { content: 'Failed to continue with this hotel.', ephemeral: true }).catch(() => {});
   }
 }
-
 async function handleHotelSelectMenu(interaction) {
   try {
     await safeDeferComponentUpdate(interaction);
@@ -9192,6 +9426,9 @@ module.exports = {
   handleDbRemoveUser,
   handleMemberLeave,
   handleHelpStaff,
+  handleTestUiCommand,
+  handleTestUiButton,
+  handleTestUiThemeSelect,
   handleHelpAgent,
   handleOvertimeConfirm,
   handleOvertimeEndShift,
