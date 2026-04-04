@@ -535,8 +535,36 @@ function buildAuditFields(resolvedDescription) {
     }
   }
 
+  const summaryText = summaryLines.join('\n').trim();
+  if (summaryText) {
+    return {
+      summary: summaryText,
+      fields: fields.slice(0, 6)
+    };
+  }
+
+  if (fields.length > 0) {
+    const valueByName = new Map(fields.map(field => [String(field.name || '').trim().toLowerCase(), String(field.value || '').trim()]));
+    const orderedSummaryKeys = ['user', 'agent', 'location', 'practice for', 'training for', 'hotel(s)', 'duration', 'time', 'mode'];
+    const summaryParts = orderedSummaryKeys
+      .map(key => {
+        const value = valueByName.get(key);
+        return value ? `**${key.replace(/\b\w/g, char => char.toUpperCase())}:** ${value}` : null;
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+
+    const derivedSummary = summaryParts.join(' | ').trim();
+    if (derivedSummary) {
+      return {
+        summary: derivedSummary,
+        fields: fields.slice(0, 6)
+      };
+    }
+  }
+
   return {
-    summary: summaryLines.join('\n').trim() || 'Operational event recorded.',
+    summary: 'Operational event recorded.',
     fields: fields.slice(0, 6)
   };
 }

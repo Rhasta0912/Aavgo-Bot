@@ -1004,3 +1004,12 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Ghost role: `1489855140767993997`
     - Channel: `1482249025016168448`
     - Team 2 consolidated-board post is now removed so Team 2 uses per-hotel cards in its channel.
+- Improved audit log readability so login/logout cards no longer show generic `Operational event recorded.` when structured fields exist.
+  - Summary: Audit embed formatting now derives a human-readable top summary from parsed key fields (`User`, `Location`, `Time`, etc.) whenever description lines are fully structured key/value entries. This keeps existing field layout intact while making the card header immediately informative in channels like Team 2 operations.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Minimal blast radius: only audit summary rendering logic changed.
+    - Routing, permissions, and interaction flow are unchanged.
