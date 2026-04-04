@@ -7,7 +7,8 @@ const HOTEL_CHOICES = [
   { name: 'Ramada', value: 'RMDA' },
   { name: 'AD1', value: 'AD1' },
   { name: 'Travelodge', value: 'TRVL' },
-  { name: 'Day Inns Bishop', value: 'DIBS' }
+  { name: 'Day Inns Bishop', value: 'DIBS' },
+  { name: 'Prospero Flagship', value: 'PROS' }
 ];
 
 const commandData = [

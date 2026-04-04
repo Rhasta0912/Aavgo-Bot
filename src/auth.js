@@ -258,7 +258,8 @@ const ROLE_NAMES = {
     'RMDA': '1483418491464843345',
     'AD1': '1483418531180843049',
     'TRVL': '1484858995150684170',
-    'DIBS': '1482227230343041115'
+    'DIBS': '1482227230343041115',
+    'PROS': '1489855054134640740'
   },
   // Grey (Permanent / Assignment) Roles
   GREY: {
@@ -268,7 +269,8 @@ const ROLE_NAMES = {
     'RMDA': '1483430118016684135',
     'AD1': '1483430144449187923',
     'TRVL': '1484859243671847114',
-    'DIBS': '1483430045153362012'
+    'DIBS': '1483430045153362012',
+    'PROS': '1489855140767993997'
   }
 };
 
@@ -280,7 +282,8 @@ const HOTEL_NAMES = {
   'RMDA': 'Ramada',
   'AD1': 'AD1',
   'TRVL': 'Travelodge',
-  'DIBS': 'Day Inns Bishop'
+  'DIBS': 'Day Inns Bishop',
+  'PROS': 'Prospero Flagship'
 };
 const HOTEL_SELECT_EMOJIS = {
   BW_TO: '🏙️',
@@ -289,7 +292,8 @@ const HOTEL_SELECT_EMOJIS = {
   RMDA: '🛖',
   AD1: '📞',
   TRVL: '🏩',
-  DIBS: '🏨'
+  DIBS: '🏨',
+  PROS: '🏁'
 };
 // Map hotel IDs to log-in channel IDs
 const HOTEL_LOGIN_CHANNELS = {
@@ -299,7 +303,8 @@ const HOTEL_LOGIN_CHANNELS = {
   'RMDA': '1483417977859870881',
   'AD1': '1487252636959772702',
   'TRVL': '1483418055538376735',
-  'DIBS': '1487250154099703839'
+  'DIBS': '1487250154099703839',
+  'PROS': '1482249025016168448'
 };
 
 const APPROVAL_CHANNEL_ID = '1482240202503098398';
@@ -560,17 +565,30 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
       }
     } else if (forceManagerLog) {
       targetChannelId = AUDIT_LOG_CHANNEL_ID; // Ensure manager audit
-    } else if (hotelId && TEAM_1_HOTELS.includes(hotelId)) {
-      targetChannelId = TEAM_1_LOG_CHANNEL_ID;
+    } else if (hotelId) {
+      const normalizedHotelId = normalizeCombinedHotelId(hotelId);
+      const hotelTeam = normalizeTeamInput(
+        db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotelId)?.team
+      );
+      if (hotelTeam === 'Team 1') {
+        targetChannelId = TEAM_1_LOG_CHANNEL_ID;
+      } else if (hotelTeam === 'Team 2') {
+        targetChannelId = TEAM_2_OPERATIONS_CHANNEL_ID;
+      }
     } else if (userId) {
-      // Check if user is on an active Team 1 shift
+      // Check if user is on an active team hotel shift
       const agentSession = db.prepare(`
         SELECT hotel_id FROM sessions 
         WHERE agent_id = (SELECT id FROM agents WHERE discord_id = ?) 
         AND status = 'active'
       `).get(userId);
-      if (agentSession && TEAM_1_HOTELS.includes(agentSession.hotel_id)) {
+      const activeHotelTeam = normalizeTeamInput(
+        db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(agentSession?.hotel_id))?.team
+      );
+      if (activeHotelTeam === 'Team 1') {
         targetChannelId = TEAM_1_LOG_CHANNEL_ID;
+      } else if (activeHotelTeam === 'Team 2') {
+        targetChannelId = TEAM_2_OPERATIONS_CHANNEL_ID;
       }
     }
 
@@ -755,7 +773,7 @@ async function closeAllActiveSessionsForAgent(agentId, client) {
         if (agent && agent.team) {
           await updateTeamStatusEmbed(client, agent.team);
           // When a TL logs out, all their team's hotels must refresh to clear "TL on Shift"
-          const teamHotels = agent.team === 'Team 1' ? TEAM_1_HOTELS : [];
+          const teamHotels = getOperationalHotelIdsForTeam(agent.team);
           for (const teamHotelId of teamHotels) {
             await updateHotelStatusEmbed(client, teamHotelId).catch(e => {});
           }
@@ -1095,7 +1113,11 @@ function normalizeHotelInput(input) {
     TRAVELLODGE: 'TRVL',
     DAYINNSBISHOP: 'DIBS',
     DAYINNS: 'DIBS',
-    BISHOP: 'DIBS'
+    BISHOP: 'DIBS',
+    PROS: 'PROS',
+    PROSPERO: 'PROS',
+    PROSPEROFLAGSHIP: 'PROS',
+    FLAGSHIP: 'PROS'
   };
 
   return aliases[cleaned] || null;
@@ -1576,7 +1598,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   if (hotelId === 'TEAM_SHIFT') {
     await updateTeamStatusEmbed(interaction.client, agent.team);
-    const teamHotels = agent.team === 'Team 1' ? TEAM_1_HOTELS : [];
+    const teamHotels = getOperationalHotelIdsForTeam(agent.team);
     for (const hId of teamHotels) {
       updateHotelStatusEmbed(interaction.client, hId).catch(e => console.error(`[SYNC] Failed to update hotel ${hId}:`, e));
     }
@@ -1927,7 +1949,7 @@ async function updateHotelStatusEmbed(client, hotelId) {
 function getHotelStatusGroupsForTeam(teamName) {
   const teamHotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT' AND team = ?").all(teamName);
   const normalizedIds = [...new Set(teamHotels.map(row => normalizeCombinedHotelId(row.id)).filter(Boolean))];
-  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS'];
+  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'PROS'];
 
   const groups = normalizedIds
     .map(hotelId => getHotelStatusGroup(hotelId))
@@ -2094,13 +2116,19 @@ async function updateAllHotelStatusEmbed(client) {
       legacyConfigKey: 'hotel_status_board_msg',
       scopeLabel: 'All Team 1 hotel boards in one view'
     });
-
-    await upsertCombinedHotelStatusBoard(client, {
-      teamName: 'Team 2',
-      channelId: TEAM_2_OPERATIONS_CHANNEL_ID,
-      configKey: 'hotel_status_board_msg_team_2',
-      scopeLabel: 'All Team 2 hotel boards in one view'
-    });
+    // Team 2 uses per-hotel status cards in its own channel; remove any stale
+    // consolidated board pointer from previous behavior.
+    const team2CombinedRow = db.prepare("SELECT value FROM config WHERE key = ?").get('hotel_status_board_msg_team_2');
+    if (team2CombinedRow?.value) {
+      const team2Channel = await client.channels.fetch(TEAM_2_OPERATIONS_CHANNEL_ID).catch(() => null);
+      if (team2Channel?.isTextBased?.()) {
+        const staleMsg = await team2Channel.messages.fetch(team2CombinedRow.value).catch(() => null);
+        if (staleMsg) {
+          await staleMsg.delete().catch(() => {});
+        }
+      }
+      db.prepare("DELETE FROM config WHERE key = ?").run('hotel_status_board_msg_team_2');
+    }
   } catch (error) {
     console.warn('[STATUS] Failed to update combined hotel status embed:', error.message);
   } finally {
@@ -2125,7 +2153,8 @@ function buildAgentKioskPayload() {
       '> **5.** Team Leader / SME route: choose **Team 1 Shift** or **Team 2 Shift**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`'
+      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`\n' +
+      '**Team 2:** `Prospero Flagship`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -2352,7 +2381,7 @@ async function updateTeamStatusEmbed(client, teamName) {
       const hotelLabel = name === 'Team 1'
         ? getTeam1HotelSummary().map(h => `\`${h}\``).join(', ')
         : [
-            '`Team 2 Operations`',
+            '`Prospero Flagship`',
             `<#${TEAM_2_OPERATIONS_CHANNEL_ID}>`,
             `Permission Role: <@&${TEAM_2_PERMISSION_ROLE_ID}>`,
             `Ghost Role: <@&${TEAM_2_GHOST_ROLE_ID}>`
@@ -3063,6 +3092,17 @@ function resolveEffectiveTeamForAgent(agent, member) {
   const roleTeam = normalizeTeamInput(resolveTeamFromMemberRoles(member));
   const dbTeam = normalizeTeamInput(agent?.team);
   return roleTeam || dbTeam || null;
+}
+
+function getOperationalHotelIdsForTeam(teamName) {
+  const normalizedTeam = normalizeTeamInput(teamName);
+  if (!normalizedTeam) return [];
+
+  const rows = db.prepare("SELECT id FROM hotels WHERE team = ? AND id != 'TEAM_SHIFT'").all(normalizedTeam);
+  const normalizedIds = rows
+    .map(row => normalizeCombinedHotelId(row.id))
+    .filter(Boolean);
+  return [...new Set(normalizedIds)];
 }
 
 function filterHotelIdsByTeam(hotelIds, teamName) {
@@ -5217,7 +5257,7 @@ async function handleModalSubmit(interaction) {
     if (hotelId === 'TEAM_SHIFT') {
        await updateTeamStatusEmbed(interaction.client, agent.team);
        // Immediately refresh all hotel embeds for this team to show "Team Leader on Shift"
-       const teamHotels = agent.team === 'Team 1' ? TEAM_1_HOTELS : [];
+       const teamHotels = getOperationalHotelIdsForTeam(agent.team);
        for (const hId of teamHotels) {
          updateHotelStatusEmbed(interaction.client, hId).catch(e => console.error(`[SYNC] Failed to update hotel ${hId}:`, e));
        }
@@ -5307,7 +5347,7 @@ async function handleModalSubmit(interaction) {
     if (hotelId === 'TEAM_SHIFT') {
        await updateTeamStatusEmbed(interaction.client, agent.team);
        // Also refresh all hotels for this team
-       const teamHotels = agent.team === 'Team 1' ? TEAM_1_HOTELS : []; 
+       const teamHotels = getOperationalHotelIdsForTeam(agent.team); 
        for (const hId of teamHotels) {
          updateHotelStatusEmbed(interaction.client, hId).catch(e => console.error(`Failed to update hotel status embed for ${hId}:`, e));
        }
@@ -5519,12 +5559,19 @@ async function handleLogout(interaction) {
     }
 
     // Simple Notice (Public Team Log)
-    if (!practiceOnlyLogout && closedHotelIds.some(id => TEAM_1_HOTELS.includes(id))) {
+    const closedLiveHotelIds = closedHotelIds.filter(hotelId => {
+      const hotelTeam = normalizeTeamInput(
+        db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(hotelId))?.team
+      );
+      return hotelTeam === 'Team 1' || hotelTeam === 'Team 2';
+    });
+
+    if (!practiceOnlyLogout && closedLiveHotelIds.length > 0) {
       await sendAuditLog(interaction.client, {
         title: '🛑 Shift Ended',
         description: `**Agent:** ${nickname}\n${forceEndedByManager ? `**Ended By:** ${endedByName}\n` : ''}**Hotel(s):** ${hotelNames}\n**Duration:** ${durationStr}`,
         color: 0xED4245,
-        hotelId: closedHotelIds[0], // Routine routing
+        hotelId: closedLiveHotelIds[0], // Routine routing
         userId: targetDiscordId,
         guild: interaction.guild
       });

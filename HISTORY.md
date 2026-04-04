@@ -990,3 +990,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Team 2 board uses config key `hotel_status_board_msg_team_2`.
     - Team 1 board now uses key `hotel_status_board_msg_team_1` with legacy key migration from `hotel_status_board_msg`.
     - If a detected team has no mapped hotels yet, the UI now shows a safe “team hotels not ready” message instead of failing.
+- Added Team 2 hotel identity `Prospero Flagship` with per-hotel live status card routing (same format as existing hotel status cards).
+  - Summary: Introduced hotel ID `PROS` as Team 2 (`Prospero Flagship`) and mapped it to channel `1482249025016168448` with the provided Permission/Ghost role IDs. This enables the normal per-hotel status embed style (unstaffed/active card) in Team 2 channel, not just team context blocks. Initialize Shift team auto-detection now has a real Team 2 hotel to show and enforce, and Team 2 hotel picks are validated across assignment/confirm flows.
+  - Files touched:
+    - src/auth.js
+    - src/commands.js
+    - src/database.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Hotel name: `Prospero Flagship` (`PROS`)
+    - Permission role: `1489855054134640740`
+    - Ghost role: `1489855140767993997`
+    - Channel: `1482249025016168448`
+    - Team 2 consolidated-board post is now removed so Team 2 uses per-hotel cards in its channel.

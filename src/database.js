@@ -191,6 +191,8 @@ db.exec(`
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('DIBS', 'Day Inns Bishop', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
+  INSERT INTO hotels (id, name, team) VALUES ('PROS', 'Prospero Flagship', 'Team 2')
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('TEAM_SHIFT', 'Team Operations', 'Global')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
 
@@ -201,6 +203,7 @@ db.exec(`
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('AD1');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('TRVL');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('DIBS');
+  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('PROS');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('TEAM_SHIFT');
 
   -- Seed team_status
