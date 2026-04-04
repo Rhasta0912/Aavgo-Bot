@@ -958,3 +958,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - Keeps Components V2 containers/separators and advanced controls toggle.
     - Keeps timeout-safe single-message interaction flow and compatibility IDs.
+- Activated Team 2 operations context in the management status board and team-shift audit routing.
+  - Summary: Replaced the Team 2 `Placeholder for future` block in the Team Leader status board with live Team 2 operational context using the provided channel and role IDs. Team-shift audit routing now checks the active manager's team and sends Team 2 management shift logs to channel `1482249025016168448` (while Team 1 keeps existing routing).
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Team 2 context used:
+      - Permission role: `1489855054134640740`
+      - Ghost role: `1489855140767993997`
+      - Channel: `1482249025016168448`
+    - No slash command surface changes.

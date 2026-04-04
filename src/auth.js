@@ -307,6 +307,9 @@ const PROMOTION_REVIEW_CHANNEL_ID = '1483405048309354497';
 const AUDIT_LOG_CHANNEL_ID = '1482239767134339182';
 const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
+const TEAM_2_OPERATIONS_CHANNEL_ID = '1482249025016168448';
+const TEAM_2_PERMISSION_ROLE_ID = '1489855054134640740';
+const TEAM_2_GHOST_ROLE_ID = '1489855140767993997';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
@@ -549,6 +552,12 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
       targetChannelId = TRAINING_LOG_CHANNEL_ID;
     } else if (hotelId === 'TEAM_SHIFT') {
       targetChannelId = TL_PORTAL_CHANNEL_ID;
+      if (userId) {
+        const team = db.prepare("SELECT team FROM agents WHERE discord_id = ?").get(userId)?.team;
+        if (team === 'Team 2') {
+          targetChannelId = TEAM_2_OPERATIONS_CHANNEL_ID;
+        }
+      }
     } else if (forceManagerLog) {
       targetChannelId = AUDIT_LOG_CHANNEL_ID; // Ensure manager audit
     } else if (hotelId && TEAM_1_HOTELS.includes(hotelId)) {
@@ -2250,7 +2259,12 @@ async function updateTeamStatusEmbed(client, teamName) {
       const teamLabel = name === 'Team 1' ? 'Team 1' : 'Team 2';
       const hotelLabel = name === 'Team 1'
         ? getTeam1HotelSummary().map(h => `\`${h}\``).join(', ')
-        : '`Placeholder for future`';
+        : [
+            '`Team 2 Operations`',
+            `<#${TEAM_2_OPERATIONS_CHANNEL_ID}>`,
+            `Permission Role: <@&${TEAM_2_PERMISSION_ROLE_ID}>`,
+            `Ghost Role: <@&${TEAM_2_GHOST_ROLE_ID}>`
+          ].join('\n');
 
       const liveLines = loggedIn.length > 0
         ? loggedIn
