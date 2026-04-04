@@ -833,6 +833,11 @@ async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
     const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
     const rolesToRemove = [onShiftRole].filter(Boolean);
     const rolesToAdd = [loggedOutRole].filter(Boolean);
+    const memberTeamFromDb = normalizeTeamInput(
+      db.prepare("SELECT team FROM agents WHERE discord_id = ?").get(member.id)?.team
+    );
+    const memberTeamFromRoles = normalizeTeamInput(resolveTeamFromMemberRoles(member));
+    const effectiveMemberTeam = memberTeamFromDb || memberTeamFromRoles || null;
 
     for (const ref of hotelRefs) {
       const hId = typeof ref === 'string' ? ref : (ref?.hotel_id || ref?.hotelId || null);
@@ -840,6 +845,13 @@ async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
       const sessionKind = String(
         typeof ref === 'string' ? 'shift' : (ref?.session_kind || ref?.sessionKind || 'shift')
       ).toLowerCase();
+
+      if (hId === 'TEAM_SHIFT' && sessionKind !== 'training' && effectiveMemberTeam === 'Team 2') {
+        const team2PermissionRole = guild.roles.cache.get(TEAM_2_PERMISSION_ROLE_ID);
+        const team2GhostRole = guild.roles.cache.get(TEAM_2_GHOST_ROLE_ID);
+        if (team2PermissionRole) rolesToRemove.push(team2PermissionRole);
+        if (team2GhostRole) rolesToAdd.push(team2GhostRole);
+      }
 
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hId]);
       const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hId]);
@@ -1518,18 +1530,32 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const guild = interaction.guild;
     const onShift = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
     const loggedOut = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+    const loginTeamFromAgent = normalizeTeamInput(agent?.team);
+    const loginTeamFromRoles = normalizeTeamInput(resolveTeamFromMemberRoles(member));
+    const effectiveLoginTeam = loginTeamFromAgent || loginTeamFromRoles || null;
+    const team2PermissionRole = guild.roles.cache.get(TEAM_2_PERMISSION_ROLE_ID);
+    const team2GhostRole = guild.roles.cache.get(TEAM_2_GHOST_ROLE_ID);
 
     if (isTrainingSession) {
       // Training / practice sessions are role-neutral for Agents and Trainees.
-    } else if (
-      hotelId === 'TEAM_SHIFT' &&
-      (normalizedRole === 'sme' || normalizedRole === 'team_leader') &&
-      onShift &&
-      loggedOut
-    ) {
-      await member.roles.add([onShift]);
-      await member.roles.remove([loggedOut]);
-      console.log(`[ROLES] Management shift roles swapped for ${interaction.user.username}: +On-Shift, -Logged Out`);
+    } else if (hotelId === 'TEAM_SHIFT') {
+      if (
+        (normalizedRole === 'sme' || normalizedRole === 'team_leader') &&
+        onShift &&
+        loggedOut
+      ) {
+        await member.roles.add([onShift]);
+        await member.roles.remove([loggedOut]);
+        console.log(`[ROLES] Management shift roles swapped for ${interaction.user.username}: +On-Shift, -Logged Out`);
+      }
+
+      if (effectiveLoginTeam === 'Team 2' && team2PermissionRole) {
+        await member.roles.add([team2PermissionRole]);
+        if (team2GhostRole) {
+          await member.roles.remove([team2GhostRole]);
+        }
+        console.log(`[ROLES] Team 2 operations roles swapped for ${interaction.user.username}: +Permission, -Ghost`);
+      }
     } else if (hotelId !== 'TEAM_SHIFT') {
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);

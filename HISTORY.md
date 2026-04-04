@@ -970,3 +970,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
       - Ghost role: `1489855140767993997`
       - Channel: `1482249025016168448`
     - No slash command surface changes.
+- Completed Team 2 management role automation for `TEAM_SHIFT` login/logout.
+  - Summary: Team 2 management sessions now automatically swap Discord roles in both directions: on login, add Team 2 Permission and remove Team 2 Ghost; on logout/session close, remove Team 2 Permission and restore Team 2 Ghost. This keeps role state aligned with active management shifts and avoids manual role drift.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Team 2 Permission role: `1489855054134640740`
+    - Team 2 Ghost role: `1489855140767993997`
+    - Training sessions remain role-neutral and do not apply Team 2 permission/ghost swaps.
