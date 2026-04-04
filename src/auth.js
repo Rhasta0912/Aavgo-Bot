@@ -1924,62 +1924,88 @@ async function updateHotelStatusEmbed(client, hotelId) {
   }
 }
 
-async function updateAllHotelStatusEmbed(client) {
-  try {
-    if (combinedHotelStatusRefreshTimer) {
-      clearTimeout(combinedHotelStatusRefreshTimer);
-      combinedHotelStatusRefreshTimer = null;
-    }
+function getHotelStatusGroupsForTeam(teamName) {
+  const teamHotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT' AND team = ?").all(teamName);
+  const normalizedIds = [...new Set(teamHotels.map(row => normalizeCombinedHotelId(row.id)).filter(Boolean))];
+  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS'];
 
-    const channel = await client.channels.fetch(HOTEL_STATUS_CHANNEL_ID).catch(() => null);
-    if (!channel || !channel.isTextBased()) return;
+  const groups = normalizedIds
+    .map(hotelId => getHotelStatusGroup(hotelId))
+    .filter(Boolean)
+    .filter((group, index, arr) => arr.findIndex(entry => entry.key === group.key) === index);
 
-    const hotelGroups = [
-      { key: 'BW_TO', label: 'Indianhead/Magnuson' },
-      { key: 'RMDA', label: 'Ramada / Super 8' },
-      { key: 'GICP', label: 'The Garden Inn At Campsite' },
-      { key: 'AD1', label: 'AD1' },
-      { key: 'TRVL', label: 'Travelodge' },
-      { key: 'DIBS', label: 'Day Inns Bishop' }
-    ];
+  groups.sort((a, b) => {
+    const aIdx = order.indexOf(a.key);
+    const bIdx = order.indexOf(b.key);
+    const aRank = aIdx === -1 ? 999 : aIdx;
+    const bRank = bIdx === -1 ? 999 : bIdx;
+    if (aRank !== bRank) return aRank - bRank;
+    return String(a.label || a.key).localeCompare(String(b.label || b.key));
+  });
 
-    const allActiveSessions = db.prepare(`
-      SELECT s1.*, agents.discord_id, agents.username
-      FROM sessions s1
-      JOIN agents ON s1.agent_id = agents.id
-      WHERE s1.status = 'active'
+  return groups;
+}
+
+async function upsertCombinedHotelStatusBoard(client, {
+  teamName,
+  channelId,
+  configKey,
+  legacyConfigKey = null,
+  scopeLabel
+}) {
+  const channel = await client.channels.fetch(channelId).catch(() => null);
+  if (!channel || !channel.isTextBased()) return;
+
+  const hotelGroups = getHotelStatusGroupsForTeam(teamName);
+  const groupedSessions = new Map(hotelGroups.map(group => [group.key, []]));
+
+  const allActiveSessions = db.prepare(`
+    SELECT s1.*, agents.discord_id, agents.username
+    FROM sessions s1
+    JOIN agents ON s1.agent_id = agents.id
+    JOIN hotels ON hotels.id = s1.hotel_id
+    WHERE s1.status = 'active'
       AND COALESCE(s1.session_kind, 'shift') != 'training'
+      AND hotels.team = ?
       AND s1.id = (
         SELECT MAX(s2.id)
         FROM sessions s2
         WHERE s2.agent_id = s1.agent_id AND s2.status = 'active'
       )
-      ORDER BY s1.login_time DESC
-    `).all();
+    ORDER BY s1.login_time DESC
+  `).all(teamName);
 
-    const groupedSessions = new Map(hotelGroups.map(group => [group.key, []]));
-    for (const session of allActiveSessions) {
-      const group = getHotelStatusGroup(session.hotel_id);
-      if (!groupedSessions.has(group.key)) continue;
-      groupedSessions.get(group.key).push(session);
-    }
+  for (const session of allActiveSessions) {
+    const group = getHotelStatusGroup(session.hotel_id);
+    if (!groupedSessions.has(group.key)) continue;
+    groupedSessions.get(group.key).push(session);
+  }
 
-    const activeCount = allActiveSessions.length;
-    const hotelCount = hotelGroups.length;
-    const embed = new EmbedBuilder()
-      .setTitle('🏨 Aavgo Operations · Hotel Status')
-      .setDescription(
-        `### ${activeCount > 0 ? '✅ LIVE HOTEL PRESENCE' : '⚠️ NO ACTIVE HOTEL LOGINS'}\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `> 🏨 **Hotels Tracked:** ${hotelCount}\n` +
-        `> 👤 **Active Hotel Sessions:** ${activeCount}\n` +
-        `> 📍 **Scope:** All Team 1 hotel boards in one view\n` +
-        `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
-      )
-      .setColor(activeCount > 0 ? 0x57F287 : 0x2C2F33)
-      .setFooter({ text: 'Aavgo Operations • Consolidated Hotel Status' })
-      .setTimestamp();
+  const activeCount = allActiveSessions.length;
+  const hotelCount = hotelGroups.length;
+  const teamScopeLabel = scopeLabel || `All ${teamName} hotel boards in one view`;
 
+  const embed = new EmbedBuilder()
+    .setTitle('🏨 Aavgo Operations · Hotel Status')
+    .setDescription(
+      `### ${activeCount > 0 ? '✅ LIVE HOTEL PRESENCE' : '⚠️ NO ACTIVE HOTEL LOGINS'}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `> 🏨 **Hotels Tracked:** ${hotelCount}\n` +
+      `> 👤 **Active Hotel Sessions:** ${activeCount}\n` +
+      `> 📍 **Scope:** ${teamScopeLabel}\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+    )
+    .setColor(activeCount > 0 ? 0x57F287 : 0x2C2F33)
+    .setFooter({ text: `Aavgo Operations • Consolidated Hotel Status • ${teamName}` })
+    .setTimestamp();
+
+  if (hotelGroups.length === 0) {
+    embed.addFields({
+      name: `🏨 ${teamName}`,
+      value: '• No hotels are configured for this team yet.',
+      inline: false
+    });
+  } else {
     for (const group of hotelGroups) {
       const sessions = groupedSessions.get(group.key) || [];
       if (sessions.length === 0) {
@@ -2017,24 +2043,64 @@ async function updateAllHotelStatusEmbed(client) {
         inline: false
       });
     }
+  }
 
-    const configKey = 'hotel_status_board_msg';
-    const stored = db.prepare("SELECT value FROM config WHERE key = ?").get(configKey);
-    let existingMsg = null;
-    if (stored?.value) {
-      try {
-        existingMsg = await channel.messages.fetch(stored.value);
-      } catch (e) {
-        existingMsg = null;
+  let stored = db.prepare("SELECT value FROM config WHERE key = ?").get(configKey);
+  const usingLegacyKey = !stored?.value && legacyConfigKey;
+  if (!stored?.value && legacyConfigKey) {
+    stored = db.prepare("SELECT value FROM config WHERE key = ?").get(legacyConfigKey);
+  }
+
+  let existingMsg = null;
+  if (stored?.value) {
+    try {
+      existingMsg = await channel.messages.fetch(stored.value);
+    } catch (e) {
+      existingMsg = null;
+      db.prepare("DELETE FROM config WHERE key = ?").run(configKey);
+      if (legacyConfigKey) {
+        db.prepare("DELETE FROM config WHERE key = ?").run(legacyConfigKey);
       }
     }
+  }
 
-    if (existingMsg) {
-      await existingMsg.edit({ embeds: [embed] });
-    } else {
-      const newMsg = await channel.send({ embeds: [embed] });
-      db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(configKey, newMsg.id);
+  if (existingMsg) {
+    await existingMsg.edit({ embeds: [embed] });
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(configKey, existingMsg.id);
+    if (usingLegacyKey && legacyConfigKey) {
+      db.prepare("DELETE FROM config WHERE key = ?").run(legacyConfigKey);
     }
+    return;
+  }
+
+  const newMsg = await channel.send({ embeds: [embed] });
+  db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(configKey, newMsg.id);
+  if (usingLegacyKey && legacyConfigKey) {
+    db.prepare("DELETE FROM config WHERE key = ?").run(legacyConfigKey);
+  }
+}
+
+async function updateAllHotelStatusEmbed(client) {
+  try {
+    if (combinedHotelStatusRefreshTimer) {
+      clearTimeout(combinedHotelStatusRefreshTimer);
+      combinedHotelStatusRefreshTimer = null;
+    }
+
+    await upsertCombinedHotelStatusBoard(client, {
+      teamName: 'Team 1',
+      channelId: HOTEL_STATUS_CHANNEL_ID,
+      configKey: 'hotel_status_board_msg_team_1',
+      legacyConfigKey: 'hotel_status_board_msg',
+      scopeLabel: 'All Team 1 hotel boards in one view'
+    });
+
+    await upsertCombinedHotelStatusBoard(client, {
+      teamName: 'Team 2',
+      channelId: TEAM_2_OPERATIONS_CHANNEL_ID,
+      configKey: 'hotel_status_board_msg_team_2',
+      scopeLabel: 'All Team 2 hotel boards in one view'
+    });
   } catch (error) {
     console.warn('[STATUS] Failed to update combined hotel status embed:', error.message);
   } finally {
@@ -2993,6 +3059,25 @@ function getCombinedHotelLabel(hotelId) {
   return HOTEL_NAMES[normalizedHotelId] || normalizedHotelId;
 }
 
+function resolveEffectiveTeamForAgent(agent, member) {
+  const roleTeam = normalizeTeamInput(resolveTeamFromMemberRoles(member));
+  const dbTeam = normalizeTeamInput(agent?.team);
+  return roleTeam || dbTeam || null;
+}
+
+function filterHotelIdsByTeam(hotelIds, teamName) {
+  const uniqueHotelIds = [...new Set((hotelIds || [])
+    .map(normalizeCombinedHotelId)
+    .filter(id => !!id && id !== 'TEAM_SHIFT'))];
+  const normalizedTeam = normalizeTeamInput(teamName);
+  if (!normalizedTeam) return uniqueHotelIds;
+
+  return uniqueHotelIds.filter(hotelId => {
+    const row = db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId);
+    return normalizeTeamInput(row?.team) === normalizedTeam;
+  });
+}
+
 function buildHotelSelectionOptions(teamName) {
   const hotels = db.prepare('SELECT * FROM hotels WHERE team = ?').all(teamName);
   const options = [];
@@ -3685,12 +3770,29 @@ async function handleStartShiftClick(interaction) {
       });
     }
 
+    const effectiveTeam = resolveEffectiveTeamForAgent(agent, interaction.member);
+    if (!effectiveTeam) {
+      return sendPrivateFlowPayload(interaction, {
+        embeds: [buildAgentTeamRequiredEmbed()],
+        components: []
+      });
+    }
+
     // If the agent has multiple assigned grey hotel roles, let them pick the hotel for this shift.
-    const assignedHotelIds = getAssignedHotelIdsFromMemberRoles(interaction.member);
-    const permanentAssignedHotelIds = getAssignedGreyHotelIdsFromMemberRoles(interaction.member);
+    const assignedHotelIds = filterHotelIdsByTeam(
+      getAssignedHotelIdsFromMemberRoles(interaction.member),
+      effectiveTeam
+    );
+    const permanentAssignedHotelIds = filterHotelIdsByTeam(
+      getAssignedGreyHotelIdsFromMemberRoles(interaction.member),
+      effectiveTeam
+    );
     const compatibilityHotelIds = (() => {
       try {
-        return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
+        const compatibility = JSON.parse(agent.hotel_compatibility || '[]')
+          .map(normalizeCombinedHotelId)
+          .filter(Boolean);
+        return filterHotelIdsByTeam(compatibility, effectiveTeam);
       } catch {
         return [];
       }
@@ -3755,7 +3857,16 @@ async function handleStartShiftClick(interaction) {
           agent.hotel_id = normalizedHotelId;
        }
 
-       if (HOTEL_NAMES[agent.hotel_id]) {
+       const linkedHotelTeam = normalizeTeamInput(
+        db.prepare("SELECT team FROM hotels WHERE id = ?").get(agent.hotel_id)?.team
+       );
+       if (linkedHotelTeam && linkedHotelTeam !== effectiveTeam) {
+          db.prepare("UPDATE agents SET hotel_id = NULL WHERE discord_id = ?").run(interaction.user.id);
+          agent.hotel_id = null;
+       }
+
+       const linkedHotelExists = !!db.prepare("SELECT 1 AS ok FROM hotels WHERE id = ?").get(agent.hotel_id)?.ok;
+       if (linkedHotelExists) {
          const hotelSession = db.prepare(
             "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1"
           ).get(agent.hotel_id, agent.id);
@@ -3764,7 +3875,7 @@ async function handleStartShiftClick(interaction) {
             const otherAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(hotelSession.agent_id);
             const promptEmbed = new EmbedBuilder()
               .setTitle('âš ï¸ Overlapping Shift Detected')
-              .setDescription(`Agent **${otherAgent?.username || 'Unknown Agent'}** is currently logged into **${HOTEL_NAMES[agent.hotel_id]}**.\n\nAre you sure you want to take over this shift?`)
+              .setDescription(`Agent **${otherAgent?.username || 'Unknown Agent'}** is currently logged into **${getCombinedHotelLabel(agent.hotel_id)}**.\n\nAre you sure you want to take over this shift?`)
               .setColor(0xFEE75C);
 
             const takeOverBtn = new ButtonBuilder()
@@ -3794,7 +3905,7 @@ async function handleStartShiftClick(interaction) {
        }
     }
     
-    await showHotelSelection(interaction, agent.team, isEphemeralSourceInteraction(interaction));
+    await showHotelSelection(interaction, effectiveTeam, isEphemeralSourceInteraction(interaction));
 
   } catch (error) {
     console.error('Error in handleStartShiftClick:', error);
@@ -3850,6 +3961,20 @@ async function handleShiftHotelPickMenu(interaction) {
       return sendComponentReply(interaction, { content: 'You are not registered as an agent.', ephemeral: true });
     }
 
+    const effectiveTeam = resolveEffectiveTeamForAgent(agent, interaction.member);
+    if (!effectiveTeam) {
+      return sendComponentReply(interaction, { content: '⚠️ Team assignment missing. Please contact management.', ephemeral: true });
+    }
+    const selectedHotelTeam = normalizeTeamInput(
+      db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team
+    );
+    if (selectedHotelTeam && selectedHotelTeam !== effectiveTeam) {
+      return sendComponentReply(interaction, {
+        content: `❌ ${getCombinedHotelLabel(hotelId)} is not in your assigned team (${effectiveTeam}).`,
+        ephemeral: true
+      });
+    }
+
     const hotelSession = db.prepare(
       "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1"
     ).get(hotelId, agent.id);
@@ -3875,10 +4000,16 @@ async function handleShiftHotelPickMenu(interaction) {
       });
     }
 
-    const assignedHotelIds = getAssignedHotelIdsFromMemberRoles(interaction.member);
+    const assignedHotelIds = filterHotelIdsByTeam(
+      getAssignedHotelIdsFromMemberRoles(interaction.member),
+      effectiveTeam
+    );
     const compatibilityHotelIds = (() => {
       try {
-        return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
+        const compatibility = JSON.parse(agent.hotel_compatibility || '[]')
+          .map(normalizeCombinedHotelId)
+          .filter(Boolean);
+        return filterHotelIdsByTeam(compatibility, effectiveTeam);
       } catch {
         return [];
       }
@@ -4036,6 +4167,31 @@ async function handleTeamSelect(interaction) {
 // ─── Hotel Selection View (Premium Select Menu) ──────────────────────────
 async function showHotelSelection(interaction, teamName, isUpdate = false) {
   const hotels = buildHotelSelectionOptions(teamName);
+  const sendPayload = async (payload) => {
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply(payload);
+    } else if (isUpdate) {
+      await interaction.update(payload);
+    } else {
+      await interaction.reply(payload);
+    }
+  };
+
+  if (hotels.length === 0) {
+    const emptyEmbed = new EmbedBuilder()
+      .setTitle('🏨 Team Hotels Not Ready')
+      .setDescription(
+        `### ${teamName} has no mapped hotels yet\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `> We auto-detected your team as **${teamName}**.\n` +
+        `> No hotel assignments are currently configured for this team.\n` +
+        `> Please contact an Operations Manager or Developer.\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━`
+      )
+      .setColor(0xFEE75C);
+
+    return sendPayload({ content: null, embeds: [emptyEmbed], components: [], ephemeral: true });
+  }
 
   const selectMenu = new StringSelectMenuBuilder()
     .setCustomId('hotel_select_menu')
@@ -4063,14 +4219,7 @@ async function showHotelSelection(interaction, teamName, isUpdate = false) {
     .setColor(0x57F287);
 
   const payload = { content: null, embeds: [embed], components: [new ActionRowBuilder().addComponents(selectMenu)], ephemeral: true };
-
-  if (interaction.deferred || interaction.replied) {
-    await interaction.editReply(payload);
-  } else if (isUpdate) {
-    await interaction.update(payload);
-  } else {
-    await interaction.reply(payload);
-  }
+  await sendPayload(payload);
 }
 
 // ─── Hotel Select Buttons (Confirmation Step) ────────
@@ -4616,6 +4765,21 @@ async function handleConfirmHotelLink(interaction) {
 
     if (!agent) {
       return sendComponentReply(interaction, { content: 'Account error. Please contact a developer.', ephemeral: true });
+    }
+
+    const effectiveTeam = resolveEffectiveTeamForAgent(agent, interaction.member);
+    if (!effectiveTeam) {
+      return sendComponentUpdate(interaction, { content: '⚠️ Team assignment missing. Please contact management.', embeds: [], components: [] });
+    }
+    const selectedHotelTeam = normalizeTeamInput(
+      db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team
+    );
+    if (selectedHotelTeam && selectedHotelTeam !== effectiveTeam) {
+      return sendComponentUpdate(interaction, {
+        content: `❌ ${getCombinedHotelLabel(hotelId)} is not in your assigned team (${effectiveTeam}).`,
+        embeds: [],
+        components: []
+      });
     }
 
     // [Safety] Check if locked during the confirmation delay
@@ -8146,6 +8310,7 @@ async function handleHotelStatusRefresh(interaction) {
       for (const h of hotels) {
         await updateHotelStatusEmbed(interaction.client, h.id);
       }
+      await updateAllHotelStatusEmbed(interaction.client);
       await updateTeamStatusEmbed(interaction.client, 'Team 1');
       await updateTeamStatusEmbed(interaction.client, 'Team 2');
       await interaction.editReply({ content: '✅ Successfully refreshed all hotel and team status embeds.' });
@@ -9074,10 +9239,25 @@ async function handleSameHotelConfirm(interaction) {
       });
     }
 
-    const assignedHotelIds = getAssignedHotelIdsFromMemberRoles(interaction.member);
+    const effectiveTeam = resolveEffectiveTeamForAgent(agent, interaction.member);
+    if (!effectiveTeam) {
+      return sendPrivateFlowPayload(interaction, {
+        content: 'Team assignment missing. Please contact management.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    const assignedHotelIds = filterHotelIdsByTeam(
+      getAssignedHotelIdsFromMemberRoles(interaction.member),
+      effectiveTeam
+    );
     const compatibilityHotelIds = (() => {
       try {
-        return JSON.parse(agent.hotel_compatibility || '[]').map(normalizeCombinedHotelId).filter(Boolean);
+        const compatibility = JSON.parse(agent.hotel_compatibility || '[]')
+          .map(normalizeCombinedHotelId)
+          .filter(Boolean);
+        return filterHotelIdsByTeam(compatibility, effectiveTeam);
       } catch {
         return [];
       }
@@ -9104,6 +9284,17 @@ async function handleSameHotelConfirm(interaction) {
     const hotelId = normalizeCombinedHotelId(hotelIdRaw);
     const allowMultiHotel = false;
 
+    const selectedHotelTeam = normalizeTeamInput(
+      db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team
+    );
+    if (selectedHotelTeam && selectedHotelTeam !== effectiveTeam) {
+      return sendPrivateFlowPayload(interaction, {
+        content: `${getCombinedHotelLabel(hotelId)} is not in your assigned team (${effectiveTeam}).`,
+        embeds: [],
+        components: []
+      });
+    }
+
     return sendComponentUpdate(interaction, buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
   } catch (error) {
     if (error?.code === 10062) {
@@ -9118,10 +9309,24 @@ async function handleHotelSelectMenu(interaction) {
   try {
     await safeDeferComponentUpdate(interaction);
 
-    const hotelId = interaction.values[0];
+    const hotelId = normalizeCombinedHotelId(interaction.values[0]);
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
     if (!agent) {
       return sendComponentReply(interaction, { content: '❌ You are not registered as an agent.', ephemeral: true });
+    }
+
+    const effectiveTeam = resolveEffectiveTeamForAgent(agent, interaction.member);
+    if (!effectiveTeam) {
+      return sendComponentReply(interaction, { content: '⚠️ Team assignment missing. Please contact management.', ephemeral: true });
+    }
+    const selectedHotelTeam = normalizeTeamInput(
+      db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team
+    );
+    if (selectedHotelTeam && selectedHotelTeam !== effectiveTeam) {
+      return sendComponentReply(interaction, {
+        content: `❌ ${getCombinedHotelLabel(hotelId)} is not in your assigned team (${effectiveTeam}).`,
+        ephemeral: true
+      });
     }
 
     if (agent.hotel_id) {

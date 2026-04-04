@@ -980,3 +980,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Team 2 Permission role: `1489855054134640740`
     - Team 2 Ghost role: `1489855140767993997`
     - Training sessions remain role-neutral and do not apply Team 2 permission/ghost swaps.
+- Added Team 2 hotel status board output and strict team-based Initialize Shift hotel filtering.
+  - Summary: The consolidated hotel status board now publishes for both teams: Team 1 keeps its existing board channel, and Team 2 now gets the same board format in channel `1482249025016168448`. Initialize Shift now auto-detects the user team and only allows that team’s hotels in all assignment steps (initial menu, assigned-hotel picker, same-hotel confirm, and final link confirmation), including tamper-safe validation so cross-team hotel picks are blocked.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Team 2 board uses config key `hotel_status_board_msg_team_2`.
+    - Team 1 board now uses key `hotel_status_board_msg_team_1` with legacy key migration from `hotel_status_board_msg`.
+    - If a detected team has no mapped hotels yet, the UI now shows a safe “team hotels not ready” message instead of failing.
