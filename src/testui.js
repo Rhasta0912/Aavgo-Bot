@@ -2,374 +2,361 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ContainerBuilder,
+  EmbedBuilder,
   MessageFlags,
-  SectionBuilder,
-  SeparatorBuilder,
-  SeparatorSpacingSize,
   StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder,
-  TextDisplayBuilder,
-  ThumbnailBuilder
+  StringSelectMenuOptionBuilder
 } = require('discord.js');
 
-const COMPONENTS_V2_FLAGS = MessageFlags.IsComponentsV2;
-const EPHEMERAL_COMPONENTS_V2_FLAGS = MessageFlags.Ephemeral | MessageFlags.IsComponentsV2;
-const DEFAULT_UI_TEAM_LABEL = 'Team 1';
+const EPHEMERAL_FLAGS = MessageFlags.Ephemeral;
+const DIVIDER = '────────────────────────';
 
-const TEST_UI_MODE = {
-  simple: 'simple',
-  advanced: 'advanced'
+const TEST_UI_VARIANTS = {
+  idle: 'idle',
+  active: 'active'
 };
 
 const TEST_UI_THEMES = {
-  aavgo: {
-    label: 'Aavgo Ops Amber',
-    shortDescription: 'Warm operations dashboard look',
-    mood: 'Reliable and grounded',
-    color: 0xF1C40F,
-    surface: '#1F2937',
-    accent: '#F1C40F',
-    text: '#F9FAFB',
-    muted: '#9CA3AF',
-    radius: '10px',
-    iconUrl: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f7e1.png'
-  },
-  vercel: {
-    label: 'Vercel Mono',
-    shortDescription: 'Minimal black and white',
-    mood: 'Calm and technical',
-    color: 0x111111,
-    surface: '#0A0A0A',
-    accent: '#FFFFFF',
-    text: '#FAFAFA',
-    muted: '#A3A3A3',
-    radius: '8px',
-    iconUrl: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/26ab.png'
-  },
-  stripe: {
-    label: 'Stripe Gradient',
-    shortDescription: 'Bright and polished fintech',
-    mood: 'Confident and modern',
-    color: 0x635BFF,
-    surface: '#1B1642',
-    accent: '#635BFF',
-    text: '#E7E9FF',
-    muted: '#B8BEEA',
-    radius: '12px',
-    iconUrl: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f535.png'
-  },
-  notion: {
-    label: 'Notion Warm',
-    shortDescription: 'Soft paper-like neutral',
-    mood: 'Readable and gentle',
-    color: 0x2F3437,
-    surface: '#F7F6F3',
-    accent: '#2F3437',
-    text: '#191919',
-    muted: '#6B6F76',
-    radius: '6px',
-    iconUrl: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/26aa.png'
-  }
-};
-
-const TEST_UI_PROFILE = {
-  audience: 'Beginner-first staff flow',
-  styleBlend: 'Ops Warm + Clean Minimal',
-  spacing: 'Cozy default spacing',
-  language: 'Plain + short labels',
-  states: 'Strong color-coded status cues',
-  icons: 'Moderate icon usage',
-  flow: 'Single-card interaction (replace, do not stack)',
-  confirms: 'Confirm important + destructive actions',
-  errors: 'Short cause + clear retry'
-};
-
-const TEST_UI_VIEWS = {
-  overview: {
-    label: 'Overview',
-    pickerHint: 'Clean hotel assignment card',
-    summary: 'Single-task card with one clear dropdown action.',
-    goal: 'Keep hotel selection obvious for new users.',
-    primaryAction: 'Choose Hotel',
-    secondaryAction: 'Open Lab Controls',
-    beginnerCopy: 'Use the dropdown below to choose your hotel assignment.',
-    previewLines: [
-      'Header: Choose Your Hotel Location',
-      'Section: Assignment Selection - Team 1',
-      'Action: Choose your hotel assignment...'
-    ]
-  },
-  login: {
-    label: 'Login Portal',
-    pickerHint: 'PIN-first setup and route picker',
-    summary: 'Tests the PIN-first flow card and role-aware routing language.',
-    goal: 'Prevent wrong-route clicks while keeping language beginner-friendly.',
-    primaryAction: 'Continue with PIN',
-    secondaryAction: 'Need Help',
-    beginnerCopy: 'Start by confirming your PIN, then choose the path that matches your current role.',
-    previewLines: [
-      'Step 1: Verify PIN',
-      'Step 2: Pick Route (Agent / Team Leader / SME)',
-      'Step 3: Choose Live -> Hotel Shift or Practice -> Training'
-    ]
-  },
-  status: {
-    label: 'Live Status',
-    pickerHint: 'On-shift board and health signals',
-    summary: 'Tests readability for active coverage boards and activity strips.',
-    goal: 'Let management scan who is online/offline without opening profiles.',
-    primaryAction: 'Refresh Status',
-    secondaryAction: 'Open Shift Card',
-    beginnerCopy: 'Green means active, yellow means caution, red means needs attention now.',
-    previewLines: [
-      'Board: Team 1 / Team 2 / Training',
-      'Rows: Agent Name, Hotel, Last Activity, State',
-      'Controls: Refresh | Filter Team | View Details'
-    ]
-  },
-  approval: {
-    label: 'Approval Flow',
-    pickerHint: 'Promotion and admin confirmation cards',
-    summary: 'Tests action clarity for approve/deny requests with audit context.',
-    goal: 'Make approval decisions obvious and reduce accidental clicks.',
-    primaryAction: 'Approve Request',
-    secondaryAction: 'Deny Request',
-    beginnerCopy: 'Review who requested it, what role is requested, and why, then approve or deny.',
-    previewLines: [
-      'Request: Promote User -> Operations Manager',
-      'Required: 1 Developer + 1 Operations Manager',
-      'Actions: Approve | Deny | View Reason'
-    ]
-  },
-  alert: {
-    label: 'Alert States',
-    pickerHint: 'Warnings, failures, and recovery cues',
-    summary: 'Tests how warning/error cards feel during incidents and timeouts.',
-    goal: 'Show what happened, what to do next, and who to contact.',
-    primaryAction: 'Retry Step',
-    secondaryAction: 'Escalate',
-    beginnerCopy: 'If this keeps happening, contact a Developer or Operations Manager with the timestamp.',
-    previewLines: [
-      'Warning: Slow response detected',
-      'Error: Interaction expired (safe retry offered)',
-      'Recovery: Retry | Open Status | Contact Staff'
-    ]
-  }
-};
-
-const TEST_UI_DEMO_HOTELS = {
-  bw_to: {
-    label: 'Indianhead / Magnuson',
-    short: 'Indianhead/Magnuson',
-    emoji: '🏨'
-  },
-  gicp: {
-    label: 'The Garden Inn At Campsite',
-    short: 'Garden Inn',
-    emoji: '🌿'
-  },
-  rmda_sup8: {
-    label: 'Ramada / Super 8',
-    short: 'Ramada/Super 8',
-    emoji: '🛎️'
-  },
-  ad1: {
-    label: 'AD1',
-    short: 'AD1',
-    emoji: '📞'
-  }
+  aavgo: { label: 'Aavgo Ops Amber', color: 0xF1C40F },
+  vercel: { label: 'Vercel Mono', color: 0x9CA3AF },
+  stripe: { label: 'Stripe Gradient', color: 0x635BFF },
+  notion: { label: 'Notion Warm', color: 0x2F3437 }
 };
 
 const TEST_UI_DENSITIES = {
-  cozy: {
-    label: 'Cozy',
-    summary: 'More breathing room for newer users.',
-    spacing: '16-20px blocks, larger labels'
+  cozy: { label: 'Cozy' },
+  compact: { label: 'Compact' }
+};
+
+const TEST_UI_SCREENS = {
+  hotel_status: {
+    label: 'Hotel Status Card'
   },
-  compact: {
-    label: 'Compact',
-    summary: 'Denser layout for experienced staff.',
-    spacing: '8-12px blocks, shorter labels'
+  training_status: {
+    label: 'Training Status Card'
+  },
+  training_started: {
+    label: 'Training Started Log'
+  },
+  newcomer: {
+    label: 'Newcomer Joined Card'
   }
 };
 
-function normalizeTestUiTheme(themeKey) {
-  const key = String(themeKey || '').trim().toLowerCase();
-  if (TEST_UI_THEMES[key]) return key;
-  return 'aavgo';
+const DEMO_HOTELS = {
+  bw_to: { id: 'BW_TO', label: 'Indianhead/Magnuson', team: 'Team 1', emoji: '🏨' },
+  rmda_sup8: { id: 'RMDA', label: 'Ramada / Super 8', team: 'Team 1', emoji: '🏠' },
+  gicp: { id: 'GICP', label: 'The Garden Inn At Campsite', team: 'Team 1', emoji: '🏨' },
+  ad1: { id: 'AD1', label: 'AD1', team: 'Team 1', emoji: '📞' },
+  trvl: { id: 'TRVL', label: 'Travelodge', team: 'Team 1', emoji: '🏩' },
+  dibs: { id: 'DIBS', label: 'Day Inns Bishop', team: 'Team 1', emoji: '🏨' },
+  qi_rv: { id: 'QI_RV', label: 'Quality-Inn-Russelville', team: 'Team 1', emoji: '🏨' },
+  pros: { id: 'PROS', label: 'Prospero Flagship', team: 'Team 2', emoji: '🏨' }
+};
+
+const TEAM_1_HOTEL_KEYS = ['bw_to', 'rmda_sup8', 'gicp', 'ad1', 'trvl', 'dibs', 'qi_rv'];
+const TEAM_2_HOTEL_KEYS = ['pros'];
+
+function normalizeTheme(themeKey) {
+  const normalized = String(themeKey || '').trim().toLowerCase();
+  return TEST_UI_THEMES[normalized] ? normalized : 'aavgo';
 }
 
-function normalizeTestUiView(view) {
-  const normalized = String(view || '').trim().toLowerCase();
-  if (normalized === 'components') return 'status'; // legacy mapping
-  if (TEST_UI_VIEWS[normalized]) return normalized;
-  return 'overview';
+function normalizeDensity(densityKey) {
+  const normalized = String(densityKey || '').trim().toLowerCase();
+  return TEST_UI_DENSITIES[normalized] ? normalized : 'cozy';
 }
 
-function normalizeTestUiDensity(density) {
-  const normalized = String(density || '').trim().toLowerCase();
-  if (TEST_UI_DENSITIES[normalized]) return normalized;
-  return 'cozy';
+function normalizeVariant(variantKey) {
+  const normalized = String(variantKey || '').trim().toLowerCase();
+  return normalized === TEST_UI_VARIANTS.active ? TEST_UI_VARIANTS.active : TEST_UI_VARIANTS.idle;
 }
 
-function normalizeTestUiMode(mode) {
-  const normalized = String(mode || '').trim().toLowerCase();
-  if (normalized === TEST_UI_MODE.advanced || normalized === 'adv') return TEST_UI_MODE.advanced;
-  return TEST_UI_MODE.simple;
+function normalizeHotel(hotelKey) {
+  const normalized = String(hotelKey || '').trim().toLowerCase();
+  return DEMO_HOTELS[normalized] ? normalized : 'bw_to';
 }
 
-function normalizeTestUiHotel(hotel) {
-  const normalized = String(hotel || '').trim().toLowerCase();
-  if (TEST_UI_DEMO_HOTELS[normalized]) return normalized;
-  return 'bw_to';
+function normalizeScreen(screenKey) {
+  const normalized = String(screenKey || '').trim().toLowerCase();
+  if (normalized === 'overview') return 'hotel_status';
+  if (normalized === 'status') return 'training_status';
+  if (normalized === 'login') return 'training_started';
+  if (normalized === 'approval') return 'newcomer';
+  if (normalized === 'alert') return 'hotel_status';
+  return TEST_UI_SCREENS[normalized] ? normalized : 'hotel_status';
 }
 
-function pickRandomTestUiState() {
-  const themes = Object.keys(TEST_UI_THEMES);
-  const views = Object.keys(TEST_UI_VIEWS);
-  const densities = Object.keys(TEST_UI_DENSITIES);
-  const hotels = Object.keys(TEST_UI_DEMO_HOTELS);
+function buildState({
+  screenKey = 'hotel_status',
+  themeKey = 'aavgo',
+  densityKey = 'cozy',
+  hotelKey = 'bw_to',
+  variantKey = TEST_UI_VARIANTS.idle
+} = {}) {
   return {
-    themeKey: themes[Math.floor(Math.random() * themes.length)] || 'aavgo',
-    viewKey: views[Math.floor(Math.random() * views.length)] || 'overview',
-    densityKey: densities[Math.floor(Math.random() * densities.length)] || 'cozy',
-    hotelKey: hotels[Math.floor(Math.random() * hotels.length)] || 'bw_to'
+    screenKey: normalizeScreen(screenKey),
+    themeKey: normalizeTheme(themeKey),
+    densityKey: normalizeDensity(densityKey),
+    hotelKey: normalizeHotel(hotelKey),
+    variantKey: normalizeVariant(variantKey)
   };
 }
 
-function buildTestUiPreviewText(viewKey, densityKey) {
-  const view = TEST_UI_VIEWS[viewKey] || TEST_UI_VIEWS.overview;
-  const density = TEST_UI_DENSITIES[densityKey] || TEST_UI_DENSITIES.cozy;
-  const lines = Array.isArray(view.previewLines) ? view.previewLines : [];
-  const formattedLines = lines.length ? lines.map(line => `- ${line}`).join('\n') : '- Preview unavailable';
-  return `${formattedLines}\n- Density Profile: ${density.label} (${density.spacing})`;
+function getNextTheme(themeKey) {
+  const keys = Object.keys(TEST_UI_THEMES);
+  const currentIndex = Math.max(0, keys.indexOf(normalizeTheme(themeKey)));
+  const nextIndex = (currentIndex + 1) % keys.length;
+  return keys[nextIndex] || 'aavgo';
 }
 
-function buildStateLegend(viewKey) {
-  if (viewKey === 'alert') {
-    return [
-      '🟢 Recovery Ready: Safe retry is available',
-      '🟡 Watch: Slow response or missing step',
-      '🔴 Action Needed: Interaction expired, restart flow'
-    ].join('\n');
-  }
+function randomState() {
+  const screenKeys = Object.keys(TEST_UI_SCREENS);
+  const themeKeys = Object.keys(TEST_UI_THEMES);
+  const densityKeys = Object.keys(TEST_UI_DENSITIES);
+  const hotelKeys = Object.keys(DEMO_HOTELS);
+  return buildState({
+    screenKey: screenKeys[Math.floor(Math.random() * screenKeys.length)],
+    themeKey: themeKeys[Math.floor(Math.random() * themeKeys.length)],
+    densityKey: densityKeys[Math.floor(Math.random() * densityKeys.length)],
+    hotelKey: hotelKeys[Math.floor(Math.random() * hotelKeys.length)],
+    variantKey: Math.random() >= 0.5 ? TEST_UI_VARIANTS.active : TEST_UI_VARIANTS.idle
+  });
+}
 
-  if (viewKey === 'approval') {
-    return [
-      '🟢 Approved: Request passed required checks',
-      '🟡 Pending: Waiting for dual approval',
-      '🔴 Blocked: Requirement or policy failed'
-    ].join('\n');
-  }
+function getHotelKeysForScope(hotelKey) {
+  const selectedHotel = DEMO_HOTELS[normalizeHotel(hotelKey)] || DEMO_HOTELS.bw_to;
+  if (selectedHotel.team === 'Team 2') return TEAM_2_HOTEL_KEYS;
+  return TEAM_1_HOTEL_KEYS;
+}
 
-  return [
-    '🟢 Good: User can move forward now',
-    '🟡 Caution: Review before continuing',
-    '🔴 Action Needed: Retry or escalate'
+function getScopedTeamLabel(hotelKey) {
+  const selectedHotel = DEMO_HOTELS[normalizeHotel(hotelKey)] || DEMO_HOTELS.bw_to;
+  return selectedHotel.team;
+}
+
+function getDisplayTimestamp(date = new Date()) {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(date);
+}
+
+function compactLine(prefix, value, densityKey) {
+  if (densityKey === 'compact') return `${prefix}:${value}`;
+  return `${prefix}: ${value}`;
+}
+
+function buildHotelStatusEmbed(state, interaction) {
+  const scopeHotelKeys = getHotelKeysForScope(state.hotelKey);
+  const teamLabel = getScopedTeamLabel(state.hotelKey);
+  const isActive = state.variantKey === TEST_UI_VARIANTS.active;
+  const activeHotelKey = scopeHotelKeys.includes(state.hotelKey) ? state.hotelKey : scopeHotelKeys[0];
+  const activeCount = isActive ? 1 : 0;
+
+  const hotelLines = scopeHotelKeys.map(hotelKey => {
+    const hotel = DEMO_HOTELS[hotelKey];
+    const activityLine = isActive && hotelKey === activeHotelKey
+      ? `• <@${interaction.user.id}> | on shift now`
+      : '• No active agent';
+    return `${hotel.emoji} **${hotel.label}**\n${activityLine}`;
+  }).join('\n\n');
+
+  const heading = isActive ? '🟢 ACTIVE HOTEL LOGINS' : '⚠️ NO ACTIVE HOTEL LOGINS';
+  const body = [
+    `### ${heading}`,
+    DIVIDER,
+    compactLine('🏨 Hotels Tracked', String(scopeHotelKeys.length), state.densityKey),
+    compactLine('👥 Active Hotel Sessions', String(activeCount), state.densityKey),
+    compactLine('📍 Scope', `All ${teamLabel} hotel boards in one view`, state.densityKey),
+    DIVIDER,
+    hotelLines
   ].join('\n');
+
+  return new EmbedBuilder()
+    .setTitle('🏨 Aavgo Operations · Hotel Status')
+    .setDescription(body)
+    .setColor(isActive ? 0x57F287 : 0xF1C40F)
+    .setFooter({ text: `Aavgo Operations • Consolidated Hotel Status • ${teamLabel}` })
+    .setTimestamp();
 }
 
-function buildTextDisplay(content) {
-  return new TextDisplayBuilder().setContent(content);
+function buildTrainingGroups(state) {
+  const base = {
+    bw_to: [
+      { agent: '@Charlyn Quilos', since: '2 hours ago' },
+      { agent: '@Rodjon Eamiguel', since: '2 hours ago' }
+    ],
+    rmda_sup8: [{ agent: '@Testing Bot', since: '6 hours ago' }],
+    gicp: [
+      { agent: '@Ariane', since: '4 hours ago' },
+      { agent: '@Kenzo Bernabe', since: '4 hours ago' }
+    ],
+    ad1: [{ agent: '@Portia Ebol', since: '21 minutes ago' }],
+    trvl: [],
+    dibs: [],
+    qi_rv: [],
+    pros: []
+  };
+
+  if (state.variantKey !== TEST_UI_VARIANTS.active) {
+    return Object.fromEntries(Object.keys(base).map(key => [key, []]));
+  }
+
+  if (state.hotelKey === 'pros') {
+    base.pros = [{ agent: '@Portia Ebol', since: '12 minutes ago' }];
+  }
+
+  return base;
 }
 
-function buildSoftSeparator(spacing = SeparatorSpacingSize.Large, divider = false) {
-  return new SeparatorBuilder()
-    .setDivider(Boolean(divider))
-    .setSpacing(spacing);
+function buildTrainingStatusEmbed(state) {
+  const groups = buildTrainingGroups(state);
+  const hotelOrder = [...TEAM_1_HOTEL_KEYS, ...TEAM_2_HOTEL_KEYS];
+  let activeCount = 0;
+
+  const groupLines = hotelOrder.map(hotelKey => {
+    const hotel = DEMO_HOTELS[hotelKey];
+    const trainees = groups[hotelKey] || [];
+    activeCount += trainees.length;
+
+    const traineeLines = trainees.length > 0
+      ? trainees.map(entry => `• ${entry.agent} | Since: ${entry.since}`).join('\n')
+      : '• No active trainee';
+
+    return `${hotel.emoji} **${hotel.label}**\n${traineeLines}`;
+  }).join('\n\n');
+
+  const statusHeading = activeCount > 0 ? '🟦 TRAINING IN PROGRESS' : '⚫ TRAINING BOARD IDLE';
+  const body = [
+    `### ${statusHeading}`,
+    DIVIDER,
+    compactLine('🤖 Board', 'Live training presence tracker', state.densityKey),
+    compactLine('👥 Active Trainees', String(activeCount), state.densityKey),
+    compactLine('📍 Scope', 'Team 1 and Team 2 training groups', state.densityKey),
+    DIVIDER,
+    groupLines
+  ].join('\n');
+
+  return new EmbedBuilder()
+    .setTitle('🧪 Aavgo Operations · Training Status')
+    .setDescription(body)
+    .setColor(activeCount > 0 ? 0x5865F2 : 0x2B2D31)
+    .setFooter({ text: 'Aavgo Operations • Training Presence' })
+    .setTimestamp();
 }
 
-function getDefaultViewAccent(theme, viewKey) {
-  if (viewKey === 'overview') return 0x06B6D4;
-  if (viewKey === 'alert') return 0xEF4444;
-  if (viewKey === 'approval') return 0xF59E0B;
-  return theme.color;
+function buildTrainingStartedEmbed(state, interaction) {
+  const hotel = DEMO_HOTELS[state.hotelKey] || DEMO_HOTELS.bw_to;
+  const agentLabel = interaction.member?.displayName || interaction.user?.username || 'Unknown Agent';
+  const timeLabel = getDisplayTimestamp();
+
+  return new EmbedBuilder()
+    .setTitle('🧭 Training Started')
+    .setDescription(`User: ${agentLabel} (<@${interaction.user.id}>) | Practice For: ${hotel.id === 'RMDA' ? 'Ramada / Super 8' : hotel.id} | Time: ${timeLabel}`)
+    .addFields(
+      { name: 'User', value: `${agentLabel} (<@${interaction.user.id}>)`, inline: true },
+      { name: 'Practice For', value: hotel.id === 'RMDA' ? 'Ramada / Super 8' : hotel.id, inline: true },
+      { name: 'Time', value: timeLabel, inline: true }
+    )
+    .setColor(0x57F287)
+    .setFooter({ text: `🛡️ Aavgo Audit System • ${agentLabel}` })
+    .setTimestamp();
 }
 
-function buildThemeSelect(themeKey, viewKey, densityKey, hotelKey, mode) {
+function buildNewcomerEmbed(interaction) {
+  const username = `newcomer_${interaction.user.username.slice(0, 10)}`;
+  const displayName = interaction.member?.displayName || interaction.user?.username || 'Unknown';
+  const userId = interaction.user.id;
+  const createdAt = getDisplayTimestamp(interaction.user.createdAt || new Date());
+  const joinedAt = getDisplayTimestamp(interaction.member?.joinedAt || new Date());
+  const avatarUrl = interaction.user?.displayAvatarURL?.({ size: 512, extension: 'png' });
+
+  const embed = new EmbedBuilder()
+    .setTitle('👋 Newcomer Joined Aavgo')
+    .setDescription(
+      `Welcome, ${username}\n\n` +
+      'A new member has joined the server and is ready for review.'
+    )
+    .addFields(
+      { name: 'Username', value: username, inline: true },
+      { name: 'Display Name', value: displayName, inline: true },
+      { name: 'User ID', value: userId, inline: true },
+      { name: 'Account Created', value: createdAt, inline: true },
+      { name: 'Joined Server', value: joinedAt, inline: true },
+      { name: 'Profile Link', value: `[Open Discord Profile](https://discord.com/users/${userId})`, inline: true }
+    )
+    .setColor(0xF1C40F)
+    .setFooter({ text: 'Aavgo Newcomers Channel' })
+    .setTimestamp();
+
+  if (avatarUrl) embed.setThumbnail(avatarUrl);
+  return embed;
+}
+
+function buildPreviewEmbed(state, interaction) {
+  if (state.screenKey === 'training_status') return buildTrainingStatusEmbed(state);
+  if (state.screenKey === 'training_started') return buildTrainingStartedEmbed(state, interaction);
+  if (state.screenKey === 'newcomer') return buildNewcomerEmbed(interaction);
+  return buildHotelStatusEmbed(state, interaction);
+}
+
+function buildScreenSelect(state) {
   return new StringSelectMenuBuilder()
-    .setCustomId(`test_ui_theme_select:${viewKey}:${densityKey}:${hotelKey}:${mode}`)
-    .setPlaceholder('Choose style preset')
+    .setCustomId(`test_ui_screen_select:${state.themeKey}:${state.densityKey}:${state.hotelKey}:${state.variantKey}`)
+    .setPlaceholder('Choose UI preview card')
     .addOptions(
-      Object.entries(TEST_UI_THEMES).map(([key, theme]) =>
+      Object.entries(TEST_UI_SCREENS).map(([key, value]) =>
         new StringSelectMenuOptionBuilder()
-          .setLabel(theme.label)
+          .setLabel(value.label)
           .setValue(key)
-          .setDescription(theme.shortDescription)
-          .setDefault(key === themeKey)
+          .setDefault(key === state.screenKey)
       )
     );
 }
 
-function buildViewSelect(themeKey, viewKey, densityKey, hotelKey, mode) {
+function buildHotelSelect(state) {
   return new StringSelectMenuBuilder()
-    .setCustomId(`test_ui_view_select:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
-    .setPlaceholder('Choose screen preview')
+    .setCustomId(`test_ui_hotel_select:${state.screenKey}:${state.themeKey}:${state.densityKey}:${state.variantKey}`)
+    .setPlaceholder('Choose reference hotel')
     .addOptions(
-      Object.entries(TEST_UI_VIEWS).map(([key, view]) =>
-        new StringSelectMenuOptionBuilder()
-          .setLabel(view.label)
-          .setValue(key)
-          .setDescription(view.pickerHint)
-          .setDefault(key === viewKey)
-      )
-    );
-}
-
-function buildHotelSelect(viewKey, themeKey, densityKey, hotelKey, mode) {
-  return new StringSelectMenuBuilder()
-    .setCustomId(`test_ui_demo_hotel_select:${viewKey}:${themeKey}:${densityKey}:${mode}`)
-    .setPlaceholder('Select preview destination')
-    .addOptions(
-      Object.entries(TEST_UI_DEMO_HOTELS).map(([key, hotel]) =>
+      Object.entries(DEMO_HOTELS).map(([key, hotel]) =>
         new StringSelectMenuOptionBuilder()
           .setLabel(hotel.label)
           .setValue(key)
-          .setDescription(`Preview card for ${hotel.short}`)
-          .setDefault(key === hotelKey)
+          .setDescription(`${hotel.team} • ${hotel.id}`)
+          .setDefault(key === state.hotelKey)
       )
     );
 }
 
-function buildSimpleButtons(viewKey, themeKey, densityKey, hotelKey, mode) {
-  const nextMode = mode === TEST_UI_MODE.advanced ? TEST_UI_MODE.simple : TEST_UI_MODE.advanced;
+function buildControlButtons(state) {
+  const nextTheme = getNextTheme(state.themeKey);
+  const nextDensity = state.densityKey === 'compact' ? 'cozy' : 'compact';
+  const nextVariant = state.variantKey === TEST_UI_VARIANTS.active ? TEST_UI_VARIANTS.idle : TEST_UI_VARIANTS.active;
+  const variantLabel = state.variantKey === TEST_UI_VARIANTS.active ? 'Show Idle Example' : 'Show Active Example';
+
   return [
     new ButtonBuilder()
-      .setCustomId(`test_ui_mode_toggle:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
-      .setLabel(nextMode === TEST_UI_MODE.advanced ? 'More Options' : 'Back to Simple')
+      .setCustomId(`test_ui_theme_cycle:${state.screenKey}:${state.themeKey}:${state.densityKey}:${state.hotelKey}:${state.variantKey}`)
+      .setLabel(`Style: ${TEST_UI_THEMES[nextTheme].label}`)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId(`test_ui_shuffle:${mode}`)
-      .setLabel('Shuffle Layout')
-      .setStyle(ButtonStyle.Success),
+      .setCustomId(`test_ui_density_toggle:${state.screenKey}:${state.themeKey}:${state.densityKey}:${state.hotelKey}:${state.variantKey}`)
+      .setLabel(`Spacing: ${TEST_UI_DENSITIES[nextDensity].label}`)
+      .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId('test_ui_close')
-      .setLabel('Dismiss')
-      .setStyle(ButtonStyle.Danger)
-  ];
-}
-
-function buildAdvancedButtons(viewKey, themeKey, densityKey, hotelKey, mode) {
-  const densityLabel = TEST_UI_DENSITIES[densityKey]?.label || 'Cozy';
-  const nextMode = mode === TEST_UI_MODE.advanced ? TEST_UI_MODE.simple : TEST_UI_MODE.advanced;
-  return [
-    new ButtonBuilder()
-      .setCustomId(`test_ui_density_toggle:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
-      .setLabel(`Spacing: ${densityLabel}`)
-      .setStyle(densityKey === 'compact' ? ButtonStyle.Primary : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`test_ui_shuffle:${mode}`)
-      .setLabel('Try Another')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`test_ui_refresh:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
-      .setLabel('Retry Render')
+      .setCustomId(`test_ui_variant_toggle:${state.screenKey}:${state.themeKey}:${state.densityKey}:${state.hotelKey}:${state.variantKey}`)
+      .setLabel(variantLabel)
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
-      .setCustomId(`test_ui_mode_toggle:${viewKey}:${themeKey}:${densityKey}:${hotelKey}:${mode}`)
-      .setLabel(nextMode === TEST_UI_MODE.simple ? 'Back to Simple' : 'Open Lab Controls')
-      .setStyle(ButtonStyle.Secondary),
+      .setCustomId('test_ui_shuffle')
+      .setLabel('Shuffle')
+      .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId('test_ui_close')
       .setLabel('Close')
@@ -377,167 +364,57 @@ function buildAdvancedButtons(viewKey, themeKey, densityKey, hotelKey, mode) {
   ];
 }
 
-function buildLeadText(view, hotelKey) {
-  const hotel = TEST_UI_DEMO_HOTELS[hotelKey] || TEST_UI_DEMO_HOTELS.bw_to;
-  if (view.label === 'Overview') {
-    return (
-      '## Shift Route Sandbox\n' +
-      `### Team Lane: ${DEFAULT_UI_TEAM_LABEL}\n\n` +
-      `Preview Destination: ${hotel.emoji} **${hotel.label}**\n` +
-      'Mode: UI simulation only (no live assignment changes)'
+function buildPayload(state, interaction) {
+  const normalized = buildState(state);
+  const embed = buildPreviewEmbed(normalized, interaction);
+  const rows = [
+    new ActionRowBuilder().addComponents(buildScreenSelect(normalized)),
+    new ActionRowBuilder().addComponents(buildHotelSelect(normalized))
+  ];
+
+  if (normalized.screenKey === 'training_status') {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`test_ui_noop_end_training:${normalized.screenKey}:${normalized.themeKey}:${normalized.densityKey}:${normalized.hotelKey}:${normalized.variantKey}`)
+          .setLabel('🔴 End-training')
+          .setStyle(ButtonStyle.Danger)
+      )
     );
   }
-  return (
-    `## ${view.label}\n` +
-    `${view.summary}\n\n` +
-    `Selected Demo Hotel: ${hotel.emoji} **${hotel.label}**`
-  );
-}
 
-function buildHintText(view) {
-  return (
-    `### Quick Start\n` +
-    `1. ${view.beginnerCopy}\n` +
-    '2. Watch the preview section update instantly.\n' +
-    '3. Use More Options for theme/screen experiments.'
-  );
-}
+  rows.push(new ActionRowBuilder().addComponents(...buildControlButtons(normalized)));
 
-function buildSimpleSafetyText() {
-  return (
-    '### Guardrails\n' +
-    '- This panel is a test sandbox.\n' +
-    '- It does not write to the database.\n' +
-    '- For real assignment updates use the managed staff commands.'
-  );
-}
-
-function buildLabNotesText(theme, density, viewKey, densityKey) {
-  return (
-    '### 🧪 Lab Notes\n' +
-    `- Theme: ${theme.label}\n` +
-    `- Mood: ${theme.mood}\n` +
-    `- Spacing: ${density.label} (${density.spacing})\n` +
-    `- Style: ${TEST_UI_PROFILE.styleBlend}\n` +
-    `- State Cues:\n${buildStateLegend(viewKey)}\n\n` +
-    `### Preview Outline\n${buildTestUiPreviewText(viewKey, densityKey)}`
-  );
-}
-
-function buildTestUiContainer(themeKey, viewKey, densityKey, hotelKey = 'bw_to', mode = TEST_UI_MODE.simple) {
-  const theme = TEST_UI_THEMES[themeKey] || TEST_UI_THEMES.aavgo;
-  const view = TEST_UI_VIEWS[viewKey] || TEST_UI_VIEWS.overview;
-  const density = TEST_UI_DENSITIES[densityKey] || TEST_UI_DENSITIES.cozy;
-  const normalizedHotel = normalizeTestUiHotel(hotelKey);
-  const normalizedMode = normalizeTestUiMode(mode);
-
-  const container = new ContainerBuilder()
-    .setAccentColor(getDefaultViewAccent(theme, viewKey));
-
-  if (normalizedMode === TEST_UI_MODE.advanced && theme.iconUrl) {
-    const leadSection = new SectionBuilder()
-      .addTextDisplayComponents(buildTextDisplay(buildLeadText(view, normalizedHotel)))
-      .setThumbnailAccessory(new ThumbnailBuilder().setURL(theme.iconUrl));
-    container.addSectionComponents(leadSection);
-  } else {
-    container.addTextDisplayComponents(buildTextDisplay(buildLeadText(view, normalizedHotel)));
-  }
-
-  container
-    .addSeparatorComponents(buildSoftSeparator())
-    .addTextDisplayComponents(buildTextDisplay(buildHintText(view)))
-    .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(buildTextDisplay(buildSimpleSafetyText()))
-    .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
-    .addActionRowComponents(
-      new ActionRowBuilder().addComponents(buildHotelSelect(viewKey, themeKey, densityKey, normalizedHotel, normalizedMode))
-    )
-    .addSeparatorComponents(buildSoftSeparator());
-
-  if (normalizedMode === TEST_UI_MODE.advanced) {
-    container
-      .addTextDisplayComponents(
-        buildTextDisplay(
-          `### 🧭 Lab Controls\n` +
-          `- Audience: ${TEST_UI_PROFILE.audience}\n` +
-          `- Style: ${TEST_UI_PROFILE.styleBlend}\n` +
-          `- Flow: ${TEST_UI_PROFILE.flow}\n` +
-          '- Layout Intent: inspired by clean assignment cards, not a direct clone'
-        )
-      )
-      .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
-      .addActionRowComponents(
-        new ActionRowBuilder().addComponents(buildThemeSelect(themeKey, viewKey, densityKey, normalizedHotel, normalizedMode))
-      )
-      .addActionRowComponents(
-        new ActionRowBuilder().addComponents(buildViewSelect(themeKey, viewKey, densityKey, normalizedHotel, normalizedMode))
-      )
-      .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
-      .addTextDisplayComponents(buildTextDisplay(buildLabNotesText(theme, density, viewKey, densityKey)))
-      .addSeparatorComponents(buildSoftSeparator(SeparatorSpacingSize.Small))
-      .addActionRowComponents(
-        new ActionRowBuilder().addComponents(...buildAdvancedButtons(viewKey, themeKey, densityKey, normalizedHotel, normalizedMode))
-      );
-  } else {
-    container
-      .addActionRowComponents(
-        new ActionRowBuilder().addComponents(...buildSimpleButtons(viewKey, themeKey, densityKey, normalizedHotel, normalizedMode))
-      );
-  }
-
-  return container;
-}
-
-function buildTestUiPayload(
-  themeKey = 'aavgo',
-  viewKey = 'overview',
-  densityKey = 'cozy',
-  hotelKey = 'bw_to',
-  mode = TEST_UI_MODE.simple
-) {
-  const normalizedTheme = normalizeTestUiTheme(themeKey);
-  const normalizedView = normalizeTestUiView(viewKey);
-  const normalizedDensity = normalizeTestUiDensity(densityKey);
-  const normalizedHotel = normalizeTestUiHotel(hotelKey);
-  const normalizedMode = normalizeTestUiMode(mode);
-
+  const content = normalized.screenKey === 'newcomer' ? '@Operations Manager (preview)' : null;
   return {
-    flags: COMPONENTS_V2_FLAGS,
-    components: [buildTestUiContainer(normalizedTheme, normalizedView, normalizedDensity, normalizedHotel, normalizedMode)]
+    content,
+    embeds: [embed],
+    components: rows,
+    allowedMentions: { parse: [] }
   };
 }
 
 function buildClosedPayload() {
-  const container = new ContainerBuilder()
-    .setAccentColor(0x6B7280)
-    .addTextDisplayComponents(
-      buildTextDisplay(
-        '## ✅ Test GUI Closed\n' +
-        'Panel closed successfully.\n\n' +
-        'Run `/test-gui` again to reopen.'
-      )
-    );
-
   return {
-    flags: COMPONENTS_V2_FLAGS,
-    components: [container]
+    embeds: [
+      new EmbedBuilder()
+        .setTitle('✅ Test GUI Closed')
+        .setDescription('Run `/test-gui` to open the preview again.')
+        .setColor(0x6B7280)
+    ],
+    components: []
   };
 }
 
 function buildFailurePayload(message) {
-  const container = new ContainerBuilder()
-    .setAccentColor(0xEF4444)
-    .addTextDisplayComponents(
-      buildTextDisplay(
-        `## ⚠️ Test GUI Error\n` +
-        `${message}\n\n` +
-        'Retry `/test-gui`.'
-      )
-    );
-
   return {
-    flags: COMPONENTS_V2_FLAGS,
-    components: [container]
+    embeds: [
+      new EmbedBuilder()
+        .setTitle('⚠️ Test GUI Error')
+        .setDescription(`${message}\n\nRun \`/test-gui\` to retry.`)
+        .setColor(0xEF4444)
+    ],
+    components: []
   };
 }
 
@@ -560,21 +437,25 @@ function createTestUiHandlers(deps) {
         return interaction.reply({ content: 'Access denied: Developer or Operations Manager required.', ephemeral: true });
       }
 
-      const themeOption = normalizeTestUiTheme(interaction.options?.getString('theme'));
-      const viewOption = normalizeTestUiView(interaction.options?.getString('screen'));
-      const densityOption = normalizeTestUiDensity(interaction.options?.getString('density'));
+      const state = buildState({
+        themeKey: interaction.options?.getString('theme'),
+        screenKey: interaction.options?.getString('screen'),
+        densityKey: interaction.options?.getString('density'),
+        hotelKey: 'pros',
+        variantKey: TEST_UI_VARIANTS.idle
+      });
 
       interaction.__aavgoEphemeral = true;
       return interaction.reply({
-        ...buildTestUiPayload(themeOption, viewOption, densityOption, 'bw_to', TEST_UI_MODE.simple),
-        flags: EPHEMERAL_COMPONENTS_V2_FLAGS
+        ...buildPayload(state, interaction),
+        flags: EPHEMERAL_FLAGS
       });
     } catch (error) {
       console.error('Error in handleTestUiCommand:', error);
       if (interaction.deferred || interaction.replied) {
-        await interaction.editReply(buildFailurePayload('Failed to open UI test lab.')).catch(() => {});
+        await interaction.editReply(buildFailurePayload('Failed to open /test-gui preview.')).catch(() => {});
       } else {
-        await interaction.reply({ content: 'Failed to open UI test lab. Retry /test-gui.', ephemeral: true }).catch(() => {});
+        await interaction.reply({ content: 'Failed to open /test-gui preview.', ephemeral: true }).catch(() => {});
       }
     }
   }
@@ -592,93 +473,93 @@ function createTestUiHandlers(deps) {
         return sendComponentUpdate(interaction, buildClosedPayload());
       }
 
-      if (customId === 'test_ui_shuffle') {
-        const randomState = pickRandomTestUiState();
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(randomState.themeKey, randomState.viewKey, randomState.densityKey, randomState.hotelKey, TEST_UI_MODE.simple)
-        );
+      if (customId === 'test_ui_shuffle' || customId.startsWith('test_ui_shuffle:')) {
+        return sendComponentUpdate(interaction, buildPayload(randomState(), interaction));
       }
 
-      if (customId.startsWith('test_ui_shuffle:')) {
-        const [, modeRaw] = customId.split(':');
-        const randomState = pickRandomTestUiState();
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(
-            randomState.themeKey,
-            randomState.viewKey,
-            randomState.densityKey,
-            randomState.hotelKey,
-            normalizeTestUiMode(modeRaw)
-          )
-        );
-      }
-
-      if (customId.startsWith('test_ui_mode_toggle:')) {
-        const [, viewRaw, themeRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
-        const nextMode = normalizeTestUiMode(modeRaw) === TEST_UI_MODE.advanced
-          ? TEST_UI_MODE.simple
-          : TEST_UI_MODE.advanced;
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(
-            normalizeTestUiTheme(themeRaw),
-            normalizeTestUiView(viewRaw),
-            normalizeTestUiDensity(densityRaw),
-            normalizeTestUiHotel(hotelRaw),
-            nextMode
-          )
-        );
+      if (customId.startsWith('test_ui_theme_cycle:')) {
+        const [, screenKey, themeKey, densityKey, hotelKey, variantKey] = customId.split(':');
+        const nextTheme = getNextTheme(themeKey);
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey,
+          themeKey: nextTheme,
+          densityKey,
+          hotelKey,
+          variantKey
+        }), interaction));
       }
 
       if (customId.startsWith('test_ui_density_toggle:')) {
-        const [, viewRaw, themeRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
-        const nextDensity = normalizeTestUiDensity(densityRaw) === 'compact' ? 'cozy' : 'compact';
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(
-            normalizeTestUiTheme(themeRaw),
-            normalizeTestUiView(viewRaw),
-            nextDensity,
-            normalizeTestUiHotel(hotelRaw),
-            normalizeTestUiMode(modeRaw)
-          )
-        );
+        const [, screenKey, themeKey, densityKey, hotelKey, variantKey] = customId.split(':');
+        const nextDensity = normalizeDensity(densityKey) === 'compact' ? 'cozy' : 'compact';
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey,
+          themeKey,
+          densityKey: nextDensity,
+          hotelKey,
+          variantKey
+        }), interaction));
       }
 
-      if (customId.startsWith('test_ui_refresh:')) {
-        const [, viewRaw, themeRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(
-            normalizeTestUiTheme(themeRaw),
-            normalizeTestUiView(viewRaw),
-            normalizeTestUiDensity(densityRaw),
-            normalizeTestUiHotel(hotelRaw),
-            normalizeTestUiMode(modeRaw)
-          )
-        );
+      if (customId.startsWith('test_ui_variant_toggle:')) {
+        const [, screenKey, themeKey, densityKey, hotelKey, variantKey] = customId.split(':');
+        const nextVariant = normalizeVariant(variantKey) === TEST_UI_VARIANTS.active
+          ? TEST_UI_VARIANTS.idle
+          : TEST_UI_VARIANTS.active;
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey,
+          themeKey,
+          densityKey,
+          hotelKey,
+          variantKey: nextVariant
+        }), interaction));
+      }
+
+      if (customId.startsWith('test_ui_noop_end_training:') || customId === 'test_ui_noop') {
+        return sendComponentReply(interaction, {
+          content: 'Preview only: End-training is disabled in /test-gui.',
+          ephemeral: true
+        });
+      }
+
+      // Legacy compatibility from earlier test-ui labs.
+      if (customId.startsWith('test_ui_mode_toggle:') || customId.startsWith('test_ui_refresh:')) {
+        const parts = customId.split(':');
+        const legacyView = parts[1];
+        const legacyTheme = parts[2];
+        const legacyDensity = parts[3];
+        const legacyHotel = parts[4];
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey: legacyView,
+          themeKey: legacyTheme,
+          densityKey: legacyDensity,
+          hotelKey: legacyHotel || 'pros'
+        }), interaction));
       }
 
       if (customId.startsWith('test_ui_tab_overview:')) {
-        const themeKey = normalizeTestUiTheme(customId.split(':')[1]);
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(themeKey, 'overview', 'cozy', 'bw_to', TEST_UI_MODE.simple)
-        );
+        const legacyTheme = customId.split(':')[1];
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey: 'hotel_status',
+          themeKey: legacyTheme,
+          densityKey: 'cozy',
+          hotelKey: 'pros'
+        }), interaction));
       }
 
       if (customId.startsWith('test_ui_tab_components:')) {
-        const themeKey = normalizeTestUiTheme(customId.split(':')[1]);
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(themeKey, 'status', 'compact', 'bw_to', TEST_UI_MODE.advanced)
-        );
+        const legacyTheme = customId.split(':')[1];
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey: 'training_status',
+          themeKey: legacyTheme,
+          densityKey: 'compact',
+          hotelKey: 'pros',
+          variantKey: TEST_UI_VARIANTS.active
+        }), interaction));
       }
 
       return sendComponentReply(interaction, {
-        content: 'Action unavailable (old panel). Retry: run /test-gui.',
+        content: 'Action unavailable (old preview message). Run /test-gui again.',
         ephemeral: true
       });
     } catch (error) {
@@ -688,7 +569,7 @@ function createTestUiHandlers(deps) {
       }
       console.error('Error in handleTestUiButton:', error);
       await sendComponentReply(interaction, {
-        content: 'Action failed: panel changed or timed out. Retry /test-gui.',
+        content: 'Preview action failed. Run /test-gui again.',
         ephemeral: true
       }).catch(() => {});
     }
@@ -703,53 +584,61 @@ function createTestUiHandlers(deps) {
       await safeDeferComponentUpdate(interaction);
       const customId = String(interaction.customId || '');
 
+      if (customId.startsWith('test_ui_screen_select:')) {
+        const [, themeKey, densityKey, hotelKey, variantKey] = customId.split(':');
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey: interaction.values?.[0],
+          themeKey,
+          densityKey,
+          hotelKey,
+          variantKey
+        }), interaction));
+      }
+
+      if (customId.startsWith('test_ui_hotel_select:')) {
+        const [, screenKey, themeKey, densityKey, variantKey] = customId.split(':');
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey,
+          themeKey,
+          densityKey,
+          hotelKey: interaction.values?.[0],
+          variantKey
+        }), interaction));
+      }
+
+      // Legacy compatibility from earlier test-ui labs.
       if (customId.startsWith('test_ui_theme_select:')) {
-        const [, viewRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
-        const selectedTheme = normalizeTestUiTheme(interaction.values?.[0]);
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(
-            selectedTheme,
-            normalizeTestUiView(viewRaw),
-            normalizeTestUiDensity(densityRaw),
-            normalizeTestUiHotel(hotelRaw),
-            normalizeTestUiMode(modeRaw)
-          )
-        );
+        const [, legacyView, legacyDensity, legacyHotel] = customId.split(':');
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey: legacyView,
+          themeKey: interaction.values?.[0],
+          densityKey: legacyDensity,
+          hotelKey: legacyHotel || 'pros'
+        }), interaction));
       }
 
       if (customId.startsWith('test_ui_view_select:')) {
-        const [, themeRaw, densityRaw, hotelRaw, modeRaw] = customId.split(':');
-        const selectedView = normalizeTestUiView(interaction.values?.[0]);
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(
-            normalizeTestUiTheme(themeRaw),
-            selectedView,
-            normalizeTestUiDensity(densityRaw),
-            normalizeTestUiHotel(hotelRaw),
-            normalizeTestUiMode(modeRaw)
-          )
-        );
+        const [, legacyTheme, legacyDensity, legacyHotel] = customId.split(':');
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey: interaction.values?.[0],
+          themeKey: legacyTheme,
+          densityKey: legacyDensity,
+          hotelKey: legacyHotel || 'pros'
+        }), interaction));
       }
 
       if (customId.startsWith('test_ui_demo_hotel_select:')) {
-        const [, viewRaw, themeRaw, densityRaw, modeRaw] = customId.split(':');
-        const selectedHotel = normalizeTestUiHotel(interaction.values?.[0]);
-        return sendComponentUpdate(
-          interaction,
-          buildTestUiPayload(
-            normalizeTestUiTheme(themeRaw),
-            normalizeTestUiView(viewRaw),
-            normalizeTestUiDensity(densityRaw),
-            selectedHotel,
-            normalizeTestUiMode(modeRaw)
-          )
-        );
+        const [, legacyView, legacyTheme, legacyDensity] = customId.split(':');
+        return sendComponentUpdate(interaction, buildPayload(buildState({
+          screenKey: legacyView,
+          themeKey: legacyTheme,
+          densityKey: legacyDensity,
+          hotelKey: interaction.values?.[0]
+        }), interaction));
       }
 
       return sendComponentReply(interaction, {
-        content: 'Selection unavailable (old panel). Retry: run /test-gui.',
+        content: 'Selection unavailable (old preview message). Run /test-gui again.',
         ephemeral: true
       });
     } catch (error) {
@@ -759,7 +648,7 @@ function createTestUiHandlers(deps) {
       }
       console.error('Error in handleTestUiSelect:', error);
       await sendComponentReply(interaction, {
-        content: 'Selection failed: panel changed or timed out. Retry /test-gui.',
+        content: 'Selection failed. Run /test-gui again.',
         ephemeral: true
       }).catch(() => {});
     }

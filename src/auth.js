@@ -7909,7 +7909,7 @@ async function handleHelpStaff(interaction) {
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
         '> `/setup-profiles`: Deploy the staff profiles dashboard panel.\n' +
         '> `/setup-dev-todo`: Deploy or refresh the shared developer launch board.\n' +
-        '> `/test-gui` (`/test-ui` legacy alias): Open the interactive UI lab (theme + screen + density + shuffle) for Discord previews.\n' +
+        '> `/test-gui` (`/test-ui` legacy alias): Open the screenshot-style UI preview lab (hotel status, training status, training log, newcomer card).\n' +
         '> `/todo-add`, `/todo-move`, `/todo-refresh`: Manage centralized developer tasks.\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
         '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +

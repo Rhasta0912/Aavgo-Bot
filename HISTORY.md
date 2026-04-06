@@ -1077,3 +1077,18 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Rebuilt `/test-gui` to preview consistent screenshot-style Aavgo cards instead of mixed lab layouts.
+  - Summary: Replaced old components-v2 “theme lab” rendering with cohesive embed templates that mirror the card families shown in review screenshots: `Hotel Status`, `Training Status`, `Training Started`, and `Newcomer Joined`.
+  - Summary: Added stable single-message controls (screen picker, hotel picker, style/spacing toggle, idle/active scenario toggle, shuffle, close) while keeping legacy custom-id compatibility so old preview messages fail gracefully.
+  - Summary: Updated `/test-gui` and `/test-ui` slash option labels to the new screen set and updated help text to describe the screenshot-style preview lab.
+  - Why: UI test output was inconsistent and did not reflect the actual Aavgo card language/structure users expect.
+  - Behavior impact:
+    - `/test-gui` now produces beginner-friendly, consistent preview cards with shared visual grammar.
+    - Training and hotel previews follow the same separator rhythm and status hierarchy as production-style embeds.
+    - No live DB writes or operational state changes are performed by `/test-gui`.
+  - Files touched:
+    - src/testui.js
+    - src/commands.js
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

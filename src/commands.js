@@ -222,11 +222,10 @@ const commandData = [
       .setDescription('Start on a specific preview screen')
       .setRequired(false)
       .addChoices(
-        { name: 'Overview', value: 'overview' },
-        { name: 'Login Portal', value: 'login' },
-        { name: 'Live Status', value: 'status' },
-        { name: 'Approval Flow', value: 'approval' },
-        { name: 'Alert States', value: 'alert' }
+        { name: 'Hotel Status Card', value: 'hotel_status' },
+        { name: 'Training Status Card', value: 'training_status' },
+        { name: 'Training Started Log', value: 'training_started' },
+        { name: 'Newcomer Joined Card', value: 'newcomer' }
       ))
     .addStringOption(option => option
       .setName('density')
@@ -254,11 +253,10 @@ const commandData = [
       .setDescription('Start on a specific preview screen')
       .setRequired(false)
       .addChoices(
-        { name: 'Overview', value: 'overview' },
-        { name: 'Login Portal', value: 'login' },
-        { name: 'Live Status', value: 'status' },
-        { name: 'Approval Flow', value: 'approval' },
-        { name: 'Alert States', value: 'alert' }
+        { name: 'Hotel Status Card', value: 'hotel_status' },
+        { name: 'Training Status Card', value: 'training_status' },
+        { name: 'Training Started Log', value: 'training_started' },
+        { name: 'Newcomer Joined Card', value: 'newcomer' }
       ))
     .addStringOption(option => option
       .setName('density')
