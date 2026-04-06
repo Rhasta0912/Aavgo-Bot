@@ -222,6 +222,7 @@ const commandData = [
       .setDescription('Start on a specific preview screen')
       .setRequired(false)
       .addChoices(
+        { name: 'Shift Route Card', value: 'shift_route' },
         { name: 'Hotel Status Card', value: 'hotel_status' },
         { name: 'Training Status Card', value: 'training_status' },
         { name: 'Training Started Log', value: 'training_started' },
@@ -253,6 +254,7 @@ const commandData = [
       .setDescription('Start on a specific preview screen')
       .setRequired(false)
       .addChoices(
+        { name: 'Shift Route Card', value: 'shift_route' },
         { name: 'Hotel Status Card', value: 'hotel_status' },
         { name: 'Training Status Card', value: 'training_status' },
         { name: 'Training Started Log', value: 'training_started' },

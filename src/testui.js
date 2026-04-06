@@ -29,6 +29,9 @@ const TEST_UI_DENSITIES = {
 };
 
 const TEST_UI_SCREENS = {
+  shift_route: {
+    label: 'Shift Route Card'
+  },
   hotel_status: {
     label: 'Hotel Status Card'
   },
@@ -79,6 +82,9 @@ function normalizeHotel(hotelKey) {
 
 function normalizeScreen(screenKey) {
   const normalized = String(screenKey || '').trim().toLowerCase();
+  if (normalized === 'route') return 'shift_route';
+  if (normalized === 'assignment') return 'shift_route';
+  if (normalized === 'destination') return 'shift_route';
   if (normalized === 'overview') return 'hotel_status';
   if (normalized === 'status') return 'training_status';
   if (normalized === 'login') return 'training_started';
@@ -182,6 +188,44 @@ function buildHotelStatusEmbed(state, interaction) {
     .setDescription(body)
     .setColor(isActive ? 0x57F287 : 0xF1C40F)
     .setFooter({ text: `Aavgo Operations • Consolidated Hotel Status • ${teamLabel}` })
+    .setTimestamp();
+}
+
+function buildShiftRouteEmbed(state, interaction) {
+  const hotel = DEMO_HOTELS[state.hotelKey] || DEMO_HOTELS.bw_to;
+  const teamLabel = hotel.team;
+  const isActive = state.variantKey === TEST_UI_VARIANTS.active;
+  const theme = TEST_UI_THEMES[state.themeKey] || TEST_UI_THEMES.aavgo;
+  const agentLabel = interaction.member?.displayName || interaction.user?.username || 'Unknown Agent';
+  const routeHeading = isActive ? '🟢 LIVE ROUTE READY' : '🧭 ROUTE PREVIEW MODE';
+  const routeState = isActive
+    ? 'Status: Live route is armed for launch.'
+    : 'Status: Sandbox preview only (no session changes).';
+
+  const body = [
+    `### ${routeHeading}`,
+    DIVIDER,
+    compactLine('🧩 Team Context', `${teamLabel} Operations`, state.densityKey),
+    compactLine('🏨 Selected Destination', hotel.label, state.densityKey),
+    compactLine('👤 Preview User', agentLabel, state.densityKey),
+    DIVIDER,
+    '• Confirm your assigned destination in the dropdown below.',
+    '• Live route is treated as permanent until reassigned by leadership.',
+    '• Use training route when practicing, not covering live traffic.',
+    DIVIDER,
+    routeState
+  ].join('\n');
+
+  return new EmbedBuilder()
+    .setTitle('🗺️ Aavgo Operations · Shift Launch Pad')
+    .setDescription(body)
+    .addFields(
+      { name: 'Route Type', value: isActive ? 'Live · Hotel Shift' : 'Preview · No Login', inline: true },
+      { name: 'Team Scope', value: teamLabel, inline: true },
+      { name: 'Style Preset', value: theme.label, inline: true }
+    )
+    .setColor(isActive ? 0x57F287 : theme.color)
+    .setFooter({ text: `Aavgo Operations • Shift Route Sandbox • ${hotel.id}` })
     .setTimestamp();
 }
 
@@ -299,6 +343,7 @@ function buildNewcomerEmbed(interaction) {
 }
 
 function buildPreviewEmbed(state, interaction) {
+  if (state.screenKey === 'shift_route') return buildShiftRouteEmbed(state, interaction);
   if (state.screenKey === 'training_status') return buildTrainingStatusEmbed(state);
   if (state.screenKey === 'training_started') return buildTrainingStartedEmbed(state, interaction);
   if (state.screenKey === 'newcomer') return buildNewcomerEmbed(interaction);
@@ -379,6 +424,21 @@ function buildPayload(state, interaction) {
           .setCustomId(`test_ui_noop_end_training:${normalized.screenKey}:${normalized.themeKey}:${normalized.densityKey}:${normalized.hotelKey}:${normalized.variantKey}`)
           .setLabel('🔴 End-training')
           .setStyle(ButtonStyle.Danger)
+      )
+    );
+  }
+
+  if (normalized.screenKey === 'shift_route') {
+    rows.push(
+      new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`test_ui_noop_initialize_shift:${normalized.screenKey}:${normalized.themeKey}:${normalized.densityKey}:${normalized.hotelKey}:${normalized.variantKey}`)
+          .setLabel('Initialize Shift')
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`test_ui_noop_open_training:${normalized.screenKey}:${normalized.themeKey}:${normalized.densityKey}:${normalized.hotelKey}:${normalized.variantKey}`)
+          .setLabel('Open Training Route')
+          .setStyle(ButtonStyle.Secondary)
       )
     );
   }
@@ -515,9 +575,13 @@ function createTestUiHandlers(deps) {
         }), interaction));
       }
 
-      if (customId.startsWith('test_ui_noop_end_training:') || customId === 'test_ui_noop') {
+      if (customId.startsWith('test_ui_noop_') || customId === 'test_ui_noop') {
+        let previewMessage = 'Preview only: This action is disabled in /test-gui.';
+        if (customId.startsWith('test_ui_noop_end_training:')) previewMessage = 'Preview only: End-training is disabled in /test-gui.';
+        if (customId.startsWith('test_ui_noop_initialize_shift:')) previewMessage = 'Preview only: Initialize Shift is disabled in /test-gui.';
+        if (customId.startsWith('test_ui_noop_open_training:')) previewMessage = 'Preview only: Training route launch is disabled in /test-gui.';
         return sendComponentReply(interaction, {
-          content: 'Preview only: End-training is disabled in /test-gui.',
+          content: previewMessage,
           ephemeral: true
         });
       }

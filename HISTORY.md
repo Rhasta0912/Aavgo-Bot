@@ -1092,3 +1092,18 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Added a new `/test-gui` preview screen: `Shift Route Card` (Claude-inspired, Aavgo-original).
+  - Summary: Introduced a new shift-launch style card in `src/testui.js` with clean route context, destination focus, and beginner-friendly guidance. The wording/layout references modern card hierarchy direction while staying distinct from copied mockups.
+  - Summary: Added preview-only action buttons (`Initialize Shift`, `Open Training Route`) that intentionally no-op with clear guidance, preserving the single-message ephemeral flow and avoiding live-state side effects.
+  - Summary: Exposed the new screen in both `/test-gui` and `/test-ui` slash command `screen` choices, and updated `/help-staff` text so staff can discover it directly.
+  - Why: You requested a new GUI option inside `/test-gui` that references the Claude visual direction without cloning it.
+  - Behavior impact:
+    - `/test-gui` now includes a fifth screen (`shift_route`) for route-style UI preview/testing.
+    - Existing timeout-safe defer/update behavior and old preview compatibility remain unchanged.
+    - No operational DB writes or role/session changes are performed by this preview screen.
+  - Files touched:
+    - src/testui.js
+    - src/commands.js
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
