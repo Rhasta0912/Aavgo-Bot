@@ -1,7 +1,6 @@
 require('dotenv').config();
 const path = require('path');
 const { Client, GatewayIntentBits, Collection, REST, Routes, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
-const { registerCommands } = require('./commands');
 const db = require('./database');
 const auth = require('./auth');
 const tools = require('./tools');
@@ -11,6 +10,7 @@ const { upsertBotStatusCard } = require('./botStatus');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
+const AAVGO_GUILD_ID = '1482220918355922974';
 const DEFAULT_TEMP_MESSAGE_TTL_MS = 10 * 60 * 1000;
 const SHORT_TEMP_MESSAGE_TTL_MS = 60 * 1000;
 
@@ -305,6 +305,23 @@ async function handleBotShutdown(signal) {
   process.exit(0);
 }
 
+async function clearGlobalCommands(clientUserId) {
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  await rest.put(Routes.applicationCommands(clientUserId), { body: [] });
+}
+
+async function deployGuildCommands(clientUserId) {
+  const commands = require('./commands').commandData;
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+  console.log('Started refreshing guild application (/) commands.');
+  await rest.put(
+    Routes.applicationGuildCommands(clientUserId, AAVGO_GUILD_ID),
+    { body: commands },
+  );
+  console.log('Successfully reloaded guild application (/) commands for Guild:', AAVGO_GUILD_ID);
+}
+
 // Initialized inside ready event to avoid blocking startup
 client.once('ready', async () => {
     console.log(`[DISCORD] Ready! Logged in as ${client.user.tag}`);
@@ -366,22 +383,11 @@ client.once('ready', async () => {
     startBotStatusHeartbeat();
   // Register Slash Commands
   try {
-    const commands = require('./commands').commandData;
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    const guildId = '1482220918355922974'; // Aavgo Server ID
-    
-    console.log('Started refreshing application (/) commands.');
-    
-    // Clear global commands
-    await rest.put(Routes.applicationCommands(client.user.id), { body: [] });
-    
-    // Register guild commands
-    await rest.put(
-      Routes.applicationGuildCommands(client.user.id, guildId),
-      { body: commands },
-    );
-
-    console.log('Successfully reloaded application (/) commands for Guild:', guildId);
+    if (String(process.env.AAVGO_WIPE_GLOBAL_COMMANDS || '').toLowerCase() === 'true') {
+      await clearGlobalCommands(client.user.id);
+      console.warn('[COMMANDS] Global command wipe executed from AAVGO_WIPE_GLOBAL_COMMANDS=true.');
+    }
+    await deployGuildCommands(client.user.id);
   } catch (error) {
     console.error('Error registering commands:', error);
   }
@@ -464,19 +470,7 @@ process.on('SIGHUP', () => {
 client.on('interactionCreate', async interaction => {
   const auth = require('./auth');
   const tools = require('./tools');
-  let autoAckTimer = null;
   try {
-  if (interaction.isChatInputCommand()) {
-    autoAckTimer = setTimeout(async () => {
-      try {
-        if (!interaction.deferred && !interaction.replied) {
-          await interaction.deferReply({ ephemeral: true });
-        }
-      } catch (ackErr) {
-        console.warn('[INTERACTION] Auto-defer failed:', ackErr.message);
-      }
-    }, 1500);
-  }
   if (interaction.isChatInputCommand()) {
     const { commandName } = interaction;
 
@@ -608,7 +602,7 @@ client.on('interactionCreate', async interaction => {
       await auth.handleSecuritySetupSubmit(interaction);
     } else if (interaction.customId.startsWith('activity_modal_')) {
       await auth.handleActivityModalSubmit(interaction);
-    } else if (interaction.customId.startsWith('bio_deny_modal_')) {
+    } else if (interaction.customId.startsWith('bio_deny_modal_') || interaction.customId.startsWith('bio_deny_modal:')) {
       await tools.handleBioDenySubmit(interaction);
     } else if (interaction.customId.startsWith('loginmodal_')) {
       await auth.handleModalSubmit(interaction);
@@ -764,7 +758,6 @@ client.on('interactionCreate', async interaction => {
       console.warn('[INTERACTION] Failed to send fallback error response:', respondErr.message);
     }
   } finally {
-    if (autoAckTimer) clearTimeout(autoAckTimer);
     scheduleDefaultTempMessageCleanup(interaction).catch(() => {});
   }
 });

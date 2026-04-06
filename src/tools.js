@@ -443,9 +443,11 @@ async function handleBioDeny(interaction) {
 
     const agentId = interaction.customId.replace('bio_deny_', '');
     const { ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+    const sourceChannelId = interaction.channelId || interaction.message?.channelId;
+    const sourceMessageId = interaction.message?.id;
 
     const modal = new ModalBuilder()
-      .setCustomId(`bio_deny_modal_${agentId}_${interaction.message.id}`)
+      .setCustomId(`bio_deny_modal:${agentId}:${sourceChannelId}:${sourceMessageId}`)
       .setTitle('Deny Bio Break');
 
     const reasonInput = new TextInputBuilder()
@@ -466,47 +468,67 @@ async function handleBioDeny(interaction) {
 
 async function handleBioDenySubmit(interaction) {
   try {
-    const parts = interaction.customId.split('_');
-    const agentId = parts[3];
-    const messageId = parts[4];
+    const parseModalContext = customId => {
+      const value = String(customId || '');
+      if (value.startsWith('bio_deny_modal:')) {
+        const [, agentId, channelId, messageId] = value.split(':');
+        return { agentId, channelId, messageId };
+      }
+      const parts = value.split('_');
+      return { agentId: parts[3], channelId: null, messageId: parts[4] };
+    };
+
+    const { agentId, channelId: customIdChannelId, messageId } = parseModalContext(interaction.customId);
     const reason = interaction.fields.getTextInputValue('deny_reason');
 
     const request = activeCallRequests.get(messageId);
-    let channelId = null;
+    let channelId = customIdChannelId || null;
 
     if (request) {
       clearTimeout(request.timeout);
-      channelId = request.channelId;
+      channelId = channelId || request.channelId;
       activeCallRequests.delete(messageId);
     }
 
     const requestType = request ? request.type : 'Bio Break';
-    const breakEmoji = requestType === 'Normal Break' ? '☕' : '🚽';
 
     try {
-      const originalMsg = await interaction.message?.channel?.messages.fetch(messageId) || interaction.message;
-      if (originalMsg) {
+      let originalMsg = null;
+      if (channelId && messageId) {
+        const sourceChannel = await interaction.client.channels.fetch(channelId).catch(() => null);
+        if (sourceChannel?.isTextBased?.()) {
+          originalMsg = await sourceChannel.messages.fetch(messageId).catch(() => null);
+        }
+      }
+      if (!originalMsg && interaction.channel?.isTextBased?.() && messageId) {
+        originalMsg = await interaction.channel.messages.fetch(messageId).catch(() => null);
+      }
+
+      if (originalMsg && originalMsg.embeds?.[0]) {
         const embed = EmbedBuilder.from(originalMsg.embeds[0])
-          .setDescription(originalMsg.embeds[0].description.replace(/:R>/g, ':t>').replace('Waiting for Team Leader...', `❌ Denied by ${interaction.user.username}\n**Reason:** ${reason}`))
+          .setDescription(originalMsg.embeds[0].description.replace(/:R>/g, ':t>').replace('Waiting for Team Leader...', `Denied by ${interaction.user.username}\n**Reason:** ${reason}`))
           .setColor(0xED4245);
         await originalMsg.edit({ embeds: [embed], components: [] });
       }
-    } catch (e) { console.error('Could not edit denied alert:', e.message); }
+    } catch (e) {
+      console.error('Could not edit denied alert:', e.message);
+    }
 
-    await interaction.reply({ content: `✅ ${requestType} request denied.`, ephemeral: true });
+    await interaction.reply({ content: `Request denied: ${requestType}.`, ephemeral: true });
 
-    // Ping agent in their channel
     if (channelId) {
       try {
         const channel = await interaction.client.channels.fetch(channelId);
         if (channel) {
           const pingEmbed = new EmbedBuilder()
-            .setTitle(`❌ ${requestType} Denied`)
-            .setDescription(`**<@${interaction.user.id}>** has denied your ${requestType} request.\n**Reason:** ${reason}`)
+            .setTitle(`${requestType} Denied`)
+            .setDescription(`**<@${interaction.user.id}>** denied your ${requestType} request.\n**Reason:** ${reason}`)
             .setColor(0xED4245);
           await channel.send({ content: `<@${agentId}>`, embeds: [pingEmbed] });
         }
-      } catch (e) { console.warn('Could not send break denied ping:', e.message); }
+      } catch (e) {
+        console.warn('Could not send break denied ping:', e.message);
+      }
     }
   } catch (error) {
     console.error('Error in handleBioDenySubmit:', error);
@@ -704,3 +726,4 @@ module.exports = {
   handleCallAgentMenu,
   handleAgentCallStart
 };
+

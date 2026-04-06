@@ -5905,6 +5905,44 @@ async function handleActivityModalSubmit(interaction) {
 }
 
 // ─── Remove Agent ────────────────────────────────────
+function purgeAgentDataByAgentId(agentId) {
+  if (!agentId) return;
+  db.transaction(() => {
+    db.prepare("DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)").run(agentId);
+    db.prepare("DELETE FROM sessions WHERE agent_id = ?").run(agentId);
+    db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agentId);
+    db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agentId);
+    db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agentId);
+    db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agentId);
+    db.prepare("DELETE FROM hour_adjustments WHERE agent_id = ?").run(agentId);
+  })();
+}
+
+function collectAgentRolesToRemove(guild, teamName) {
+  if (!guild) return [];
+  const rolesToRemove = [];
+
+  const agentsRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.AGENTS.toLowerCase());
+  const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+  const onShiftRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
+  rolesToRemove.push(agentsRole, loggedOutRole, onShiftRole);
+
+  if (teamName) {
+    const teamRole = guild.roles.cache.find(r => r.name.toLowerCase() === String(teamName).toLowerCase());
+    rolesToRemove.push(teamRole);
+  }
+
+  for (const roleId of [...Object.values(ROLE_NAMES.GREEN), ...Object.values(ROLE_NAMES.GREY)]) {
+    rolesToRemove.push(guild.roles.cache.get(roleId));
+  }
+
+  const deduped = new Map();
+  for (const role of rolesToRemove.filter(Boolean)) {
+    deduped.set(role.id, role);
+  }
+  return [...deduped.values()];
+}
+
 async function handleRemoveAgent(interaction) {
   try {
     await interaction.deferReply({ ephemeral: true });
@@ -5914,19 +5952,7 @@ async function handleRemoveAgent(interaction) {
     const agent = db.prepare("SELECT id, approval_message_id, team FROM agents WHERE discord_id = ?").get(userId);
 
     if (agent) {
-      db.transaction(() => {
-        db.prepare("DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)").run(agent.id);
-                db.prepare("DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)").run(agent.id);
-        db.prepare("DELETE FROM sessions WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
-      })();
+      purgeAgentDataByAgentId(agent.id);
 
       if (agent.approval_message_id) {
         try {
@@ -5950,23 +5976,7 @@ async function handleRemoveAgent(interaction) {
     try {
       const guild = interaction.guild;
       const member = await guild.members.fetch(userId);
-      const agentsRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.AGENTS.toLowerCase());
-      const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
-      const onShiftRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
-      const rolesToRemove = [agentsRole, loggedOutRole, onShiftRole].filter(Boolean);
-      
-      // Add team role if exists
-      if (agent && agent.team) {
-        const teamRole = guild.roles.cache.find(r => r.name.toLowerCase() === agent.team.toLowerCase());
-        if (teamRole) rolesToRemove.push(teamRole);
-      }
-
-      const allHotelRoleIds = [...Object.values(ROLE_NAMES.GREEN), ...Object.values(ROLE_NAMES.GREY)];
-      
-      allHotelRoleIds.forEach(roleId => {
-        const hr = guild.roles.cache.get(roleId);
-        if (hr) rolesToRemove.push(hr);
-      });
+      const rolesToRemove = collectAgentRolesToRemove(guild, agent?.team);
       if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
       console.log(`[REMOVE] Removed agent roles from ${member.user.username}`);
     } catch (roleErr) {
@@ -6050,20 +6060,8 @@ async function handleRemoveAgentCommand(interaction) {
       return interaction.reply({ content: `**${targetUser.username}** is not a registered agent.`, ephemeral: true });
     }
 
-    db.transaction(() => {
-      db.prepare("DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)").run(agent.id);
-              db.prepare("DELETE FROM activities WHERE session_id IN (SELECT id FROM sessions WHERE agent_id = ?)").run(agent.id);
-        db.prepare("DELETE FROM sessions WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
-      db.prepare("DELETE FROM maintenance_logs WHERE agent_id = ?").run(agent.id);
-      db.prepare("DELETE FROM handover_notes WHERE agent_id = ?").run(agent.id);
-      db.prepare("DELETE FROM schedules WHERE agent_id = ?").run(agent.id);
-        db.prepare("DELETE FROM hotel_shift_assignments WHERE agent_id = ?").run(agent.id);
-      db.prepare("DELETE FROM agents WHERE discord_id = ?").run(targetUser.id);
-    })();
+    purgeAgentDataByAgentId(agent.id);
+    db.prepare("DELETE FROM agents WHERE discord_id = ?").run(targetUser.id);
 
     if (agent.approval_message_id) {
       try {
@@ -6077,21 +6075,7 @@ async function handleRemoveAgentCommand(interaction) {
 
     try {
       const member = await interaction.guild.members.fetch(targetUser.id);
-      const rolesToRemove = [];
-      const allHotelRoles = [...Object.values(ROLE_NAMES.GREEN), ...Object.values(ROLE_NAMES.GREY)];
-      const namesToPurge = [ROLE_NAMES.AGENTS, ROLE_NAMES.LOGGED_OUT, ROLE_NAMES.ON_SHIFT, ...allHotelRoles];
-      
-      namesToPurge.forEach(name => {
-        const r = interaction.guild.roles.cache.find(role => role.name.toLowerCase() === name.toLowerCase());
-        if (r) rolesToRemove.push(r);
-      });
-      
-      // Remove team role
-      if (agent && agent.team) {
-        const teamRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === agent.team.toLowerCase());
-        if (teamRole) rolesToRemove.push(teamRole);
-      }
-
+      const rolesToRemove = collectAgentRolesToRemove(interaction.guild, agent?.team);
       if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
     } catch (roleErr) {
       console.warn('[REMOVE-AGENT] Could not remove roles:', roleErr.message);
@@ -8413,8 +8397,8 @@ async function handleHotelStatusRefresh(interaction) {
 
 async function handleDbAssignHotel(interaction) {
   try {
-    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
-      return interaction.reply({ content: '❌ Developer or management access required.', ephemeral: true });
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
     }
     const target = interaction.options.getUser('user');
     const hotelId = interaction.options.getString('hotel');
@@ -8422,12 +8406,45 @@ async function handleDbAssignHotel(interaction) {
     const syncPermission = syncMode === 'permission' || syncMode === 'both';
     const syncGhost = syncMode === 'ghost' || syncMode === 'both';
 
-    db.prepare("UPDATE agents SET hotel_id = ?, hotel_compatibility = ? WHERE discord_id = ?")
-      .run(hotelId, serializeHotelCompatibility([hotelId]), target.id);
-    
-    await interaction.reply({ 
-      content: `✅ Successfully linked **${target.username}** permanently to **${getCombinedHotelLabel(hotelId)}**.\nRole sync mode: **${syncMode}**.`, 
-      ephemeral: true 
+    const targetAgent = db.prepare("SELECT id, team FROM agents WHERE discord_id = ?").get(target.id);
+    if (!targetAgent) {
+      return interaction.reply({ content: `❌ **${target.username}** is not a registered agent.`, ephemeral: true });
+    }
+
+    const hotelRecord = db.prepare("SELECT id, team FROM hotels WHERE id = ? AND id != 'TEAM_SHIFT'").get(hotelId);
+    if (!hotelRecord) {
+      return interaction.reply({ content: `❌ Hotel \`${hotelId}\` was not found in the database.`, ephemeral: true });
+    }
+
+    const targetMember = await interaction.guild.members.fetch(target.id).catch(() => null);
+    const effectiveTeam = resolveEffectiveTeamForAgent(targetAgent, targetMember);
+    const hotelTeam = normalizeTeamInput(hotelRecord.team);
+
+    if (effectiveTeam && hotelTeam && effectiveTeam !== hotelTeam) {
+      return interaction.reply({
+        content:
+          `❌ Team mismatch for **${target.username}**.\n` +
+          `Current Team: **${effectiveTeam}**\n` +
+          `Hotel Team: **${hotelTeam}**\n` +
+          `Use \`/assign-team\` first, then run \`/db-assign-hotel\` again.`,
+        ephemeral: true
+      });
+    }
+
+    let autoTeamNote = '';
+    if (!effectiveTeam && hotelTeam) {
+      db.prepare("UPDATE agents SET team = ? WHERE id = ?").run(hotelTeam, targetAgent.id);
+      autoTeamNote = `\nTeam auto-set to **${hotelTeam}** to match the selected hotel.`;
+    }
+
+    db.prepare("UPDATE agents SET hotel_id = ?, hotel_compatibility = ? WHERE id = ?")
+      .run(hotelId, serializeHotelCompatibility([hotelId]), targetAgent.id);
+
+    await interaction.reply({
+      content:
+        `✅ Successfully linked **${target.username}** permanently to **${getCombinedHotelLabel(hotelId)}**.\n` +
+        `Role sync mode: **${syncMode}**.${autoTeamNote}`,
+      ephemeral: true
     });
 
     sendAuditLog(interaction.client, {
@@ -8440,17 +8457,16 @@ async function handleDbAssignHotel(interaction) {
 
     // Role Synchronization (Grey Roles)
     try {
-      const member = await interaction.guild.members.fetch(target.id);
-      if (member) {
+      if (targetMember) {
         const greyRoleIds = syncGhost ? Object.values(ROLE_NAMES.GREY) : [];
         const greenRoleIds = syncPermission ? Object.values(ROLE_NAMES.GREEN) : [];
         
         // Find existing Grey/Green roles to remove
-        const rolesToRemove = member.roles.cache.filter(r => 
+        const rolesToRemove = targetMember.roles.cache.filter(r =>
           greyRoleIds.includes(r.id) || greenRoleIds.includes(r.id)
         );
         
-        if (rolesToRemove.size > 0) await member.roles.remove(rolesToRemove);
+        if (rolesToRemove.size > 0) await targetMember.roles.remove(rolesToRemove);
         
         // Add selected role types for new assignment
         const newGreyRoleId = ROLE_NAMES.GREY[hotelId];
@@ -8459,12 +8475,8 @@ async function handleDbAssignHotel(interaction) {
         const newGreenRole = syncPermission ? interaction.guild.roles.cache.get(newGreenRoleId) : null;
         
         const rolesToAdd = [newGreyRole, newGreenRole].filter(Boolean);
-        
-        // If they are currently on shift (only if we can detect it easily, but better to just add Grey)
-        // Actually, if they are on-shift, the Login flow handles Green roles. 
-        // We'll just ensure Grey is added.
-        
-        if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
+
+        if (rolesToAdd.length > 0) await targetMember.roles.add(rolesToAdd);
         console.log(`[ASSIGN] Synced permanent roles for ${target.username} to ${hotelId}`);
       }
     } catch (e) {
@@ -8472,7 +8484,11 @@ async function handleDbAssignHotel(interaction) {
     }
   } catch (e) {
     console.error('Error in handleDbAssignHotel:', e);
-    await interaction.reply({ content: '❌ Error assigning hotel.', ephemeral: true });
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: '❌ Error assigning hotel.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.editReply({ content: '❌ Error assigning hotel.' }).catch(() => {});
+    }
   }
 }
 

@@ -1027,3 +1027,19 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Permission role: `1490563052951830609`
     - Ghost role: `1490563187773276160`
     - Channel: `1490562737384718386`
+- Refactored interaction reliability + assignment safety paths (PIN exposure behavior unchanged).
+  - Summary: Removed startup default global command wipe and split command deploy into explicit guild deploy + optional env-gated global wipe (`AAVGO_WIPE_GLOBAL_COMMANDS=true`). Removed global 1.5s slash auto-defer timer to prevent double-ack race failures that can cause interaction errors.
+  - Summary: Hardened `/db-assign-hotel` with developer-level permission alignment, target agent existence checks, hotel existence checks, team mismatch blocking, and safe auto-team set when the agent has no team yet.
+  - Summary: Improved Tools deny-modal reliability by embedding channel/message context in modal IDs, adding backward-compatible modal parsing, and resolving original alert message edits using explicit channel/message fetch.
+  - Summary: Deduplicated remove-agent cleanup logic into shared helpers and fixed role removal consistency across button and slash remove flows.
+  - Files touched:
+    - src/index.js
+    - src/auth.js
+    - src/tools.js
+    - src/commands.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Behavior impact:
+    - Lower chance of interaction timeout/unknown-interaction and duplicate-ack reply failures.
+    - `/db-assign-hotel` now fails fast on invalid targets/hotels and prevents cross-team linking drift.
+    - Remove-agent now performs single-pass DB cleanup and consistently removes mapped hotel roles.

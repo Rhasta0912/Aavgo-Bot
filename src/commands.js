@@ -364,7 +364,7 @@ const commandData = [
       .addChoices(...HOTEL_CHOICES)),
   new SlashCommandBuilder()
     .setName('db-assign-hotel')
-    .setDescription('(Developer Only) Manually set an agent\'s permanent hotel linking')
+    .setDescription('(Developer/Operations Manager) Manually set an agent\'s permanent hotel linking')
     .addUserOption(option => option.setName('user').setDescription('The agent to link').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
       .addChoices(...HOTEL_CHOICES))
