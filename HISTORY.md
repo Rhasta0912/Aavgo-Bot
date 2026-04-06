@@ -1118,3 +1118,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/testui.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Reduced `/test-gui` Shift Route Card campiness and cleaned the layout hierarchy.
+  - Summary: Reworked `shift_route` preview copy in `src/testui.js` to a more professional operations tone (`Route Selection`) and removed extra decorative field rows that made the card feel crowded.
+  - Summary: Shift Route context now uses a compact left-rail block (`Team`, `Destination`, `Preview User`, `Mode`) with clearer guidance lines and simpler status wording.
+  - Summary: Updated preview-only buttons and no-op messages to cleaner labels (`Start Live Route`, `Start Training Route`) while preserving safe non-operational behavior.
+  - Why: You requested the Shift Route preview to feel less campy and better structured in `/test-gui`.
+  - Behavior impact:
+    - `/test-gui` Shift Route card now reads cleaner, with less visual clutter and more consistent UX tone.
+    - Interaction reliability, permissions, and single-message ephemeral flow remain unchanged.
+    - No DB/session/role side effects were introduced.
+  - Files touched:
+    - src/testui.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

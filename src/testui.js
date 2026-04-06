@@ -205,35 +205,36 @@ function buildShiftRouteEmbed(state, interaction) {
   const isActive = state.variantKey === TEST_UI_VARIANTS.active;
   const theme = TEST_UI_THEMES[state.themeKey] || TEST_UI_THEMES.aavgo;
   const agentLabel = interaction.member?.displayName || interaction.user?.username || 'Unknown Agent';
-  const routeHeading = isActive ? '🟢 LIVE ROUTE READY' : '🧭 ROUTE PREVIEW MODE';
+  const routeHeading = isActive ? '🟢 READY FOR LIVE ROUTE' : '⚪ ROUTE PREVIEW';
+  const routeMode = isActive ? 'Live · Hotel Shift' : 'Preview · No Login';
   const routeState = isActive
-    ? 'Status: Live route is armed for launch.'
-    : 'Status: Sandbox preview only (no session changes).';
+    ? 'Status: Live route selected. Use the preview controls below to simulate next steps.'
+    : 'Status: Preview only. No shift, role, or database changes are executed.';
+
+  const contextBlock = railBlock([
+    compactLine('Team', `${teamLabel} Operations`, state.densityKey),
+    compactLine('Destination', hotel.label, state.densityKey),
+    compactLine('Preview User', agentLabel, state.densityKey),
+    compactLine('Mode', routeMode, state.densityKey)
+  ]);
 
   const body = [
     `### ${routeHeading}`,
     DIVIDER,
-    compactLine('🧩 Team Context', `${teamLabel} Operations`, state.densityKey),
-    compactLine('🏨 Selected Destination', hotel.label, state.densityKey),
-    compactLine('👤 Preview User', agentLabel, state.densityKey),
+    contextBlock,
     DIVIDER,
-    '• Confirm your assigned destination in the dropdown below.',
-    '• Live route is treated as permanent until reassigned by leadership.',
-    '• Use training route when practicing, not covering live traffic.',
+    '• Confirm destination in the dropdown before starting a route.',
+    '• Live route stays fixed until reassigned by Team Leader or Developer.',
+    '• Use Training Route for practice sessions only.',
     DIVIDER,
     routeState
   ].join('\n');
 
   return new EmbedBuilder()
-    .setTitle('🗺️ Aavgo Operations · Shift Launch Pad')
+    .setTitle('🧭 Aavgo Operations · Route Selection')
     .setDescription(body)
-    .addFields(
-      { name: 'Route Type', value: isActive ? 'Live · Hotel Shift' : 'Preview · No Login', inline: true },
-      { name: 'Team Scope', value: teamLabel, inline: true },
-      { name: 'Style Preset', value: theme.label, inline: true }
-    )
     .setColor(isActive ? 0x57F287 : theme.color)
-    .setFooter({ text: `Aavgo Operations • Shift Route Sandbox • ${hotel.id}` })
+    .setFooter({ text: `Aavgo Operations • Route Selection Preview • ${hotel.id}` })
     .setTimestamp();
 }
 
@@ -441,11 +442,11 @@ function buildPayload(state, interaction) {
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`test_ui_noop_initialize_shift:${normalized.screenKey}:${normalized.themeKey}:${normalized.densityKey}:${normalized.hotelKey}:${normalized.variantKey}`)
-          .setLabel('Initialize Shift')
+          .setLabel('Start Live Route')
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId(`test_ui_noop_open_training:${normalized.screenKey}:${normalized.themeKey}:${normalized.densityKey}:${normalized.hotelKey}:${normalized.variantKey}`)
-          .setLabel('Open Training Route')
+          .setLabel('Start Training Route')
           .setStyle(ButtonStyle.Secondary)
       )
     );
@@ -586,8 +587,8 @@ function createTestUiHandlers(deps) {
       if (customId.startsWith('test_ui_noop_') || customId === 'test_ui_noop') {
         let previewMessage = 'Preview only: This action is disabled in /test-gui.';
         if (customId.startsWith('test_ui_noop_end_training:')) previewMessage = 'Preview only: End-training is disabled in /test-gui.';
-        if (customId.startsWith('test_ui_noop_initialize_shift:')) previewMessage = 'Preview only: Initialize Shift is disabled in /test-gui.';
-        if (customId.startsWith('test_ui_noop_open_training:')) previewMessage = 'Preview only: Training route launch is disabled in /test-gui.';
+        if (customId.startsWith('test_ui_noop_initialize_shift:')) previewMessage = 'Preview only: Live route start is disabled in /test-gui.';
+        if (customId.startsWith('test_ui_noop_open_training:')) previewMessage = 'Preview only: Training route start is disabled in /test-gui.';
         return sendComponentReply(interaction, {
           content: previewMessage,
           ephemeral: true
