@@ -1043,3 +1043,11 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Lower chance of interaction timeout/unknown-interaction and duplicate-ack reply failures.
     - `/db-assign-hotel` now fails fast on invalid targets/hotels and prevents cross-team linking drift.
     - Remove-agent now performs single-pass DB cleanup and consistently removes mapped hotel roles.
+- Routed Prospero Flagship audit logs to dedicated channel `1482383371320430592`.
+  - Summary: Added a centralized audit-routing override for hotel `PROS` so login/logout and other operational audit events tied to Prospero no longer inherit the generic Team 2 operations log channel.
+  - Why: Prospero logs were mixing into Team 2 operations traffic, making location-specific audit tracking harder.
+  - Behavior impact: Any audit event resolved against hotel `PROS` now goes to `1482383371320430592`; non-Prospero routing remains unchanged.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

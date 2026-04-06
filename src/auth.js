@@ -317,6 +317,7 @@ const AUDIT_LOG_CHANNEL_ID = '1482239767134339182';
 const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TEAM_2_OPERATIONS_CHANNEL_ID = '1482249025016168448';
+const PROSPERO_LOG_CHANNEL_ID = '1482383371320430592';
 const TEAM_2_PERMISSION_ROLE_ID = '1489855054134640740';
 const TEAM_2_GHOST_ROLE_ID = '1489855140767993997';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
@@ -578,6 +579,18 @@ function buildAuditFields(resolvedDescription) {
 async function sendAuditLog(client, { title, description, color, hotelId, userId, forceManagerLog, forceTrainingLog, guild }) {
   try {
     let targetChannelId = AUDIT_LOG_CHANNEL_ID;
+    const resolveOpsLogChannelByHotel = rawHotelId => {
+      const normalizedHotelId = normalizeCombinedHotelId(rawHotelId);
+      if (!normalizedHotelId) return null;
+      if (normalizedHotelId === 'PROS') return PROSPERO_LOG_CHANNEL_ID;
+
+      const hotelTeam = normalizeTeamInput(
+        db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotelId)?.team
+      );
+      if (hotelTeam === 'Team 1') return TEAM_1_LOG_CHANNEL_ID;
+      if (hotelTeam === 'Team 2') return TEAM_2_OPERATIONS_CHANNEL_ID;
+      return null;
+    };
 
     // Resolve Nickname if userId is provided
     let agentName = 'Aavgo System';
@@ -599,15 +612,8 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
     } else if (forceManagerLog) {
       targetChannelId = AUDIT_LOG_CHANNEL_ID; // Ensure manager audit
     } else if (hotelId) {
-      const normalizedHotelId = normalizeCombinedHotelId(hotelId);
-      const hotelTeam = normalizeTeamInput(
-        db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotelId)?.team
-      );
-      if (hotelTeam === 'Team 1') {
-        targetChannelId = TEAM_1_LOG_CHANNEL_ID;
-      } else if (hotelTeam === 'Team 2') {
-        targetChannelId = TEAM_2_OPERATIONS_CHANNEL_ID;
-      }
+      const mappedChannelId = resolveOpsLogChannelByHotel(hotelId);
+      if (mappedChannelId) targetChannelId = mappedChannelId;
     } else if (userId) {
       // Check if user is on an active team hotel shift
       const agentSession = db.prepare(`
@@ -615,14 +621,8 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
         WHERE agent_id = (SELECT id FROM agents WHERE discord_id = ?) 
         AND status = 'active'
       `).get(userId);
-      const activeHotelTeam = normalizeTeamInput(
-        db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(agentSession?.hotel_id))?.team
-      );
-      if (activeHotelTeam === 'Team 1') {
-        targetChannelId = TEAM_1_LOG_CHANNEL_ID;
-      } else if (activeHotelTeam === 'Team 2') {
-        targetChannelId = TEAM_2_OPERATIONS_CHANNEL_ID;
-      }
+      const mappedChannelId = resolveOpsLogChannelByHotel(agentSession?.hotel_id);
+      if (mappedChannelId) targetChannelId = mappedChannelId;
     }
 
     const channel = await client.channels.fetch(targetChannelId);
