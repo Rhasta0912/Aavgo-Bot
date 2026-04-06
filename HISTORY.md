@@ -1064,3 +1064,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Corrected Team 2 hotel-status behavior to use a true consolidated board (matching Team 1 style).
+  - Summary: Restored Prospero (`PROS`) per-hotel live status channel to Team 2 operations (`1482249025016168448`) and enabled Team 2 consolidated hotel status board publishing in channel `1489862372867965141` using the same `upsertCombinedHotelStatusBoard` flow as Team 1.
+  - Summary: Team 2 board now persists under config key `hotel_status_board_msg_team_2` and shows Team 2 scope text like Team 1 board style.
+  - Summary: Team status details now reference Team 2 hotel-status board channel `1489862372867965141` for Prospero listing context.
+  - Why: Clarified requirement was “like Team 1 consolidated hotel status card” for Team 2, not only per-hotel card relocation.
+  - Behavior impact:
+    - Team 2 now has a consolidated hotel-status card format consistent with Team 1.
+    - Prospero per-hotel status remains in Team 2 operations/live channel.
+    - Training status support for Prospero remains active.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

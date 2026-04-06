@@ -308,7 +308,7 @@ const HOTEL_LOGIN_CHANNELS = {
   'TRVL': '1483418055538376735',
   'DIBS': '1487250154099703839',
   'QI_RV': '1490562737384718386',
-  'PROS': '1489862372867965141'
+  'PROS': '1482249025016168448'
 };
 
 const APPROVAL_CHANNEL_ID = '1482240202503098398';
@@ -317,6 +317,7 @@ const AUDIT_LOG_CHANNEL_ID = '1482239767134339182';
 const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TEAM_2_OPERATIONS_CHANNEL_ID = '1482249025016168448';
+const TEAM_2_HOTEL_STATUS_CHANNEL_ID = '1489862372867965141';
 const PROSPERO_LOG_CHANNEL_ID = '1482383371320430592';
 const TEAM_2_PERMISSION_ROLE_ID = '1489855054134640740';
 const TEAM_2_GHOST_ROLE_ID = '1489855140767993997';
@@ -2156,19 +2157,12 @@ async function updateAllHotelStatusEmbed(client) {
       legacyConfigKey: 'hotel_status_board_msg',
       scopeLabel: 'All Team 1 hotel boards in one view'
     });
-    // Team 2 uses per-hotel status cards in its own channel; remove any stale
-    // consolidated board pointer from previous behavior.
-    const team2CombinedRow = db.prepare("SELECT value FROM config WHERE key = ?").get('hotel_status_board_msg_team_2');
-    if (team2CombinedRow?.value) {
-      const team2Channel = await client.channels.fetch(TEAM_2_OPERATIONS_CHANNEL_ID).catch(() => null);
-      if (team2Channel?.isTextBased?.()) {
-        const staleMsg = await team2Channel.messages.fetch(team2CombinedRow.value).catch(() => null);
-        if (staleMsg) {
-          await staleMsg.delete().catch(() => {});
-        }
-      }
-      db.prepare("DELETE FROM config WHERE key = ?").run('hotel_status_board_msg_team_2');
-    }
+    await upsertCombinedHotelStatusBoard(client, {
+      teamName: 'Team 2',
+      channelId: TEAM_2_HOTEL_STATUS_CHANNEL_ID,
+      configKey: 'hotel_status_board_msg_team_2',
+      scopeLabel: 'All Team 2 hotel boards in one view'
+    });
   } catch (error) {
     console.warn('[STATUS] Failed to update combined hotel status embed:', error.message);
   } finally {
@@ -2422,7 +2416,7 @@ async function updateTeamStatusEmbed(client, teamName) {
         ? getTeam1HotelSummary().map(h => `\`${h}\``).join(', ')
         : [
             '`Prospero Flagship`',
-            `<#${HOTEL_LOGIN_CHANNELS.PROS}>`,
+            `<#${TEAM_2_HOTEL_STATUS_CHANNEL_ID}>`,
             `Permission Role: <@&${TEAM_2_PERMISSION_ROLE_ID}>`,
             `Ghost Role: <@&${TEAM_2_GHOST_ROLE_ID}>`
           ].join('\n');
