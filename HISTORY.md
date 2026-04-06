@@ -1107,3 +1107,14 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Softened `/test-gui` separator styling and added left-rail stats block in Hotel Status preview.
+  - Summary: Replaced heavy solid dividers in `src/testui.js` with a lighter dotted separator style so section breaks look less aggressive in dark-theme Discord.
+  - Summary: Updated the Hotel Status metrics cluster (`Hotels Tracked`, `Active Hotel Sessions`, `Scope`) to render as a left-rail block (`> ...`) matching the requested visual cue from the red-circle reference.
+  - Why: You requested less-visible separators and the subtle left-side container/rail feel in the hotel stats section.
+  - Behavior impact:
+    - `/test-gui` Hotel Status card now has softer separators and clearer grouped stats hierarchy.
+    - No command routing, permissions, DB behavior, or interaction reliability paths were changed.
+  - Files touched:
+    - src/testui.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

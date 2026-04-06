@@ -9,7 +9,7 @@ const {
 } = require('discord.js');
 
 const EPHEMERAL_FLAGS = MessageFlags.Ephemeral;
-const DIVIDER = '────────────────────────';
+const DIVIDER = '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄';
 
 const TEST_UI_VARIANTS = {
   idle: 'idle',
@@ -157,6 +157,10 @@ function compactLine(prefix, value, densityKey) {
   return `${prefix}: ${value}`;
 }
 
+function railBlock(lines) {
+  return lines.map(line => `> ${line}`).join('\n');
+}
+
 function buildHotelStatusEmbed(state, interaction) {
   const scopeHotelKeys = getHotelKeysForScope(state.hotelKey);
   const teamLabel = getScopedTeamLabel(state.hotelKey);
@@ -173,12 +177,16 @@ function buildHotelStatusEmbed(state, interaction) {
   }).join('\n\n');
 
   const heading = isActive ? '🟢 ACTIVE HOTEL LOGINS' : '⚠️ NO ACTIVE HOTEL LOGINS';
+  const statsBlock = railBlock([
+    compactLine('🏨 Hotels Tracked', String(scopeHotelKeys.length), state.densityKey),
+    compactLine('👥 Active Hotel Sessions', String(activeCount), state.densityKey),
+    compactLine('📍 Scope', `All ${teamLabel} hotel boards in one view`, state.densityKey)
+  ]);
+
   const body = [
     `### ${heading}`,
     DIVIDER,
-    compactLine('🏨 Hotels Tracked', String(scopeHotelKeys.length), state.densityKey),
-    compactLine('👥 Active Hotel Sessions', String(activeCount), state.densityKey),
-    compactLine('📍 Scope', `All ${teamLabel} hotel boards in one view`, state.densityKey),
+    statsBlock,
     DIVIDER,
     hotelLines
   ].join('\n');
