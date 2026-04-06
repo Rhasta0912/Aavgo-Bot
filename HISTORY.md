@@ -1013,3 +1013,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Notes:
     - Minimal blast radius: only audit summary rendering logic changed.
     - Routing, permissions, and interaction flow are unchanged.
+- Added Team 1 hotel identity `Quality-Inn-Russelville` (`QI_RV`) with full live status + trainee-board support.
+  - Summary: Introduced Team 1 hotel ID `QI_RV` and mapped it to the provided channel/role IDs so it behaves like existing live hotels (status cards, role sync, and shift routing). Updated Team 1 hotel UI lists, normalize/validation aliases, consolidated status ordering, and slash command hotel choices so staff can select and manage it end-to-end. Updated DB seeding/migration to persist `QI_RV` and removed it from retired-hotel cleanup so startup no longer auto-deletes it. Training groups were expanded so trainees can choose and appear under `Quality-Inn-Russelville` in the trainee status board.
+  - Files touched:
+    - src/auth.js
+    - src/commands.js
+    - src/database.js
+    - src/profilePanel.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+  - Notes:
+    - Hotel name: `Quality-Inn-Russelville` (`QI_RV`)
+    - Permission role: `1490563052951830609`
+    - Ghost role: `1490563187773276160`
+    - Channel: `1490562737384718386`

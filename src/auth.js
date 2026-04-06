@@ -259,6 +259,7 @@ const ROLE_NAMES = {
     'AD1': '1483418531180843049',
     'TRVL': '1484858995150684170',
     'DIBS': '1482227230343041115',
+    'QI_RV': '1490563052951830609',
     'PROS': '1489855054134640740'
   },
   // Grey (Permanent / Assignment) Roles
@@ -270,6 +271,7 @@ const ROLE_NAMES = {
     'AD1': '1483430144449187923',
     'TRVL': '1484859243671847114',
     'DIBS': '1483430045153362012',
+    'QI_RV': '1490563187773276160',
     'PROS': '1489855140767993997'
   }
 };
@@ -283,6 +285,7 @@ const HOTEL_NAMES = {
   'AD1': 'AD1',
   'TRVL': 'Travelodge',
   'DIBS': 'Day Inns Bishop',
+  'QI_RV': 'Quality-Inn-Russelville',
   'PROS': 'Prospero Flagship'
 };
 const HOTEL_SELECT_EMOJIS = {
@@ -304,6 +307,7 @@ const HOTEL_LOGIN_CHANNELS = {
   'AD1': '1487252636959772702',
   'TRVL': '1483418055538376735',
   'DIBS': '1487250154099703839',
+  'QI_RV': '1490562737384718386',
   'PROS': '1482249025016168448'
 };
 
@@ -349,7 +353,7 @@ const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   APPLICANT_ROLE_ID
 ];
 
-const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
+const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS', 'QI_RV'];
 const TEAM_NAMES = ['Team 1', 'Team 2'];
 const TRAINING_HOTEL_GROUPS = [
   { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
@@ -357,7 +361,8 @@ const TRAINING_HOTEL_GROUPS = [
   { label: 'The Garden Inn At Campsite', hotelIds: ['GICP'] },
   { label: 'AD1', hotelIds: ['AD1'] },
   { label: 'Travelodge', hotelIds: ['TRVL'] },
-  { label: 'Day Inns Bishop', hotelIds: ['DIBS'] }
+  { label: 'Day Inns Bishop', hotelIds: ['DIBS'] },
+  { label: 'Quality-Inn-Russelville', hotelIds: ['QI_RV'] }
 ];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -1142,6 +1147,12 @@ function normalizeHotelInput(input) {
     DAYINNSBISHOP: 'DIBS',
     DAYINNS: 'DIBS',
     BISHOP: 'DIBS',
+    QIRV: 'QI_RV',
+    QUALITYINN: 'QI_RV',
+    QUALITYINNRUSSELVILLE: 'QI_RV',
+    QUALITYINNRUSSELLVILLE: 'QI_RV',
+    RUSSELVILLE: 'QI_RV',
+    RUSSELLVILLE: 'QI_RV',
     PROS: 'PROS',
     PROSPERO: 'PROS',
     PROSPEROFLAGSHIP: 'PROS',
@@ -1483,7 +1494,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Ramada / Super 8, AD1, Travelodge, Day Inns Bishop)');
+    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Ramada / Super 8, AD1, Travelodge, Day Inns Bishop, Quality-Inn-Russelville)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -1977,7 +1988,7 @@ async function updateHotelStatusEmbed(client, hotelId) {
 function getHotelStatusGroupsForTeam(teamName) {
   const teamHotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT' AND team = ?").all(teamName);
   const normalizedIds = [...new Set(teamHotels.map(row => normalizeCombinedHotelId(row.id)).filter(Boolean))];
-  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'PROS'];
+  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'QI_RV', 'PROS'];
 
   const groups = normalizedIds
     .map(hotelId => getHotelStatusGroup(hotelId))
@@ -2181,7 +2192,7 @@ function buildAgentKioskPayload() {
       '> **5.** Team Leader / SME route: choose **Team 1 Shift** or **Team 2 Shift**\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`\n' +
+      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`, `Quality-Inn-Russelville`\n' +
       '**Team 2:** `Prospero Flagship`'
     )
     .setColor(0x5865F2)
@@ -2267,7 +2278,7 @@ async function handleSetupLogin(interaction) {
         '> **4.** Verify your **Secure PIN**\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '### 🏨 Service Locations\n' +
-        '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`'
+        '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`, `Quality-Inn-Russelville`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -2352,7 +2363,7 @@ function formatLoginTimeLabel(loginTime) {
 }
 
 function getTeam1HotelSummary() {
-  return ['Indianhead/Magnuson', 'The Garden Inn At Campsite', 'Ramada / Super 8', 'Travelodge', 'Day Inns Bishop'];
+  return ['Indianhead/Magnuson', 'The Garden Inn At Campsite', 'Ramada / Super 8', 'Travelodge', 'Day Inns Bishop', 'Quality-Inn-Russelville'];
 }
 
 function getTrainingGroupLabel(hotelId) {
@@ -5082,7 +5093,7 @@ async function handleShiftInitModalSubmit(interaction) {
     const normalizedHotel = normalizeHotelInput(hotelInput);
 
     if (!normalizedHotel || !HOTEL_NAMES[normalizedHotel]) {
-      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, The Garden Inn At Campsite, Ramada / Super 8, Travelodge, Day Inns Bishop**.' });
+      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, The Garden Inn At Campsite, Ramada / Super 8, Travelodge, Day Inns Bishop, Quality-Inn-Russelville**.' });
     }
 
     const hotelRecord = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotel);

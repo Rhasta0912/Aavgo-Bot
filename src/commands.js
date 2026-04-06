@@ -8,6 +8,7 @@ const HOTEL_CHOICES = [
   { name: 'AD1', value: 'AD1' },
   { name: 'Travelodge', value: 'TRVL' },
   { name: 'Day Inns Bishop', value: 'DIBS' },
+  { name: 'Quality-Inn-Russelville', value: 'QI_RV' },
   { name: 'Prospero Flagship', value: 'PROS' }
 ];
 

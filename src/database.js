@@ -191,6 +191,8 @@ db.exec(`
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('DIBS', 'Day Inns Bishop', 'Team 1')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
+  INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'Quality-Inn-Russelville', 'Team 1')
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('PROS', 'Prospero Flagship', 'Team 2')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('TEAM_SHIFT', 'Team Operations', 'Global')
@@ -203,6 +205,7 @@ db.exec(`
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('AD1');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('TRVL');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('DIBS');
+  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('QI_RV');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('PROS');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('TEAM_SHIFT');
 
@@ -289,9 +292,11 @@ db.pragma('foreign_keys = ON');
       db.prepare("UPDATE hotels SET name = 'AD1' WHERE id = 'AD1'").run();
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('TRVL', 'Travelodge', 'Team 1') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('DIBS', 'Day Inns Bishop', 'Team 1') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
+      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'Quality-Inn-Russelville', 'Team 1') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
+      db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('QI_RV')").run();
     })();
     db.transaction(() => {
-      const retiredHotelIds = ['VALS', 'QI_RV'];
+      const retiredHotelIds = ['VALS'];
       for (const hotelId of retiredHotelIds) {
         db.prepare("UPDATE agents SET hotel_id = 'BW_TO' WHERE hotel_id = ?").run(hotelId);
         db.prepare("UPDATE sessions SET hotel_id = 'BW_TO' WHERE hotel_id = ?").run(hotelId);
