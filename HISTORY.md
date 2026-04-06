@@ -1051,3 +1051,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Updated Team 2 hotel status routing for Prospero and expanded training status coverage.
+  - Summary: Prospero Flagship (`PROS`) hotel status cards now publish to channel `1489862372867965141` (instead of the previous Team 2 operations channel), so it behaves like a dedicated hotel status channel just like other hotels.
+  - Summary: Added `Prospero Flagship` into training hotel groups so it appears in training route selection and training status board grouping.
+  - Summary: Updated Team status setup details to reference Prospero’s hotel status channel dynamically, and updated training board scope text to include Team 2 groups.
+  - Why: You requested a Team 2 hotel-status channel in the same pattern as other hotels, plus training-status visibility.
+  - Behavior impact:
+    - Prospero live status card posts/updates now target `1489862372867965141`.
+    - Training board now includes a Prospero group when trainees are in that session.
+    - Existing logs/audit routing remains unchanged.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

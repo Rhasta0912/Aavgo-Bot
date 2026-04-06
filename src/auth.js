@@ -308,7 +308,7 @@ const HOTEL_LOGIN_CHANNELS = {
   'TRVL': '1483418055538376735',
   'DIBS': '1487250154099703839',
   'QI_RV': '1490562737384718386',
-  'PROS': '1482249025016168448'
+  'PROS': '1489862372867965141'
 };
 
 const APPROVAL_CHANNEL_ID = '1482240202503098398';
@@ -363,7 +363,8 @@ const TRAINING_HOTEL_GROUPS = [
   { label: 'AD1', hotelIds: ['AD1'] },
   { label: 'Travelodge', hotelIds: ['TRVL'] },
   { label: 'Day Inns Bishop', hotelIds: ['DIBS'] },
-  { label: 'Quality-Inn-Russelville', hotelIds: ['QI_RV'] }
+  { label: 'Quality-Inn-Russelville', hotelIds: ['QI_RV'] },
+  { label: 'Prospero Flagship', hotelIds: ['PROS'] }
 ];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -2421,7 +2422,7 @@ async function updateTeamStatusEmbed(client, teamName) {
         ? getTeam1HotelSummary().map(h => `\`${h}\``).join(', ')
         : [
             '`Prospero Flagship`',
-            `<#${TEAM_2_OPERATIONS_CHANNEL_ID}>`,
+            `<#${HOTEL_LOGIN_CHANNELS.PROS}>`,
             `Permission Role: <@&${TEAM_2_PERMISSION_ROLE_ID}>`,
             `Ghost Role: <@&${TEAM_2_GHOST_ROLE_ID}>`
           ].join('\n');
@@ -2529,7 +2530,7 @@ async function updateTrainingStatusEmbed(client) {
         '────────────────────────\n' +
         `**🤖 Board:** Live training presence tracker\n` +
         `**👥 Active Trainees:** ${trainingSessions.length}\n` +
-        `**📍 Scope:** Team 1 training groups only\n` +
+        `**📍 Scope:** Team 1 and Team 2 training groups\n` +
         '────────────────────────'
       )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
@@ -9603,3 +9604,4 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
+
