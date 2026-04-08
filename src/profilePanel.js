@@ -14,6 +14,7 @@ const PROFILES_CHANNEL_ID = '1485256962617643098';
 const PROFILE_PANEL_KEY_PREFIX = 'profiles_dashboard_msg_';
 const TEAM_1 = 'Team 1';
 const TEAM_2 = 'Team 2';
+const TEAM_3 = 'Team 3';
 const TEAM_AGENTS = 'Agents';
 const TEAM_SME = 'SME';
 const TEAM_TEAM_LEADER = 'Team Leader';
@@ -26,7 +27,7 @@ const TEAM_LEADER_ROLE_ID = '1482732583660818636';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 const DEVELOPER_ROLE_ID = '1482312134875418737';
 const APPLICANTS_ROLE_ID = '1484919969689894912';
-const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES, TEAM_APPLICANTS];
+const VALID_TEAMS = [TEAM_1, TEAM_2, TEAM_3, TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES, TEAM_APPLICANTS];
 const ROLE_LABELS = {
   trainee: 'Trainee',
   agent: 'Agent',
@@ -37,14 +38,15 @@ const ROLE_LABELS = {
 };
 const TEAM_ROLE_LOOKUPS = {
   [TEAM_1]: { names: ['team 1', 'team one'] },
-  [TEAM_2]: { names: ['team 2', 'team two'] }
+  [TEAM_2]: { names: ['team 2', 'team two'] },
+  [TEAM_3]: { names: ['team 3', 'team three'] }
 };
 const SME_ROLE_NAMES = ['subject matter expert', 'sme'];
 const TEAM_LEADER_ROLE_NAMES = ['team leader'];
 const OPERATIONS_MANAGER_ROLE_NAMES = ['operations manager'];
 const DEVELOPER_ROLE_NAMES = ['developer', 'developers'];
-const TEAM_ASSIGNMENT_ROLE_NAMES = ['team 1', 'team one', 'team 2', 'team two'];
-const HOTEL_IDS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS', 'QI_RV'];
+const TEAM_ASSIGNMENT_ROLE_NAMES = ['team 1', 'team one', 'team 2', 'team two', 'team 3', 'team three'];
+const HOTEL_IDS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS', 'PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI', 'ECON', 'BUEN', 'QI_RV'];
 const HOTEL_GREY_ROLE_IDS = {
   BW_TO: '1483429969807020032',
   GICP: '1484531611549831189',
@@ -53,7 +55,15 @@ const HOTEL_GREY_ROLE_IDS = {
   AD1: '1483430144449187923',
   TRVL: '1484859243671847114',
   DIBS: '1483430045153362012',
-  QI_RV: '1490563187773276160'
+  PROS: '1489855140767993997',
+  GLDL: '1491275580706918460',
+  INFL: '1491280813810126939',
+  VALS: '1491280729982898317',
+  BAYT: '1491280851785355284',
+  ANPI: '1491280889026449589',
+  ECON: '1491280957859434576',
+  BUEN: '1491281133323681792',
+  QI_RV: '1491281264647344268'
 };
 const HOTEL_GREEN_ROLE_IDS = {
   BW_TO: '1482227783232000070',
@@ -63,7 +73,15 @@ const HOTEL_GREEN_ROLE_IDS = {
   AD1: '1483418531180843049',
   TRVL: '1484858995150684170',
   DIBS: '1482227230343041115',
-  QI_RV: '1490563052951830609'
+  PROS: '1489855054134640740',
+  GLDL: '1491275580706918460',
+  INFL: '1491280813810126939',
+  VALS: '1491280729982898317',
+  BAYT: '1491280851785355284',
+  ANPI: '1491280889026449589',
+  ECON: '1491280957859434576',
+  BUEN: '1491281133323681792',
+  QI_RV: '1491281264647344268'
 };
 const PAYROLL_TEAM_VIEWS = [TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES];
 const CUTOFF_FIRST_HALF = 'cutoff_1_15';
@@ -78,6 +96,7 @@ function normalizeTeamName(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'team 1' || raw === 'team1' || raw === '1') return TEAM_1;
   if (raw === 'team 2' || raw === 'team2' || raw === '2') return TEAM_2;
+  if (raw === 'team 3' || raw === 'team3' || raw === '3') return TEAM_3;
   if (raw === 'agents' || raw === 'agent') return TEAM_AGENTS;
   if (raw === 'sme' || raw === 'subject matter expert') return TEAM_SME;
   if (raw === 'team leader' || raw === 'teamlead' || raw === 'tl') return TEAM_TEAM_LEADER;
@@ -278,6 +297,9 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   const team2Description = normalizedSelected === TEAM_2
     ? 'Browse Team 2 members (current)'
     : 'Browse Team 2 members';
+  const team3Description = normalizedSelected === TEAM_3
+    ? 'Browse Team 3 members (current)'
+    : 'Browse Team 3 members';
   const agentsDescription = normalizedSelected === TEAM_AGENTS
     ? 'Browse agents only (current)'
     : 'Browse agents only';
@@ -306,6 +328,10 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
         .setLabel(TEAM_2)
         .setDescription(team2Description)
         .setValue(TEAM_2),
+      new StringSelectMenuOptionBuilder()
+        .setLabel(TEAM_3)
+        .setDescription(team3Description)
+        .setValue(TEAM_3),
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_AGENTS)
         .setDescription(agentsDescription)
@@ -1113,7 +1139,8 @@ function buildSetTeamMenuRow(targetDiscordId, teamName) {
       .setPlaceholder('Select team')
       .addOptions(
         new StringSelectMenuOptionBuilder().setLabel(TEAM_1).setDescription('Assign Team 1 role').setValue(TEAM_1),
-        new StringSelectMenuOptionBuilder().setLabel(TEAM_2).setDescription('Assign Team 2 role').setValue(TEAM_2)
+        new StringSelectMenuOptionBuilder().setLabel(TEAM_2).setDescription('Assign Team 2 role').setValue(TEAM_2),
+        new StringSelectMenuOptionBuilder().setLabel(TEAM_3).setDescription('Assign Team 3 role').setValue(TEAM_3)
       )
   );
 }
@@ -1404,7 +1431,7 @@ function memberHasAgentAccess(member) {
 }
 
 function memberHasTeamAccess(member) {
-  return memberHasAnyRoleByName(member, [TEAM_1, TEAM_2, 'team 1', 'team 2', 'team one', 'team two']);
+  return memberHasAnyRoleByName(member, [TEAM_1, TEAM_2, TEAM_3, 'team 1', 'team 2', 'team 3', 'team one', 'team two', 'team three']);
 }
 
 function buildAccessRequirementEmbed(title, description, requirement) {
@@ -1497,7 +1524,7 @@ async function applySingleHotelUpdate(interaction, discordId, hotelId, teamName)
         buildAccessRequirementEmbed(
           'Set Hotel Locked',
           `You are trying to assign a hotel to <@${discordId}>.`,
-          'They must already have the Agent role and a Team 1 / Team 2 role first.'
+          'They must already have the Agent role and a Team 1 / Team 2 / Team 3 role first.'
         )
       ],
       components: [buildBackToProfileRow(discordId, teamName)]
@@ -1535,7 +1562,7 @@ async function applyMultiHotelUpdate(interaction, discordId, selectedHotels, tea
         buildAccessRequirementEmbed(
           'Set Hotel Locked',
           `You are trying to assign multiple hotels to <@${discordId}>.`,
-          'They must already have the Agent role and a Team 1 / Team 2 role first.'
+          'They must already have the Agent role and a Team 1 / Team 2 / Team 3 role first.'
         )
       ],
       components: [buildBackToProfileRow(discordId, teamName)]
@@ -1785,7 +1812,7 @@ async function showSetHotelModeView(interaction, discordId, teamName) {
         buildAccessRequirementEmbed(
           'Set Hotel Locked',
           `You are trying to assign hotel access to <@${discordId}>.`,
-          'They must already have the Agent role and a Team 1 / Team 2 role first.'
+          'They must already have the Agent role and a Team 1 / Team 2 / Team 3 role first.'
         )
       ],
       components: [buildBackToProfileRow(discordId, teamName)]

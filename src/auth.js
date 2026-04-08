@@ -250,6 +250,8 @@ const ROLE_NAMES = {
   LOGGED_OUT: 'Logged Out',
   AGENTS: 'Agents',
   TEAM_1: 'Team 1',
+  TEAM_2: 'Team 2',
+  TEAM_3: 'Team 3',
   // Green (On-Shift / Permission) Roles
   GREEN: {
     'BW_TO': '1482227783232000070',
@@ -259,8 +261,15 @@ const ROLE_NAMES = {
     'AD1': '1483418531180843049',
     'TRVL': '1484858995150684170',
     'DIBS': '1482227230343041115',
-    'QI_RV': '1490563052951830609',
-    'PROS': '1489855054134640740'
+    'PROS': '1489855054134640740',
+    'GLDL': '1491275580706918460',
+    'INFL': '1491280813810126939',
+    'VALS': '1491280729982898317',
+    'BAYT': '1491280851785355284',
+    'ANPI': '1491280889026449589',
+    'ECON': '1491280957859434576',
+    'BUEN': '1491281133323681792',
+    'QI_RV': '1491281264647344268'
   },
   // Grey (Permanent / Assignment) Roles
   GREY: {
@@ -271,8 +280,15 @@ const ROLE_NAMES = {
     'AD1': '1483430144449187923',
     'TRVL': '1484859243671847114',
     'DIBS': '1483430045153362012',
-    'QI_RV': '1490563187773276160',
-    'PROS': '1489855140767993997'
+    'PROS': '1489855140767993997',
+    'GLDL': '1491275580706918460',
+    'INFL': '1491280813810126939',
+    'VALS': '1491280729982898317',
+    'BAYT': '1491280851785355284',
+    'ANPI': '1491280889026449589',
+    'ECON': '1491280957859434576',
+    'BUEN': '1491281133323681792',
+    'QI_RV': '1491281264647344268'
   }
 };
 
@@ -285,8 +301,15 @@ const HOTEL_NAMES = {
   'AD1': 'AD1',
   'TRVL': 'Travelodge',
   'DIBS': 'Day Inns Bishop',
-  'QI_RV': 'Quality-Inn-Russelville',
-  'PROS': 'Prospero Flagship'
+  'PROS': 'Prospero Flagship',
+  'GLDL': 'Glendale / The Leef Hotel',
+  'INFL': 'Inn at the Fingerlakes',
+  'VALS': 'Value Suites',
+  'BAYT': 'Bayside / Townhouse',
+  'ANPI': 'Anchor Beach / Pacific Inn',
+  'ECON': 'Econolodge',
+  'BUEN': 'Buenavista',
+  'QI_RV': 'Quality Russelville'
 };
 const HOTEL_SELECT_EMOJIS = {
   BW_TO: '🏙️',
@@ -307,7 +330,6 @@ const HOTEL_LOGIN_CHANNELS = {
   'AD1': '1487252636959772702',
   'TRVL': '1483418055538376735',
   'DIBS': '1487250154099703839',
-  'QI_RV': '1490562737384718386',
   'PROS': '1482249025016168448'
 };
 
@@ -318,9 +340,14 @@ const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
 const TEAM_2_OPERATIONS_CHANNEL_ID = '1482249025016168448';
 const TEAM_2_HOTEL_STATUS_CHANNEL_ID = '1489862372867965141';
+const TEAM_3_OPERATIONS_CHANNEL_ID = '1482222166656417843';
+const TEAM_3_HOTEL_STATUS_CHANNEL_ID = '1482222166656417843';
+const TEAM_3_LOG_CHANNEL_ID = '1491285753978949662';
 const PROSPERO_LOG_CHANNEL_ID = '1482383371320430592';
 const TEAM_2_PERMISSION_ROLE_ID = '1489855054134640740';
 const TEAM_2_GHOST_ROLE_ID = '1489855140767993997';
+const TEAM_3_PERMISSION_ROLE_ID = '1482290586831552534';
+const TEAM_3_GHOST_ROLE_ID = '1491291007365414963';
 const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
@@ -354,8 +381,10 @@ const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   APPLICANT_ROLE_ID
 ];
 
-const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS', 'QI_RV'];
-const TEAM_NAMES = ['Team 1', 'Team 2'];
+const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
+const TEAM_2_HOTELS = ['PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI'];
+const TEAM_3_HOTELS = ['ECON', 'BUEN', 'QI_RV'];
+const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3'];
 const TRAINING_HOTEL_GROUPS = [
   { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
   { label: 'Ramada / Super 8', hotelIds: ['RMDA', 'SUP8'] },
@@ -363,8 +392,15 @@ const TRAINING_HOTEL_GROUPS = [
   { label: 'AD1', hotelIds: ['AD1'] },
   { label: 'Travelodge', hotelIds: ['TRVL'] },
   { label: 'Day Inns Bishop', hotelIds: ['DIBS'] },
-  { label: 'Quality-Inn-Russelville', hotelIds: ['QI_RV'] },
-  { label: 'Prospero Flagship', hotelIds: ['PROS'] }
+  { label: 'Prospero Flagship', hotelIds: ['PROS'] },
+  { label: 'Glendale / The Leef Hotel', hotelIds: ['GLDL'] },
+  { label: 'Inn at the Fingerlakes', hotelIds: ['INFL'] },
+  { label: 'Value Suites', hotelIds: ['VALS'] },
+  { label: 'Bayside / Townhouse', hotelIds: ['BAYT'] },
+  { label: 'Anchor Beach / Pacific Inn', hotelIds: ['ANPI'] },
+  { label: 'Econolodge', hotelIds: ['ECON'] },
+  { label: 'Buenavista', hotelIds: ['BUEN'] },
+  { label: 'Quality Russelville', hotelIds: ['QI_RV'] }
 ];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -590,6 +626,7 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
       );
       if (hotelTeam === 'Team 1') return TEAM_1_LOG_CHANNEL_ID;
       if (hotelTeam === 'Team 2') return TEAM_2_OPERATIONS_CHANNEL_ID;
+      if (hotelTeam === 'Team 3') return TEAM_3_LOG_CHANNEL_ID;
       return null;
     };
 
@@ -608,6 +645,8 @@ async function sendAuditLog(client, { title, description, color, hotelId, userId
         const team = db.prepare("SELECT team FROM agents WHERE discord_id = ?").get(userId)?.team;
         if (team === 'Team 2') {
           targetChannelId = TEAM_2_OPERATIONS_CHANNEL_ID;
+        } else if (team === 'Team 3') {
+          targetChannelId = TEAM_3_OPERATIONS_CHANNEL_ID;
         }
       }
     } else if (forceManagerLog) {
@@ -903,6 +942,11 @@ async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
         const team2GhostRole = guild.roles.cache.get(TEAM_2_GHOST_ROLE_ID);
         if (team2PermissionRole) rolesToRemove.push(team2PermissionRole);
         if (team2GhostRole) rolesToAdd.push(team2GhostRole);
+      } else if (hId === 'TEAM_SHIFT' && sessionKind !== 'training' && effectiveMemberTeam === 'Team 3') {
+        const team3PermissionRole = guild.roles.cache.get(TEAM_3_PERMISSION_ROLE_ID);
+        const team3GhostRole = guild.roles.cache.get(TEAM_3_GHOST_ROLE_ID);
+        if (team3PermissionRole) rolesToRemove.push(team3PermissionRole);
+        if (team3GhostRole) rolesToAdd.push(team3GhostRole);
       }
 
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hId]);
@@ -1115,11 +1159,12 @@ function normalizeTeamInput(input) {
   const cleaned = (input || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (cleaned === 'team 1' || cleaned === '1' || cleaned === 'team1') return 'Team 1';
   if (cleaned === 'team 2' || cleaned === '2' || cleaned === 'team2') return 'Team 2';
+  if (cleaned === 'team 3' || cleaned === '3' || cleaned === 'team3') return 'Team 3';
   return null;
 }
 
-function getOtherTeamName(teamName) {
-  return teamName === 'Team 1' ? 'Team 2' : teamName === 'Team 2' ? 'Team 1' : null;
+function getOtherTeamNames(teamName) {
+  return TEAM_NAMES.filter(name => name !== teamName);
 }
 
 function normalizeHotelInput(input) {
@@ -1157,7 +1202,28 @@ function normalizeHotelInput(input) {
     PROS: 'PROS',
     PROSPERO: 'PROS',
     PROSPEROFLAGSHIP: 'PROS',
-    FLAGSHIP: 'PROS'
+    FLAGSHIP: 'PROS',
+    GLDL: 'GLDL',
+    GLENDALE: 'GLDL',
+    THELEEFHOTEL: 'GLDL',
+    LEEF: 'GLDL',
+    INFL: 'INFL',
+    INNATTHEFINGERLAKES: 'INFL',
+    FINGERLAKES: 'INFL',
+    VALS: 'VALS',
+    VALUESUITES: 'VALS',
+    BAYT: 'BAYT',
+    BAYSIDE: 'BAYT',
+    TOWNHOUSE: 'BAYT',
+    ANPI: 'ANPI',
+    ANCHORBEACH: 'ANPI',
+    PACIFICINN: 'ANPI',
+    ECON: 'ECON',
+    ECONOLODGE: 'ECON',
+    BUEN: 'BUEN',
+    BUENAVISTA: 'BUEN',
+    QUALITYRUSSELVILLE: 'QI_RV',
+    QUALITYRUSSELLVILLE: 'QI_RV'
   };
 
   return aliases[cleaned] || null;
@@ -1495,7 +1561,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type hotel name (Indianhead/Magnuson, Garden Inn, Ramada / Super 8, AD1, Travelodge, Day Inns Bishop, Quality-Inn-Russelville)');
+    .setPlaceholder('Type hotel name (e.g., Indianhead, Prospero, Econolodge, Quality Russelville)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -1597,6 +1663,8 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const effectiveLoginTeam = loginTeamFromAgent || loginTeamFromRoles || null;
     const team2PermissionRole = guild.roles.cache.get(TEAM_2_PERMISSION_ROLE_ID);
     const team2GhostRole = guild.roles.cache.get(TEAM_2_GHOST_ROLE_ID);
+    const team3PermissionRole = guild.roles.cache.get(TEAM_3_PERMISSION_ROLE_ID);
+    const team3GhostRole = guild.roles.cache.get(TEAM_3_GHOST_ROLE_ID);
 
     if (isTrainingSession) {
       // Training / practice sessions are role-neutral for Agents and Trainees.
@@ -1617,6 +1685,12 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
           await member.roles.remove([team2GhostRole]);
         }
         console.log(`[ROLES] Team 2 operations roles swapped for ${interaction.user.username}: +Permission, -Ghost`);
+      } else if (effectiveLoginTeam === 'Team 3' && team3PermissionRole) {
+        await member.roles.add([team3PermissionRole]);
+        if (team3GhostRole) {
+          await member.roles.remove([team3GhostRole]);
+        }
+        console.log(`[ROLES] Team 3 operations roles swapped for ${interaction.user.username}: +Permission, -Ghost`);
       }
     } else if (hotelId !== 'TEAM_SHIFT') {
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
@@ -1748,7 +1822,10 @@ async function updateHotelStatusEmbed(client, hotelId) {
   try {
     const hotelGroup = getHotelStatusGroup(hotelId);
     const hotelChannelId = HOTEL_LOGIN_CHANNELS[hotelGroup.key] || HOTEL_LOGIN_CHANNELS[hotelId];
-    if (!hotelChannelId) return;
+    if (!hotelChannelId) {
+      scheduleCombinedHotelStatusRefresh(client);
+      return;
+    }
 
     const channel = await client.channels.fetch(hotelChannelId);
     if (!channel) return;
@@ -1989,7 +2066,7 @@ async function updateHotelStatusEmbed(client, hotelId) {
 function getHotelStatusGroupsForTeam(teamName) {
   const teamHotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT' AND team = ?").all(teamName);
   const normalizedIds = [...new Set(teamHotels.map(row => normalizeCombinedHotelId(row.id)).filter(Boolean))];
-  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'QI_RV', 'PROS'];
+  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI', 'ECON', 'BUEN', 'QI_RV'];
 
   const groups = normalizedIds
     .map(hotelId => getHotelStatusGroup(hotelId))
@@ -2162,6 +2239,12 @@ async function updateAllHotelStatusEmbed(client) {
       configKey: 'hotel_status_board_msg_team_2',
       scopeLabel: 'All Team 2 hotel boards in one view'
     });
+    await upsertCombinedHotelStatusBoard(client, {
+      teamName: 'Team 3',
+      channelId: TEAM_3_HOTEL_STATUS_CHANNEL_ID,
+      configKey: 'hotel_status_board_msg_team_3',
+      scopeLabel: 'All Team 3 hotel boards in one view'
+    });
   } catch (error) {
     console.warn('[STATUS] Failed to update combined hotel status embed:', error.message);
   } finally {
@@ -2239,11 +2322,12 @@ function buildAgentKioskPayload() {
       '> **2.** Click **Initialize Shift** below\n' +
       '> **3.** The bot will detect your role automatically\n' +
       '> **4.** Agent route: choose **Live -> Hotel Shift** or **Practice -> Training**\n' +
-      '> **5.** Team Leader / SME route: choose **Team 1 Shift** or **Team 2 Shift**\n\n' +
+      '> **5.** Team Leader / SME route: choose your assigned Team 1 / Team 2 / Team 3 shift\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
-      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`, `Quality-Inn-Russelville`\n' +
-      '**Team 2:** `Prospero Flagship`'
+      '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`\n' +
+      '**Team 2:** `Prospero Flagship`, `Glendale / The Leef Hotel`, `Inn at the Fingerlakes`, `Value Suites`, `Bayside / Townhouse`, `Anchor Beach / Pacific Inn`\n' +
+      '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -2328,7 +2412,9 @@ async function handleSetupLogin(interaction) {
         '> **4.** Verify your **Secure PIN**\n\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
         '### 🏨 Service Locations\n' +
-        '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`, `Quality-Inn-Russelville`'
+        '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`\n' +
+        '**Team 2:** `Prospero Flagship`, `Glendale / The Leef Hotel`, `Inn at the Fingerlakes`, `Value Suites`, `Bayside / Townhouse`, `Anchor Beach / Pacific Inn`\n' +
+        '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -2398,6 +2484,8 @@ async function handleSetupLoginTeam(interaction) {
 
     // Initial status embed
     await updateTeamStatusEmbed(interaction.client, 'Team 1');
+    await updateTeamStatusEmbed(interaction.client, 'Team 2');
+    await updateTeamStatusEmbed(interaction.client, 'Team 3');
   } catch (error) {
     console.error('Error in handleSetupLoginTeam:', error);
   }
@@ -2412,8 +2500,22 @@ function formatLoginTimeLabel(loginTime) {
   return `<t:${loginUnix}:R>`;
 }
 
-function getTeam1HotelSummary() {
-  return ['Indianhead/Magnuson', 'The Garden Inn At Campsite', 'Ramada / Super 8', 'Travelodge', 'Day Inns Bishop', 'Quality-Inn-Russelville'];
+function getTeamBoardChannelLabel(teamName) {
+  if (teamName === 'Team 1') return `<#${HOTEL_STATUS_CHANNEL_ID}>`;
+  if (teamName === 'Team 2') return `<#${TEAM_2_HOTEL_STATUS_CHANNEL_ID}>`;
+  if (teamName === 'Team 3') return `<#${TEAM_3_HOTEL_STATUS_CHANNEL_ID}>`;
+  return 'Not configured';
+}
+
+function getTeamHotelSummary(teamName) {
+  const hotels = db.prepare(`
+    SELECT name
+    FROM hotels
+    WHERE id != 'TEAM_SHIFT' AND team = ?
+    ORDER BY name COLLATE NOCASE ASC
+  `).all(teamName);
+  if (hotels.length === 0) return 'No hotels configured';
+  return hotels.map(row => `\`${row.name}\``).join(', ');
 }
 
 function getTrainingGroupLabel(hotelId) {
@@ -2466,15 +2568,8 @@ async function updateTeamStatusEmbed(client, teamName) {
       const loggedInIds = new Set(loggedIn.map(row => row.discord_id));
       const offline = roster.filter(row => !loggedInIds.has(row.discord_id));
 
-      const teamLabel = name === 'Team 1' ? 'Team 1' : 'Team 2';
-      const hotelLabel = name === 'Team 1'
-        ? getTeam1HotelSummary().map(h => `\`${h}\``).join(', ')
-        : [
-            '`Prospero Flagship`',
-            `<#${TEAM_2_HOTEL_STATUS_CHANNEL_ID}>`,
-            `Permission Role: <@&${TEAM_2_PERMISSION_ROLE_ID}>`,
-            `Ghost Role: <@&${TEAM_2_GHOST_ROLE_ID}>`
-          ].join('\n');
+      const teamLabel = name;
+      const hotelLabel = `${getTeamHotelSummary(name)}\nBoard: ${getTeamBoardChannelLabel(name)}`;
 
       const liveLines = loggedIn.length > 0
         ? loggedIn
@@ -2497,16 +2592,17 @@ async function updateTeamStatusEmbed(client, teamName) {
       };
     });
 
-    const teamOneLoggedIn = activeTLs.filter(row => row.team === 'Team 1').length;
-    const teamTwoLoggedIn = activeTLs.filter(row => row.team === 'Team 2').length;
+    const teamOnlineLines = TEAM_NAMES.map(name => {
+      const count = activeTLs.filter(row => row.team === name).length;
+      return `**${name} Online:** ${count}`;
+    });
 
     const embed = new EmbedBuilder()
       .setTitle('Team Leader Login Status')
       .setDescription(
         '**Live Management Board**\n' +
         '────────────────────────\n' +
-        `**Team 1 Online:** ${teamOneLoggedIn}\n` +
-        `**Team 2 Online:** ${teamTwoLoggedIn}\n` +
+        `${teamOnlineLines.join('\n')}\n` +
         `**Total Active Oversight:** ${activeTLs.length}`
       )
       .setColor(activeTLs.length > 0 ? 0x57F287 : 0x2B2D31)
@@ -2579,7 +2675,7 @@ async function updateTrainingStatusEmbed(client) {
         '────────────────────────\n' +
         `**🤖 Board:** Live training presence tracker\n` +
         `**👥 Active Trainees:** ${trainingSessions.length}\n` +
-        `**📍 Scope:** Team 1 and Team 2 training groups\n` +
+        `**📍 Scope:** Team 1, Team 2, and Team 3 training groups\n` +
         '────────────────────────'
       )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
@@ -2623,6 +2719,7 @@ async function refreshOperationalBoards(client) {
     await updateAllHotelStatusEmbed(client);
     await updateTeamStatusEmbed(client, 'Team 1');
     await updateTeamStatusEmbed(client, 'Team 2');
+    await updateTeamStatusEmbed(client, 'Team 3');
     await updateTrainingStatusEmbed(client);
   } catch (error) {
     console.warn('[STATUS] Boot refresh failed:', error.message);
@@ -2880,7 +2977,7 @@ function getDiscordRoleSyncSnapshot(member) {
     .map(role => normalizeDiscordRoleName(role?.name))
     .filter(Boolean);
 
-  const teamName = normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2')) || null;
+  const teamName = normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2' || name === 'team 3')) || null;
 
   if (hasDiscordRoleName(roleNames, ['subject matter expert', 'subject_matter_expert', 'sme'])) {
     return { role: 'sme', team: teamName };
@@ -2938,6 +3035,8 @@ function resolveTeamFromMemberRoles(member) {
   if (hasTeam1) return 'Team 1';
   const hasTeam2 = member.roles.cache.some(role => normalizeDiscordRoleName(role?.name) === 'team 2');
   if (hasTeam2) return 'Team 2';
+  const hasTeam3 = member.roles.cache.some(role => normalizeDiscordRoleName(role?.name) === 'team 3');
+  if (hasTeam3) return 'Team 3';
   return null;
 }
 
@@ -3822,7 +3921,7 @@ async function handleStartShiftClick(interaction) {
     if (isTLButton) {
        if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
           return sendPrivateFlowPayload(interaction, {
-            content: '⚠️ **Team Assignment Missing.** Please contact a developer to assign your team (Team 1 or Team 2) before logging into management.',
+            content: '⚠️ **Team Assignment Missing.** Please contact a developer to assign your team (Team 1, Team 2, or Team 3) before logging into management.',
           });
        }
        return await showPinModal(interaction, 'TEAM_SHIFT', false, allowMultiHotel);
@@ -4951,7 +5050,8 @@ async function handleCancelHotelLink(interaction) {
 
        const row = new ActionRowBuilder().addComponents(
          new ButtonBuilder().setCustomId('team_btn_Team 1').setLabel('Team 1').setStyle(ButtonStyle.Primary).setEmoji('👥'),
-         new ButtonBuilder().setCustomId('team_btn_Team 2').setLabel('Team 2').setStyle(ButtonStyle.Primary).setEmoji('👥')
+         new ButtonBuilder().setCustomId('team_btn_Team 2').setLabel('Team 2').setStyle(ButtonStyle.Primary).setEmoji('👥'),
+         new ButtonBuilder().setCustomId('team_btn_Team 3').setLabel('Team 3').setStyle(ButtonStyle.Primary).setEmoji('👥')
        );
        return await interaction.update({ embeds: [embed], components: [row] });
     }
@@ -5083,7 +5183,8 @@ async function handleShiftInitModalSubmit(interaction) {
     const normalizedHotel = normalizeHotelInput(hotelInput);
 
     if (!normalizedHotel || !HOTEL_NAMES[normalizedHotel]) {
-      return interaction.editReply({ content: '❌ Invalid hotel. Please use one of: **Indianhead/Magnuson, The Garden Inn At Campsite, Ramada / Super 8, Travelodge, Day Inns Bishop, Quality-Inn-Russelville**.' });
+      const hotelList = Object.values(HOTEL_NAMES).join(', ');
+      return interaction.editReply({ content: `❌ Invalid hotel. Please use one of: **${hotelList}**.` });
     }
 
     const hotelRecord = db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotel);
@@ -5592,7 +5693,7 @@ async function handleLogout(interaction) {
       const hotelTeam = normalizeTeamInput(
         db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(hotelId))?.team
       );
-      return hotelTeam === 'Team 1' || hotelTeam === 'Team 2';
+      return hotelTeam === 'Team 1' || hotelTeam === 'Team 2' || hotelTeam === 'Team 3';
     });
 
     if (!practiceOnlyLogout && closedLiveHotelIds.length > 0) {
@@ -7912,7 +8013,7 @@ async function handleHelpStaff(interaction) {
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
-        '> `/assign-team`: Move an agent between Team 1 and Team 2.\n' +
+        '> `/assign-team`: Move an agent between Team 1, Team 2, and Team 3.\n' +
         '> `/db-assign-hotel`: Permanently link an agent to a hotel (`sync`: permission/ghost/both).\n' +
         '> `/promote user:@name role:Developer|Operations Manager`: Create a dual-approval promotion request.\n' +
         '> `/db-add-developer`: Legacy alias that now routes to approval request flow.\n' +
@@ -8001,7 +8102,7 @@ async function handleHelpAgent(interaction) {
         '### 👥 Onboarding Support\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/select-trainee`: Mark a user as a trainee during onboarding.\n' +
-        '> `/assign-team`: Reassign a user to Team 1 or Team 2.\n\n' +
+        '> `/assign-team`: Reassign a user to Team 1, Team 2, or Team 3.\n\n' +
         '### 📌 Your Current Access\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         `> **DB Role:** ${roleLabel}\n` +
@@ -8286,19 +8387,27 @@ async function handleAssignTeam(interaction) {
     const targetUser = interaction.options.getUser('name');
 
     if (!teamName) {
-      return interaction.editReply({ content: '❌ Please choose Team 1 or Team 2.' });
+      return interaction.editReply({ content: '❌ Please choose Team 1, Team 2, or Team 3.' });
     }
 
     const member = await interaction.guild.members.fetch(targetUser.id);
     const currentTeam = db.prepare("SELECT team FROM agents WHERE discord_id = ?").get(targetUser.id)?.team || null;
-    const targetTeamRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === teamName.toLowerCase());
-    const otherTeamName = getOtherTeamName(teamName);
-    const otherTeamRole = otherTeamName ? interaction.guild.roles.cache.find(r => r.name.toLowerCase() === otherTeamName.toLowerCase()) : null;
+    const targetTeamRole = interaction.guild.roles.cache.find(
+      role => normalizeDiscordRoleName(role?.name) === normalizeDiscordRoleName(teamName)
+    );
+    const otherTeamRoles = getOtherTeamNames(teamName)
+      .map(otherTeam =>
+        interaction.guild.roles.cache.find(
+          role => normalizeDiscordRoleName(role?.name) === normalizeDiscordRoleName(otherTeam)
+        )
+      )
+      .filter(Boolean);
 
     db.prepare("UPDATE agents SET team = ? WHERE discord_id = ?").run(teamName, targetUser.id);
 
-    if (otherTeamRole && member.roles.cache.has(otherTeamRole.id)) {
-      await member.roles.remove(otherTeamRole);
+    const removableTeamRoles = otherTeamRoles.filter(role => member.roles.cache.has(role.id));
+    if (removableTeamRoles.length > 0) {
+      await member.roles.remove(removableTeamRoles);
     }
 
     if (targetTeamRole && !member.roles.cache.has(targetTeamRole.id)) {
@@ -8373,6 +8482,7 @@ async function handleHotelStatusRefresh(interaction) {
       await updateAllHotelStatusEmbed(interaction.client);
       await updateTeamStatusEmbed(interaction.client, 'Team 1');
       await updateTeamStatusEmbed(interaction.client, 'Team 2');
+      await updateTeamStatusEmbed(interaction.client, 'Team 3');
       await interaction.editReply({ content: '✅ Successfully refreshed all hotel and team status embeds.' });
     } else if (action === 'clear_team1_live_embeds') {
       const result = await clearTeamHotelLiveStatusEmbeds(interaction.client, 'Team 1');
@@ -9167,6 +9277,7 @@ async function handleSetupLoginTeam(interaction) {
     await ensureAgentKioskMessage(interaction.client, interaction.channelId);
     await updateTeamStatusEmbed(interaction.client, 'Team 1');
     await updateTeamStatusEmbed(interaction.client, 'Team 2');
+    await updateTeamStatusEmbed(interaction.client, 'Team 3');
     await updateTrainingStatusEmbed(interaction.client);
 
     if (interaction.deferred || interaction.replied) {

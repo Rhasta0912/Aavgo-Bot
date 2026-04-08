@@ -1173,3 +1173,21 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/profilePanel.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Task 3.0 Team 3 rollout (team assignments, hotel mappings, and status board coverage).
+  - Summary: Added Team 3 support across auth/profile/command/database flows, including `/assign-team` choices, team-role normalization, Team 3 management routing, and Team 3 status board refresh paths.
+  - Summary: Expanded hotel catalog and role mappings for Team 2 and Team 3 (`GLDL`, `INFL`, `VALS`, `BAYT`, `ANPI`, `ECON`, `BUEN`), and moved `QI_RV` to Team 3 with updated display label `Quality Russelville`.
+  - Summary: Updated kiosk/help/status language to include Team 3 and the new hotel lists in beginner-friendly wording.
+  - Summary: Hardened status refresh behavior so hotels without a dedicated per-hotel login channel still trigger consolidated board refresh (prevents stale team-board state).
+  - Why: Video Task 3.0 requested Team 3 onboarding plus expanded Team 2/3 hotel support with minimal-risk changes.
+  - Behavior impact:
+    - Management and agent flows now recognize Team 1 / Team 2 / Team 3 consistently.
+    - `/assign-team` can set Team 3 and removes any other team role before applying the new team role.
+    - Consolidated hotel status boards now refresh for Team 1, Team 2, and Team 3.
+    - Team 2/3 hotels without dedicated live card channels remain visible via consolidated team boards.
+  - Files touched:
+    - src/auth.js
+    - src/commands.js
+    - src/database.js
+    - src/profilePanel.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

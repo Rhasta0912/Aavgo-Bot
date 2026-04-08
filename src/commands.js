@@ -8,8 +8,15 @@ const HOTEL_CHOICES = [
   { name: 'AD1', value: 'AD1' },
   { name: 'Travelodge', value: 'TRVL' },
   { name: 'Day Inns Bishop', value: 'DIBS' },
-  { name: 'Quality-Inn-Russelville', value: 'QI_RV' },
-  { name: 'Prospero Flagship', value: 'PROS' }
+  { name: 'Prospero Flagship', value: 'PROS' },
+  { name: 'Glendale / The Leef Hotel', value: 'GLDL' },
+  { name: 'Inn at the Fingerlakes', value: 'INFL' },
+  { name: 'Value Suites', value: 'VALS' },
+  { name: 'Bayside / Townhouse', value: 'BAYT' },
+  { name: 'Anchor Beach / Pacific Inn', value: 'ANPI' },
+  { name: 'Econolodge', value: 'ECON' },
+  { name: 'Buenavista', value: 'BUEN' },
+  { name: 'Quality Russelville', value: 'QI_RV' }
 ];
 
 const commandData = [
@@ -281,12 +288,13 @@ const commandData = [
     .addUserOption(option => option.setName('name').setDescription('The user to mark as trainee').setRequired(true)),
   new SlashCommandBuilder()
     .setName('assign-team')
-    .setDescription('(Management/Developer) Assign an agent to Team 1 or Team 2')
+    .setDescription('(Management/Developer) Assign an agent to Team 1, Team 2, or Team 3')
     .addUserOption(option => option.setName('name').setDescription('The user to reassign').setRequired(true))
     .addStringOption(option => option.setName('team').setDescription('The team to assign').setRequired(true)
       .addChoices(
         { name: 'Team 1', value: 'Team 1' },
-        { name: 'Team 2', value: 'Team 2' }
+        { name: 'Team 2', value: 'Team 2' },
+        { name: 'Team 3', value: 'Team 3' }
       )),
   new SlashCommandBuilder()
     .setName('find-guest')
