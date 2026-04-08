@@ -65,6 +65,11 @@ const HOTEL_GREEN_ROLE_IDS = {
   DIBS: '1482227230343041115',
   QI_RV: '1490563052951830609'
 };
+const PAYROLL_TEAM_VIEWS = [TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES];
+const CUTOFF_FIRST_HALF = 'cutoff_1_15';
+const CUTOFF_SECOND_HALF = 'cutoff_16_end';
+const MANILA_TIMEZONE = 'Asia/Manila';
+const CUTOFF_TABLE_MAX_CHARS = 3200;
 
 function normalizeTeamName(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -129,11 +134,62 @@ function dateTag(value) {
   return `<t:${timestamp}:F>`;
 }
 
+function getManilaDateParts(nowInput = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: MANILA_TIMEZONE,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric'
+  });
+  const parts = formatter.formatToParts(nowInput).reduce((acc, part) => {
+    if (part.type === 'year' || part.type === 'month' || part.type === 'day') {
+      acc[part.type] = Number.parseInt(part.value, 10);
+    }
+    return acc;
+  }, {});
+  return {
+    year: Number.isFinite(parts.year) ? parts.year : nowInput.getUTCFullYear(),
+    month: Number.isFinite(parts.month) ? parts.month : (nowInput.getUTCMonth() + 1),
+    day: Number.isFinite(parts.day) ? parts.day : nowInput.getUTCDate()
+  };
+}
+
+function isPayrollTeamView(teamName) {
+  const normalized = normalizeTeamName(teamName);
+  return PAYROLL_TEAM_VIEWS.includes(normalized);
+}
+
+function getCutoffConfig(cutoffKey, nowInput = new Date()) {
+  const normalizedKey = cutoffKey === CUTOFF_SECOND_HALF ? CUTOFF_SECOND_HALF : CUTOFF_FIRST_HALF;
+  const manila = getManilaDateParts(nowInput);
+  const daysInMonth = new Date(Date.UTC(manila.year, manila.month, 0, 12, 0, 0)).getUTCDate();
+  const startDay = normalizedKey === CUTOFF_SECOND_HALF ? 16 : 1;
+  const endDay = normalizedKey === CUTOFF_SECOND_HALF ? daysInMonth : 15;
+  return {
+    key: normalizedKey,
+    startDay,
+    endDay,
+    rangeLabel: normalizedKey === CUTOFF_SECOND_HALF ? '16-End' : '1-15'
+  };
+}
+
+function buildCutoffDailyLine(monthHistory, startDay, endDay) {
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const entries = monthHistory.days
+    .filter(day => day.day >= startDay && day.day <= endDay)
+    .map(day => {
+      const weekday = dayNames[new Date(Date.UTC(monthHistory.year, monthHistory.month, day.day, 12, 0, 0)).getUTCDay()];
+      const date = String(day.day).padStart(2, '0');
+      return `${weekday} ${date}:${formatHours(day.totalHours)}h`;
+    });
+  return entries.length > 0 ? entries.join(' | ') : 'No logged hours in this cutoff.';
+}
+
 function getProfilePanelKey(channelId) {
   return `${PROFILE_PANEL_KEY_PREFIX}${channelId}`;
 }
 
-function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null) {
+function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null, placeholder = 'Select Group') {
   const normalizedSelected = normalizeTeamName(selectedTeam);
   const team1Description = normalizedSelected === TEAM_1
     ? 'Browse Team 1 members (current)'
@@ -159,7 +215,7 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(customId)
-    .setPlaceholder('Select Profile')
+    .setPlaceholder(placeholder)
     .addOptions(
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_1)
@@ -194,11 +250,47 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildTeamRefreshRow(teamName) {
+function buildTeamRosterControlRow(teamName) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`profiles_reload_team:${teamName}`)
       .setLabel(`Refresh ${teamName}`)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`profiles_change_group:${teamName}`)
+      .setLabel('Change Group')
+      .setStyle(ButtonStyle.Primary)
+  );
+}
+
+function buildCutoffShortcutRow(teamName) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`profiles_view_cutoff:${teamName}:${CUTOFF_FIRST_HALF}`)
+      .setLabel('Cutoff 1-15')
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`profiles_view_cutoff:${teamName}:${CUTOFF_SECOND_HALF}`)
+      .setLabel('Cutoff 16-End')
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+function buildCutoffViewRow(teamName, activeCutoff = CUTOFF_FIRST_HALF) {
+  const firstStyle = activeCutoff === CUTOFF_FIRST_HALF ? ButtonStyle.Primary : ButtonStyle.Secondary;
+  const secondStyle = activeCutoff === CUTOFF_SECOND_HALF ? ButtonStyle.Primary : ButtonStyle.Secondary;
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`profiles_view_cutoff:${teamName}:${CUTOFF_FIRST_HALF}`)
+      .setLabel('Cutoff 1-15')
+      .setStyle(firstStyle),
+    new ButtonBuilder()
+      .setCustomId(`profiles_view_cutoff:${teamName}:${CUTOFF_SECOND_HALF}`)
+      .setLabel('Cutoff 16-End')
+      .setStyle(secondStyle),
+    new ButtonBuilder()
+      .setCustomId(`profiles_back_team:${teamName}`)
+      .setLabel('Back')
       .setStyle(ButtonStyle.Secondary)
   );
 }
@@ -210,20 +302,20 @@ function buildDashboardEmbed(activeTeam = null) {
     .setDescription(
       '## Welcome to the Profiles Portal\n' +
       '### Secure Agent Management System\n' +
-      'This portal is built for fast team browsing, profile review, and developer actions.\n\n' +
+      'This portal is built for fast group browsing, profile review, and developer actions.\n\n' +
       '──────────────────────────────\n' +
       '📋 **Protocol**\n' +
-      '1. Select a profile below\n' +
+      '1. Select a group below\n' +
       '2. Pick an agent profile\n' +
       '3. Run an approved action\n' +
-      '4. Refresh team data if needed\n\n' +
+      '4. Use cutoff shortcuts for fast payroll checks\n\n' +
       '──────────────────────────────\n' +
-      `🏨 **Current Profile:** ${selected || 'Not selected'}\n` +
-      `👤 **Agents View:** Available in the profile picker\n` +
-      `🎯 **SME View:** Available in the profile picker\n` +
-      `🧭 **Team Leader View:** Available in the profile picker\n` +
-      `🎓 **Trainees View:** Available in the profile picker\n` +
-      `📄 **Applicants View:** Available in the profile picker`
+      `🏨 **Current Group:** ${selected || 'Not selected'}\n` +
+      `👤 **Agents View:** Available in the group picker\n` +
+      `🎯 **SME View:** Available in the group picker\n` +
+      `🧭 **Team Leader View:** Available in the group picker\n` +
+      `🎓 **Trainees View:** Available in the group picker\n` +
+      `📄 **Applicants View:** Available in the group picker`
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations - Automated Access Control' })
@@ -233,8 +325,13 @@ function buildDashboardEmbed(activeTeam = null) {
 function formatMemberLine(member, index) {
   const name = trimToTwoWords(member.display_name || member.username);
   const role = roleLabel(member.role);
+  const roleKey = String(member.role || 'agent').toLowerCase();
   const status = statusLabel(member.agent_status);
-  return `**${index + 1}. ${name}** - ${role} - ${status}`;
+  const details = [role];
+  if (!['trainee', 'applicant'].includes(roleKey)) {
+    details.push(status);
+  }
+  return `**${index + 1}. ${name}** - ${details.join(' - ')}`;
 }
 
 function buildTeamRosterEmbed(teamName, members) {
@@ -254,8 +351,8 @@ function buildTeamRosterEmbed(teamName, members) {
   return new EmbedBuilder()
     .setTitle(`🧾 ${teamName} - Member Profiles`)
     .setDescription(
-      `### Team Roster\n${rosterText}\n\n` +
-      'Open a profile below.'
+      `### Group Roster\n${rosterText}\n\n` +
+      'Select a member below.'
     )
     .addFields(
       { name: '👥 Total', value: String(members.length), inline: true },
@@ -285,21 +382,101 @@ function buildMemberPickerRow(teamName, members) {
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`profiles_agent_pick:${teamName}`)
-    .setPlaceholder('Select Member Profile')
+    .setPlaceholder('Select Member')
     .setOptions(options);
 
   return new ActionRowBuilder().addComponents(menu);
 }
 
 function buildTeamRosterPayload(teamName, members) {
-  const components = [buildTeamPickerRow('profiles_team_pick_local', teamName), buildTeamRefreshRow(teamName)];
+  const components = [];
   if (members.length > 0) {
-    components.splice(1, 0, buildMemberPickerRow(teamName, members));
+    components.push(buildMemberPickerRow(teamName, members));
+  }
+  components.push(buildTeamRosterControlRow(teamName));
+  if (isPayrollTeamView(teamName)) {
+    components.push(buildCutoffShortcutRow(teamName));
   }
 
   return {
     embeds: [buildTeamRosterEmbed(teamName, members)],
     components
+  };
+}
+
+function buildGroupPickerPayload(selectedTeam = null) {
+  return {
+    embeds: [buildDashboardEmbed(selectedTeam)],
+    components: [buildTeamPickerRow('profiles_team_pick_local', selectedTeam, 'Select Group')]
+  };
+}
+
+function buildCutoffHoursEmbed(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) {
+  const normalizedTeam = normalizeTeamName(teamName) || TEAM_AGENTS;
+  const cutoff = getCutoffConfig(cutoffKey);
+  const includedMembers = (members || [])
+    .filter(member => member && member.id && member.discord_id)
+    .sort((a, b) => String(a.display_name || a.username || '').localeCompare(String(b.display_name || b.username || '')));
+
+  if (includedMembers.length === 0) {
+    return new EmbedBuilder()
+      .setTitle(`Cutoff Hours - ${normalizedTeam} (${cutoff.rangeLabel})`)
+      .setDescription('No active members found in this view.')
+      .setColor(0xED4245)
+      .setFooter({ text: 'Aavgo Operations - Cutoff Hours' })
+      .setTimestamp();
+  }
+
+  let description = '';
+  let omitted = 0;
+  let combinedHours = 0;
+  let activeHoursCount = 0;
+  let monthLabel = null;
+
+  for (const member of includedMembers) {
+    const monthHistory = getMonthDailyHourHistory(db, member.id, 0);
+    if (!monthLabel) monthLabel = monthHistory.label;
+    const relevantDays = monthHistory.days.filter(day => day.day >= cutoff.startDay && day.day <= cutoff.endDay);
+    const memberTotal = relevantDays.reduce((sum, day) => sum + Number(day.totalHours || 0), 0);
+    if (memberTotal > 0) {
+      activeHoursCount += 1;
+    }
+    combinedHours += memberTotal;
+
+    const memberLine = `**${trimToTwoWords(member.display_name || member.username)}** - **${formatHours(memberTotal)}h**\n` +
+      `> ${buildCutoffDailyLine(monthHistory, cutoff.startDay, cutoff.endDay)}\n`;
+    if ((description + memberLine).length > CUTOFF_TABLE_MAX_CHARS) {
+      omitted += 1;
+      continue;
+    }
+    description += memberLine;
+  }
+
+  if (!description) {
+    description = 'No logged hours found for this cutoff window.';
+  }
+  if (omitted > 0) {
+    description += `\n[${omitted} member row(s) omitted due to Discord length limits.]`;
+  }
+
+  return new EmbedBuilder()
+    .setTitle(`Cutoff Hours - ${normalizedTeam} (${cutoff.rangeLabel})`)
+    .setDescription(
+      `**Month:** ${monthLabel || 'Current month'}\n` +
+      `**Members Listed:** ${includedMembers.length}\n` +
+      `**With Logged Hours:** ${activeHoursCount}\n` +
+      `**Combined Hours:** ${formatHours(combinedHours)}h\n\n` +
+      `${description}`
+    )
+    .setColor(0x3498DB)
+    .setFooter({ text: 'Aavgo Operations - Cutoff Hours' })
+    .setTimestamp();
+}
+
+function buildCutoffHoursPayload(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) {
+  return {
+    embeds: [buildCutoffHoursEmbed(teamName, members, cutoffKey)],
+    components: [buildCutoffViewRow(teamName, cutoffKey)]
   };
 }
 
@@ -1267,7 +1444,7 @@ async function showProfileCard(interaction, discordId, options = {}) {
           .setDescription('That user is not registered as an agent.')
           .setColor(0xED4245)
       ],
-      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
+      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_AGENTS, 'Select Group')]
     });
   }
 
@@ -1333,7 +1510,7 @@ async function handleTeamPick(interaction) {
   const teamName = normalizeTeamName(interaction.values?.[0]);
   if (!teamName) {
     if (interaction.customId === 'profiles_team_pick_local') {
-      return sendComponentUpdate(interaction, { content: 'Invalid team selection.', embeds: [], components: [] });
+      return sendComponentUpdate(interaction, buildGroupPickerPayload());
     }
     return sendComponentReply(interaction, { content: 'Invalid team selection.', ephemeral: true });
   }
@@ -1344,7 +1521,7 @@ async function handleTeamPick(interaction) {
   if (interaction.customId === 'profiles_team_pick') {
     await sendComponentUpdate(interaction, {
       embeds: [buildDashboardEmbed(teamName)],
-      components: [buildTeamPickerRow('profiles_team_pick', teamName)]
+      components: [buildTeamPickerRow('profiles_team_pick', teamName, 'Select Group')]
     });
     return sendComponentReply(interaction, { ...payload, ephemeral: true });
   }
@@ -1353,9 +1530,14 @@ async function handleTeamPick(interaction) {
 }
 
 async function handleBackToTeam(interaction) {
-  const teamName = normalizeTeamName(interaction.customId.split(':')[1]) || TEAM_1;
+  const teamName = normalizeTeamName(interaction.customId.split(':')[1]) || TEAM_AGENTS;
   const members = await fetchTeamMembers(interaction.guild, teamName);
   return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
+}
+
+async function handleChangeGroup(interaction) {
+  const currentTeam = normalizeTeamName(interaction.customId.split(':')[1]) || null;
+  return sendComponentUpdate(interaction, buildGroupPickerPayload(currentTeam));
 }
 
 async function handleAgentPick(interaction) {
@@ -1366,7 +1548,7 @@ async function handleAgentPick(interaction) {
   await safeDeferComponentUpdate(interaction);
 
   const teamNameRaw = interaction.customId.split(':')[1];
-  const teamName = normalizeTeamName(teamNameRaw) || TEAM_1;
+  const teamName = normalizeTeamName(teamNameRaw) || TEAM_AGENTS;
   const discordId = interaction.values?.[0];
 
   return showProfileCard(interaction, discordId, { teamName });
@@ -1498,7 +1680,7 @@ async function showHourHistoryView(interaction, discordId, teamName, monthOffset
           .setDescription('That user is not registered as an agent.')
           .setColor(0xED4245)
       ],
-      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
+      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_AGENTS, 'Select Group')]
     });
   }
 
@@ -1507,6 +1689,33 @@ async function showHourHistoryView(interaction, discordId, teamName, monthOffset
     embeds: [buildHourHistoryEmbed(profile, monthHistory)],
     components: buildHourHistoryRowsForOffset(discordId, teamName, monthOffset)
   });
+}
+
+async function showCutoffHoursView(interaction, teamName, cutoffKey = CUTOFF_FIRST_HALF) {
+  const normalizedTeam = normalizeTeamName(teamName);
+  if (!normalizedTeam || !isPayrollTeamView(normalizedTeam)) {
+    return sendComponentUpdate(interaction, {
+      embeds: [
+        new EmbedBuilder()
+          .setTitle('Cutoff Hours Not Available')
+          .setDescription(
+            'Cutoff hours are available for these group views only:\n' +
+            '- Agents\n' +
+            '- SME\n' +
+            '- Team Leader\n' +
+            '- Trainees\n\n' +
+            'Use Change Group first, then open cutoff hours.'
+          )
+          .setColor(0xED4245)
+          .setFooter({ text: 'Aavgo Operations - Cutoff Hours' })
+          .setTimestamp()
+      ],
+      components: [buildTeamRosterControlRow(normalizedTeam || TEAM_AGENTS)]
+    });
+  }
+
+  const members = await fetchTeamMembers(interaction.guild, normalizedTeam);
+  return sendComponentUpdate(interaction, buildCutoffHoursPayload(normalizedTeam, members, cutoffKey));
 }
 
 async function handleKickOrBanConfirm(interaction, action, discordId) {
@@ -1519,7 +1728,7 @@ async function handleKickOrBanConfirm(interaction, action, discordId) {
           .setDescription('Member is no longer in this server.')
           .setColor(0xED4245)
       ],
-      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
+      components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_AGENTS, 'Select Group')]
     });
   }
 
@@ -1538,7 +1747,7 @@ async function handleKickOrBanConfirm(interaction, action, discordId) {
         .setColor(0x57F287)
         .setTimestamp()
     ],
-    components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_1)]
+    components: [buildTeamPickerRow('profiles_team_pick_local', TEAM_AGENTS, 'Select Group')]
   });
 }
 
@@ -1552,6 +1761,10 @@ async function handleButton(interaction) {
   const customId = interaction.customId || '';
   if (customId.startsWith('profiles_back_team:')) {
     return handleBackToTeam(interaction);
+  }
+
+  if (customId.startsWith('profiles_change_group:')) {
+    return handleChangeGroup(interaction);
   }
 
   if (customId.startsWith('profiles_back_profile:')) {
@@ -1605,6 +1818,13 @@ async function handleButton(interaction) {
     return showHourHistoryView(interaction, discordId, teamName, Number.isFinite(monthOffset) ? monthOffset : -1);
   }
 
+  if (customId.startsWith('profiles_view_cutoff:')) {
+    const parts = customId.split(':');
+    const teamName = normalizeTeamName(parts[1]) || TEAM_AGENTS;
+    const cutoffKey = parts[2] === CUTOFF_SECOND_HALF ? CUTOFF_SECOND_HALF : CUTOFF_FIRST_HALF;
+    return showCutoffHoursView(interaction, teamName, cutoffKey);
+  }
+
   if (customId.startsWith('profiles_kick:')) {
     const discordId = customId.split(':')[1];
     return sendComponentUpdate(interaction, {
@@ -1638,7 +1858,7 @@ async function handleButton(interaction) {
 
   if (customId.startsWith('profiles_reload_team:')) {
     const teamRaw = customId.split(':')[1];
-    const teamName = normalizeTeamName(teamRaw) || TEAM_1;
+    const teamName = normalizeTeamName(teamRaw) || TEAM_AGENTS;
     const members = await fetchTeamMembers(interaction.guild, teamName);
     return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
   }

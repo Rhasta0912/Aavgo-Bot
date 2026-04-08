@@ -345,7 +345,6 @@ const TEST_ROLE_ID = '1487369607772766208';
 const overtimeWarnedSessionIds = new Set();
 const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
-const offlineAutoLogoutAgentIds = new Set();
 let combinedHotelStatusRefreshTimer = null;
 const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   TEAM_LEADER_ROLE_ID,
@@ -2666,66 +2665,6 @@ async function monitorOvertimeSessions(client) {
       const warningElapsedMs = warningMs ? nowMs - warningMs : null;
       const warningExpired = warningElapsedMs !== null && warningElapsedMs >= (5 * 60 * 1000);
       const reachedWarningThreshold = nowMs >= nextWarningDueMs;
-
-      const member = guild?.members?.cache?.get(session.discord_id) || null;
-      const presenceStatus = member?.presence?.status || null;
-      if (presenceStatus === 'offline') {
-        const agentKey = String(session.agent_id);
-        if (offlineAutoLogoutAgentIds.has(agentKey)) continue;
-        offlineAutoLogoutAgentIds.add(agentKey);
-
-        try {
-          const agentSessions = db.prepare(`
-            SELECT id, hotel_id, COALESCE(session_kind, 'shift') AS session_kind
-            FROM sessions
-            WHERE agent_id = ? AND status = 'active'
-          `).all(session.agent_id);
-
-          if (agentSessions.length === 0) {
-            offlineAutoLogoutAgentIds.delete(agentKey);
-            continue;
-          }
-
-          await closeAllActiveSessionsForAgent(session.agent_id, client);
-          if (member) {
-            await applyLoggedOutRolesForMember(guild, member, agentSessions);
-          }
-
-          for (const active of agentSessions) {
-            overtimeWarnedSessionIds.delete(String(active.id));
-            overtimeConfirmedSessionIds.delete(String(active.id));
-          }
-
-          const user = await client.users.fetch(session.discord_id).catch(() => null);
-          if (user) {
-            const offlineEmbed = new EmbedBuilder()
-              .setTitle('🛑 Shift Ended: Offline Status')
-              .setDescription(
-                'Your active shift/training was ended automatically because your account went offline while on session.\n\n' +
-                'You can start a new shift when you are back online.'
-              )
-              .setColor(0xED4245)
-              .setFooter({ text: 'Aavgo Operations - Session Safety' })
-              .setTimestamp();
-            await user.send({ embeds: [offlineEmbed] }).catch(() => {});
-          }
-
-          sendAuditLog(client, {
-            title: '🛑 Offline Auto Logout',
-            description:
-              `**User:** ${session.username} (<@${session.discord_id}>)\n` +
-              `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
-              `**Rule:** Session ended automatically because user presence became Offline.`,
-            color: 0xED4245,
-            userId: session.discord_id
-          });
-        } catch (offlineErr) {
-          console.error('[OFFLINE] Auto logout failed:', offlineErr);
-        } finally {
-          offlineAutoLogoutAgentIds.delete(agentKey);
-        }
-        continue;
-      }
 
       if (!warningMs && reachedWarningThreshold && !overtimeWarnedSessionIds.has(sessionIdKey)) {
         overtimeWarnedSessionIds.add(sessionIdKey);

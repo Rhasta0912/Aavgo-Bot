@@ -1145,3 +1145,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Removed offline presence-based auto logout and improved Profiles payroll workflow.
+  - Summary: Active sessions no longer auto-end when a user appears `offline`/invisible; only the existing overtime control path remains (warning + confirm flow and overtime auto-close rules).
+  - Summary: Profiles kiosk flow was simplified so after choosing a group, staff can directly choose a member without a second redundant `Select Profile` step.
+  - Summary: Added new cutoff-hours quick views for operational groups (`Agents`, `SME`, `Team Leader`, `Trainees`) with one-click ranges `1-15` and `16-End`, including per-member daily breakdown + total hours in a single message.
+  - Why: Meeting feedback requested safer shift persistence (no offline kicks), faster profile navigation, and payroll-friendly hour visibility without opening each member one-by-one.
+  - Behavior impact:
+    - Offline/invisible status no longer force-logs users out.
+    - Profiles selection is less redundant and easier for quick triage.
+    - Payroll/cutoff review is available directly from group roster views.
+  - Files touched:
+    - src/auth.js
+    - src/profilePanel.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
