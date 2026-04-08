@@ -1131,3 +1131,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/testui.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Added a test cleanup action to remove Team 1 per-hotel live status embeds based on the recorded request.
+  - Summary: Extended `/hotel-status` with a new action `clear_team1_live_embeds` that scans Team 1 hotel status groups, deletes bot-authored live-status embeds in those channels, and clears matching `hotel_status` DB pointers so stale message IDs are not retained.
+  - Summary: Cleanup is intentionally safe-scoped to per-hotel Team 1 live status cards (`Live Status • Ref:`) and does not remove kiosk messages, consolidated board cards, or unrelated channel messages.
+  - Summary: Updated `/help-staff` command reference text to include the new test action.
+  - Why: Video request asked to remove Team 1 hotel status embeds as a test flow.
+  - Behavior impact:
+    - Staff can run `/hotel-status action:clear_team1_live_embeds` to clear Team 1 live per-hotel status cards.
+    - Existing `/hotel-status action:refresh_all` can still recreate status cards when needed.
+    - Interaction reliability, permission checks, and non-status workflows are unchanged.
+  - Files touched:
+    - src/commands.js
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

@@ -358,7 +358,8 @@ const commandData = [
     .addStringOption(option => option.setName('action').setDescription('Refresh action').setRequired(true)
       .addChoices(
         { name: 'Refresh All', value: 'refresh_all' },
-        { name: 'Refresh Specific', value: 'refresh_one' }
+        { name: 'Refresh Specific', value: 'refresh_one' },
+        { name: 'Clear Team 1 Live Embeds (Test)', value: 'clear_team1_live_embeds' }
       ))
     .addStringOption(option => option.setName('hotel').setDescription('Specific hotel to refresh').setRequired(false)
       .addChoices(...HOTEL_CHOICES)),

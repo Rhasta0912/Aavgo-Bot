@@ -2171,6 +2171,62 @@ async function updateAllHotelStatusEmbed(client) {
 }
 
 // ─── /setup-login ────────────────────────────────────
+async function clearTeamHotelLiveStatusEmbeds(client, teamName) {
+  const groups = getHotelStatusGroupsForTeam(teamName);
+  let deletedTracked = 0;
+  let deletedRecovered = 0;
+  const issues = [];
+
+  for (const group of groups) {
+    const statusKey = group.key;
+    const hotelChannelId = HOTEL_LOGIN_CHANNELS[statusKey];
+    if (!hotelChannelId) continue;
+
+    const channel = await client.channels.fetch(hotelChannelId).catch(() => null);
+    if (!channel || !channel.isTextBased()) {
+      issues.push(`${statusKey}: channel unavailable`);
+      db.prepare("DELETE FROM hotel_status WHERE hotel_id = ?").run(statusKey);
+      continue;
+    }
+
+    const row = db.prepare("SELECT message_id FROM hotel_status WHERE hotel_id = ?").get(statusKey);
+    const knownMsgId = String(row?.message_id || '').trim();
+    if (knownMsgId) {
+      const trackedMsg = await channel.messages.fetch(knownMsgId).catch(() => null);
+      if (
+        trackedMsg &&
+        trackedMsg.author?.id === client.user?.id &&
+        Array.isArray(trackedMsg.embeds) &&
+        trackedMsg.embeds.some(embed => String(embed.footer?.text || '').includes('Live Status • Ref:'))
+      ) {
+        await trackedMsg.delete().catch(() => null);
+        deletedTracked += 1;
+      }
+      db.prepare("DELETE FROM hotel_status WHERE hotel_id = ?").run(statusKey);
+    }
+
+    const recentMessages = await channel.messages.fetch({ limit: 40 }).catch(() => null);
+    if (!recentMessages) continue;
+    for (const message of recentMessages.values()) {
+      const isLiveStatus = (
+        message.author?.id === client.user?.id &&
+        Array.isArray(message.embeds) &&
+        message.embeds.some(embed => String(embed.footer?.text || '').includes(`Live Status • Ref: ${statusKey}`))
+      );
+      if (!isLiveStatus) continue;
+      await message.delete().catch(() => null);
+      deletedRecovered += 1;
+    }
+  }
+
+  return {
+    groupCount: groups.length,
+    deletedTracked,
+    deletedRecovered,
+    issues
+  };
+}
+
 function buildAgentKioskPayload() {
   const embed = new EmbedBuilder()
     .setTitle('🛡️ Aavgo Operations · Virtual Kiosk')
@@ -7912,7 +7968,7 @@ async function handleHelpStaff(interaction) {
         '> `/test-gui` (`/test-ui` legacy alias): Open the screenshot-style UI preview lab (shift route, hotel status, training status, training log, newcomer card).\n' +
         '> `/todo-add`, `/todo-move`, `/todo-refresh`: Manage centralized developer tasks.\n' +
         '> `/select-trainee`: Assign the Trainees role to a user.\n' +
-        '> `/hotel-status action:refresh_all`: Force-refresh every hotel and team status embed.\n\n' +
+        '> `/hotel-status action:refresh_all|clear_team1_live_embeds`: Refresh all boards or clear Team 1 live per-hotel embeds (test).\n\n' +
         '### 👥 Agent Lifecycle Controls\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/add-agent`: Instant-create an agent, TL, or SME profile.\n' +
@@ -8379,6 +8435,16 @@ async function handleHotelStatusRefresh(interaction) {
       await updateTeamStatusEmbed(interaction.client, 'Team 1');
       await updateTeamStatusEmbed(interaction.client, 'Team 2');
       await interaction.editReply({ content: '✅ Successfully refreshed all hotel and team status embeds.' });
+    } else if (action === 'clear_team1_live_embeds') {
+      const result = await clearTeamHotelLiveStatusEmbeds(interaction.client, 'Team 1');
+      await interaction.editReply({
+        content:
+          '🧪 Team 1 live status embed cleanup complete.\n' +
+          `- Boards scanned: ${result.groupCount}\n` +
+          `- Deleted tracked messages: ${result.deletedTracked}\n` +
+          `- Deleted recovered messages: ${result.deletedRecovered}\n` +
+          (result.issues.length > 0 ? `- Notes: ${result.issues.join('; ')}` : '- Notes: none')
+      });
     } else {
       if (!specificHotel) return interaction.editReply({ content: '❌ Please specify a hotel to refresh.' });
       await updateHotelStatusEmbed(interaction.client, specificHotel);
