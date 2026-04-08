@@ -70,6 +70,9 @@ const CUTOFF_FIRST_HALF = 'cutoff_1_15';
 const CUTOFF_SECOND_HALF = 'cutoff_16_end';
 const MANILA_TIMEZONE = 'Asia/Manila';
 const CUTOFF_TABLE_MAX_CHARS = 3200;
+const ROSTER_PAGE_SIZE = 12;
+const CUTOFF_ACTIVE_DAY_PREVIEW_LIMIT = 6;
+const CUTOFF_DAILY_LINE_MAX_CHARS = 280;
 
 function normalizeTeamName(value) {
   const raw = String(value || '').trim().toLowerCase();
@@ -97,6 +100,73 @@ function trimLabel(value, maxLength = 100) {
   const text = String(value || '').trim();
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1)}...`;
+}
+
+function normalizeRoleKey(role) {
+  return String(role || '').trim().toLowerCase();
+}
+
+function roleHidesStatus(role) {
+  const key = normalizeRoleKey(role);
+  return key === 'trainee' || key === 'applicant';
+}
+
+function parseNonNegativeInt(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function uniqueMembersByDiscordId(members = []) {
+  const seen = new Set();
+  const unique = [];
+  for (const member of members || []) {
+    const discordId = String(member?.discord_id || '');
+    if (!discordId || seen.has(discordId)) continue;
+    seen.add(discordId);
+    unique.push(member);
+  }
+  return unique;
+}
+
+function getRosterPageData(members = [], requestedPage = 0) {
+  const safeMembers = Array.isArray(members) ? members : [];
+  const totalMembers = safeMembers.length;
+  const totalPages = Math.max(1, Math.ceil(totalMembers / ROSTER_PAGE_SIZE));
+  const currentPage = Math.min(parseNonNegativeInt(requestedPage, 0), totalPages - 1);
+  const startIndex = currentPage * ROSTER_PAGE_SIZE;
+  const endIndexExclusive = Math.min(startIndex + ROSTER_PAGE_SIZE, totalMembers);
+  return {
+    totalMembers,
+    totalPages,
+    currentPage,
+    startIndex,
+    endIndexExclusive,
+    pageMembers: safeMembers.slice(startIndex, endIndexExclusive)
+  };
+}
+
+function buildMemberNameCountMap(members = []) {
+  const counts = new Map();
+  for (const member of members || []) {
+    const baseName = trimToTwoWords(member?.display_name || member?.username).toLowerCase();
+    counts.set(baseName, (counts.get(baseName) || 0) + 1);
+  }
+  return counts;
+}
+
+function getRosterMemberName(member, nameCountMap = new Map()) {
+  const baseName = trimToTwoWords(member?.display_name || member?.username);
+  const duplicateCount = nameCountMap.get(baseName.toLowerCase()) || 0;
+  if (duplicateCount <= 1) return baseName;
+  const suffix = String(member?.discord_id || '').slice(-4);
+  return `${baseName} #${suffix || 'user'}`;
+}
+
+function getMemberPickerDescription(member) {
+  const roleText = roleLabel(member?.role);
+  if (roleHidesStatus(member?.role)) return roleText;
+  return `${roleText} | ${statusLabel(member?.agent_status)}`;
 }
 
 function serializeHotelSelection(ids = []) {
@@ -176,13 +246,24 @@ function getCutoffConfig(cutoffKey, nowInput = new Date()) {
 function buildCutoffDailyLine(monthHistory, startDay, endDay) {
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const entries = monthHistory.days
-    .filter(day => day.day >= startDay && day.day <= endDay)
+    .filter(day => day.day >= startDay && day.day <= endDay && Number(day.totalHours || 0) > 0)
     .map(day => {
       const weekday = dayNames[new Date(Date.UTC(monthHistory.year, monthHistory.month, day.day, 12, 0, 0)).getUTCDay()];
       const date = String(day.day).padStart(2, '0');
-      return `${weekday} ${date}:${formatHours(day.totalHours)}h`;
+      return `${weekday} ${date} (${formatHours(day.totalHours)}h)`;
     });
-  return entries.length > 0 ? entries.join(' | ') : 'No logged hours in this cutoff.';
+
+  if (entries.length === 0) {
+    return 'No logged hours in this cutoff.';
+  }
+
+  const preview = entries.slice(0, CUTOFF_ACTIVE_DAY_PREVIEW_LIMIT);
+  const moreCount = entries.length - preview.length;
+  const moreText = moreCount > 0 ? `, +${moreCount} more day(s)` : '';
+  const line = `Active days: ${preview.join(', ')}${moreText}`;
+  return line.length > CUTOFF_DAILY_LINE_MAX_CHARS
+    ? `${line.slice(0, CUTOFF_DAILY_LINE_MAX_CHARS - 3).trimEnd()}...`
+    : line;
 }
 
 function getProfilePanelKey(channelId) {
@@ -250,12 +331,22 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildTeamRosterControlRow(teamName) {
+function buildTeamRosterControlRow(teamName, currentPage = 0, totalPages = 1) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`profiles_reload_team:${teamName}`)
-      .setLabel(`Refresh ${teamName}`)
+      .setCustomId(`profiles_reload_team:${teamName}:${currentPage}`)
+      .setLabel('Refresh')
       .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`profiles_roster_page_prev:${teamName}:${currentPage}`)
+      .setLabel('Prev')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(totalPages <= 1 || currentPage <= 0),
+    new ButtonBuilder()
+      .setCustomId(`profiles_roster_page_next:${teamName}:${currentPage}`)
+      .setLabel('Next')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(totalPages <= 1 || currentPage >= totalPages - 1),
     new ButtonBuilder()
       .setCustomId(`profiles_change_group:${teamName}`)
       .setLabel('Change Group')
@@ -322,13 +413,12 @@ function buildDashboardEmbed(activeTeam = null) {
     .setTimestamp();
 }
 
-function formatMemberLine(member, index) {
-  const name = trimToTwoWords(member.display_name || member.username);
+function formatMemberLine(member, index, nameCountMap = new Map()) {
+  const name = getRosterMemberName(member, nameCountMap);
   const role = roleLabel(member.role);
-  const roleKey = String(member.role || 'agent').toLowerCase();
   const status = statusLabel(member.agent_status);
   const details = [role];
-  if (!['trainee', 'applicant'].includes(roleKey)) {
+  if (!roleHidesStatus(member.role)) {
     details.push(status);
   }
   return `**${index + 1}. ${name}** - ${details.join(' - ')}`;
@@ -388,18 +478,89 @@ function buildMemberPickerRow(teamName, members) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildTeamRosterPayload(teamName, members) {
-  const components = [];
-  if (members.length > 0) {
-    components.push(buildMemberPickerRow(teamName, members));
+function buildTeamRosterEmbedPaged(teamName, members, pageIndex = 0) {
+  const uniqueMembers = uniqueMembersByDiscordId(members);
+  const roleCount = uniqueMembers.reduce((acc, member) => {
+    const key = String(member.role || 'agent').toLowerCase();
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const pageData = getRosterPageData(uniqueMembers, pageIndex);
+  const nameCountMap = buildMemberNameCountMap(uniqueMembers);
+  const hasDuplicateNames = [...nameCountMap.values()].some(count => count > 1);
+  const allRows = pageData.pageMembers.map((member, rowIndex) =>
+    formatMemberLine(member, pageData.startIndex + rowIndex, nameCountMap)
+  );
+  const rangeText = uniqueMembers.length === 0
+    ? '0-0'
+    : `${pageData.startIndex + 1}-${pageData.endIndexExclusive}`;
+
+  let rosterText = allRows.length > 0 ? allRows.join('\n') : 'No members found for this view.';
+  const maxRosterChars = 3200;
+  if (rosterText.length > maxRosterChars) {
+    rosterText = `${rosterText.slice(0, maxRosterChars).trimEnd()}\n[Roster trimmed to fit Discord embed limit.]`;
   }
-  components.push(buildTeamRosterControlRow(teamName));
+  const duplicateHint = hasDuplicateNames ? '\nDuplicate names are tagged with `#last4` for easier picking.' : '';
+
+  return new EmbedBuilder()
+    .setTitle(`🧾 ${teamName} - Member Profiles`)
+    .setDescription(
+      `### Group Roster (Page ${pageData.currentPage + 1}/${pageData.totalPages})\n` +
+      `Showing **${rangeText}** of **${uniqueMembers.length}** members.\n\n` +
+      `${rosterText}\n\n` +
+      `Select a member below.${duplicateHint}`
+    )
+    .addFields(
+      { name: '👥 Total', value: String(uniqueMembers.length), inline: true },
+      { name: '🧭 Leads', value: String((roleCount.team_leader || 0) + (roleCount.operations_manager || 0)), inline: true },
+      { name: '🎯 SME', value: String(roleCount.sme || 0), inline: true }
+    )
+    .setColor(
+      teamName === TEAM_1 ? 0x2ECC71 :
+      teamName === TEAM_AGENTS ? 0x3498DB :
+      teamName === TEAM_SME ? 0xE67E22 :
+      teamName === TEAM_TEAM_LEADER ? 0x9B59B6 :
+      teamName === TEAM_TRAINEES ? 0xF1C40F :
+      0x5865F2
+    )
+    .setFooter({ text: 'Aavgo Operations - Team Browser' })
+    .setTimestamp();
+}
+
+function buildMemberPickerRowPaged(teamName, members, pageIndex = 0) {
+  const uniqueMembers = uniqueMembersByDiscordId(members);
+  const pageData = getRosterPageData(uniqueMembers, pageIndex);
+  const nameCountMap = buildMemberNameCountMap(uniqueMembers);
+  const options = pageData.pageMembers.map(member => {
+    const name = getRosterMemberName(member, nameCountMap);
+    return new StringSelectMenuOptionBuilder()
+      .setLabel(trimLabel(name))
+      .setDescription(trimLabel(getMemberPickerDescription(member)))
+      .setValue(member.discord_id);
+  });
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`profiles_agent_pick:${teamName}:${pageData.currentPage}`)
+    .setPlaceholder('Select Member')
+    .setOptions(options);
+
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+function buildTeamRosterPayload(teamName, members, pageIndex = 0) {
+  const uniqueMembers = uniqueMembersByDiscordId(members);
+  const pageData = getRosterPageData(uniqueMembers, pageIndex);
+  const components = [];
+  if (uniqueMembers.length > 0) {
+    components.push(buildMemberPickerRowPaged(teamName, uniqueMembers, pageData.currentPage));
+  }
+  components.push(buildTeamRosterControlRow(teamName, pageData.currentPage, pageData.totalPages));
   if (isPayrollTeamView(teamName)) {
     components.push(buildCutoffShortcutRow(teamName));
   }
 
   return {
-    embeds: [buildTeamRosterEmbed(teamName, members)],
+    embeds: [buildTeamRosterEmbedPaged(teamName, uniqueMembers, pageData.currentPage)],
     components
   };
 }
@@ -1530,9 +1691,9 @@ async function handleTeamPick(interaction) {
 }
 
 async function handleBackToTeam(interaction) {
-  const teamName = normalizeTeamName(interaction.customId.split(':')[1]) || TEAM_AGENTS;
+  const { teamName, pageIndex } = parseTeamPageContext(interaction.customId, 'profiles_back_team:');
   const members = await fetchTeamMembers(interaction.guild, teamName);
-  return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
+  return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex));
 }
 
 async function handleChangeGroup(interaction) {
@@ -1547,8 +1708,7 @@ async function handleAgentPick(interaction) {
 
   await safeDeferComponentUpdate(interaction);
 
-  const teamNameRaw = interaction.customId.split(':')[1];
-  const teamName = normalizeTeamName(teamNameRaw) || TEAM_AGENTS;
+  const { teamName } = parseTeamPageContext(interaction.customId, 'profiles_agent_pick:');
   const discordId = interaction.values?.[0];
 
   return showProfileCard(interaction, discordId, { teamName });
@@ -1561,6 +1721,15 @@ function parseProfileActionContext(customId, prefix) {
     discordId,
     teamName: normalizeTeamName(rawTeam) || TEAM_1,
     extra
+  };
+}
+
+function parseTeamPageContext(customId, prefix) {
+  const raw = String(customId || '').slice(prefix.length);
+  const [rawTeam = TEAM_AGENTS, rawPage = '0'] = raw.split(':');
+  return {
+    teamName: normalizeTeamName(rawTeam) || TEAM_AGENTS,
+    pageIndex: parseNonNegativeInt(rawPage, 0)
   };
 }
 
@@ -1767,6 +1936,19 @@ async function handleButton(interaction) {
     return handleChangeGroup(interaction);
   }
 
+  if (customId.startsWith('profiles_roster_page_prev:')) {
+    const { teamName, pageIndex } = parseTeamPageContext(customId, 'profiles_roster_page_prev:');
+    const members = await fetchTeamMembers(interaction.guild, teamName);
+    const targetPage = pageIndex > 0 ? pageIndex - 1 : 0;
+    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, targetPage));
+  }
+
+  if (customId.startsWith('profiles_roster_page_next:')) {
+    const { teamName, pageIndex } = parseTeamPageContext(customId, 'profiles_roster_page_next:');
+    const members = await fetchTeamMembers(interaction.guild, teamName);
+    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex + 1));
+  }
+
   if (customId.startsWith('profiles_back_profile:')) {
     const { discordId, teamName } = parseProfileActionContext(customId, 'profiles_back_profile:');
     return showProfileCard(interaction, discordId, { teamName });
@@ -1857,10 +2039,9 @@ async function handleButton(interaction) {
   }
 
   if (customId.startsWith('profiles_reload_team:')) {
-    const teamRaw = customId.split(':')[1];
-    const teamName = normalizeTeamName(teamRaw) || TEAM_AGENTS;
+    const { teamName, pageIndex } = parseTeamPageContext(customId, 'profiles_reload_team:');
     const members = await fetchTeamMembers(interaction.guild, teamName);
-    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members));
+    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex));
   }
 
   return null;

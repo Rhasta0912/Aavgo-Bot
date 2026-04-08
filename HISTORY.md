@@ -1159,3 +1159,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/profilePanel.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Task 1.0 Profiles usability pass (trainees + cutoff readability).
+  - Summary: Profiles team rosters now use paged member browsing (Prev/Next + in-page picker) so large trainee groups are easier to navigate without long dropdown scrolling.
+  - Summary: Trainee/applicant picker labels no longer show Ready/Standby status text; they now show role-only labels to reduce clutter.
+  - Summary: Duplicate-looking names are now disambiguated with `#last4` user-id tags in roster and picker labels.
+  - Summary: Cutoff hour daily detail now highlights active days only (non-zero hours) with compact previews, reducing `0h` noise and confusion.
+  - Why: Video Task 1.0 feedback requested cleaner trainee profiles flow, faster member viewing, and clearer cutoff readability.
+  - Behavior impact:
+    - Easier to open member profiles in long groups (especially Trainees).
+    - Cleaner trainee UI with less status clutter.
+    - Cutoff cards are easier to scan while preserving totals.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
