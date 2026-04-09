@@ -1209,3 +1209,19 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/database.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+
+- Fixed stale Live Hotel Presence cleanup when users switch accounts before logging out.
+  - Summary: `/logout` now includes a safe phone-linked recovery path. If the current account has no active session, the bot checks for exactly one active session on another agent row with the same stored phone number, closes that stale session, reapplies logged-out roles, and refreshes the combined hotel boards. If nothing is recoverable, it still forces a board refresh before returning the no-shift reply.
+  - Why: Users could appear as still live on the hotel board while `/logout` said they were not on shift due to account-row mismatch.
+  - Behavior impact: Reduces ghost live-presence entries and gives immediate board healing in the no-session logout path.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+
+- Removed the blocking PH-format error from security setup submit in shift initialization.
+  - Summary: Security setup no longer hard-fails with `Invalid phone number. Use PH format starting with 63 or 09.` during submit. Phone input is now normalized and stored instead of stopping the flow.
+  - Why: The strict validation message was interrupting kiosk flow and creating confusing top-of-channel error noise.
+  - Behavior impact: PIN setup flow stays smooth and beginner-friendly while still saving phone data.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md

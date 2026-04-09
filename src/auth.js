@@ -478,6 +478,72 @@ function getSessionNextWarningDueMs(session, warningThresholdMs = OVERTIME_WARNI
   return parseSessionTimestamp(session?.login_time) + warningThresholdMs - timeTravelOffsetMs;
 }
 
+function normalizePhoneForStorage(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (/^09\d{9}$/.test(digits)) return `63${digits.slice(1)}`;
+  if (/^9\d{9}$/.test(digits)) return `63${digits}`;
+  if (/^63\d{10}$/.test(digits)) return digits;
+  return digits;
+}
+
+async function tryRecoverPhoneLinkedActiveSession(interaction, callerAgent) {
+  try {
+    const callerPhone = normalizePhoneForStorage(callerAgent?.phone || '');
+    if (!callerPhone) return null;
+
+    const candidateAgents = db.prepare(`
+      SELECT DISTINCT a.id, a.discord_id, a.username, a.phone
+      FROM sessions s
+      JOIN agents a ON a.id = s.agent_id
+      WHERE s.status = 'active'
+        AND a.id != ?
+        AND COALESCE(a.phone, '') != ''
+    `).all(callerAgent.id);
+
+    const matches = candidateAgents.filter(row => normalizePhoneForStorage(row.phone) === callerPhone);
+    if (matches.length !== 1) return null;
+
+    const staleAgent = matches[0];
+    const staleActiveSessions = db.prepare(`
+      SELECT id, hotel_id, session_kind
+      FROM sessions
+      WHERE agent_id = ? AND status = 'active'
+    `).all(staleAgent.id);
+
+    if (staleActiveSessions.length === 0) return null;
+
+    const closedSessionRefs = await closeAllActiveSessionsForAgent(staleAgent.id, interaction.client);
+    const staleMember = await interaction.guild?.members?.fetch(staleAgent.discord_id).catch(() => null);
+    if (staleMember) {
+      await applyLoggedOutRolesForMember(interaction.guild, staleMember, closedSessionRefs).catch(() => {});
+    }
+
+    await updateAllHotelStatusEmbed(interaction.client).catch(() => {});
+
+    sendAuditLog(interaction.client, {
+      title: 'Shift Session Recovered',
+      description:
+        `**Recovered For:** <@${interaction.user.id}>\n` +
+        `**Recovered Agent Row:** ${staleAgent.username || 'Unknown'} (\`${staleAgent.discord_id}\`)\n` +
+        `**Reason:** Matched phone-linked active session from another account record\n` +
+        `**Action:** Closed stale active session and refreshed live boards`,
+      color: 0xF1C40F,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+
+    return {
+      recovered: true,
+      closedSessionRefs,
+      recoveredDiscordId: staleAgent.discord_id
+    };
+  } catch (error) {
+    console.warn('[LOGOUT] Phone-linked session recovery failed:', error.message);
+    return null;
+  }
+}
+
 function getSessionFinalLimitDueMs(session, finalLimitMs = OVERTIME_FINAL_LIMIT_MS) {
   const timeTravelOffsetMs = getSessionTimeTravelOffsetMs(session);
   return parseSessionTimestamp(session?.login_time) + finalLimitMs - timeTravelOffsetMs;
@@ -3902,7 +3968,8 @@ async function handleSecuritySetupSubmit(interaction) {
 
     const pin = interaction.fields.getTextInputValue('security_pin').trim();
     const pinConfirm = interaction.fields.getTextInputValue('security_pin_confirm').trim();
-    const phone = interaction.fields.getTextInputValue('security_phone').trim();
+    const phoneInput = interaction.fields.getTextInputValue('security_phone').trim();
+    const phone = normalizePhoneForStorage(phoneInput) || phoneInput;
 
     if (!/^\d{4,6}$/.test(pin)) {
       return interaction.editReply({ content: '❌ PIN must be **4 to 6 digits**.' });
@@ -3910,11 +3977,6 @@ async function handleSecuritySetupSubmit(interaction) {
     if (pin !== pinConfirm) {
       return interaction.editReply({ content: '❌ PIN and confirm PIN do not match.' });
     }
-    const phonePattern = /^(?:63\d{10}|09\d{9})$/;
-    if (!phonePattern.test(phone)) {
-      return interaction.editReply({ content: '❌ Invalid phone number. Use PH format starting with `63` or `09`.' });
-    }
-
     const agent = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(interaction.user.id);
     if (!agent) {
       return interaction.editReply({ content: '❌ You are not a registered agent. Ask Operations Manager or Developer to run `/add-agent` first.' });
@@ -5989,7 +6051,7 @@ async function handleLogout(interaction) {
       interaction.__aavgoEphemeral = true;
     }
 
-    const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(targetDiscordId);
+    const agent = db.prepare('SELECT id, phone FROM agents WHERE discord_id = ?').get(targetDiscordId);
     if (!agent) {
       return interaction.editReply({
         content: forceEndedByManager ? 'That user is not registered.' : 'You are not registered.'
@@ -5999,8 +6061,24 @@ async function handleLogout(interaction) {
     // Fetch ALL active sessions for this agent
     const activeSessions = db.prepare("SELECT id, hotel_id, login_time, session_kind FROM sessions WHERE agent_id = ? AND status = 'active'").all(agent.id);
     if (activeSessions.length === 0) {
+      let recovered = null;
+      if (!forceEndedByManager && targetDiscordId === callerDiscordId) {
+        recovered = await tryRecoverPhoneLinkedActiveSession(interaction, agent);
+      }
+
+      if (recovered?.recovered) {
+        await interaction.editReply({
+          content: '✅ Recovered your live shift from another account record and ended it. Live Hotel Presence is refreshing now.'
+        });
+        scheduleExplicitReplyCleanup(interaction, EPHEMERAL_QUICK_TTL_MS);
+        return;
+      }
+
+      await updateAllHotelStatusEmbed(interaction.client).catch(() => {});
       return interaction.editReply({
-        content: forceEndedByManager ? 'That user is not currently on any shift.' : 'You are not currently on any shift.'
+        content: forceEndedByManager
+          ? 'That user is not currently on any shift. Live Hotel Presence has been refreshed.'
+          : 'You are not currently on any shift. Live Hotel Presence has been refreshed.'
       });
     }
 
