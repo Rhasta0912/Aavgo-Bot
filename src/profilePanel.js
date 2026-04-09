@@ -685,6 +685,12 @@ function slugifyFilePart(value, fallback = 'export') {
   return cleaned || fallback;
 }
 
+function formatRoundedHourTotal(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric)) return '0';
+  return String(Math.round(numeric));
+}
+
 function getCutoffExportSectionLabel(teamName, member) {
   const normalizedTeam = normalizeTeamName(teamName) || TEAM_AGENTS;
   if (normalizedTeam === TEAM_SME || normalizedTeam === TEAM_TEAM_LEADER) {
@@ -714,14 +720,24 @@ function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) 
     .filter(member => member && member.id && member.discord_id)
     .sort((a, b) => String(a.display_name || a.username || '').localeCompare(String(b.display_name || b.username || '')));
 
-  const monthLabel = getMonthDailyHourHistory(db, includedMembers[0]?.id || 0, 0).label;
+  const currentManila = getManilaDateParts(new Date());
+  const monthHistoryPreview = getMonthDailyHourHistory(db, includedMembers[0]?.id || 0, 0);
+  const monthLabel = monthHistoryPreview.label;
+  const isCurrentMonthExport =
+    monthHistoryPreview.year === currentManila.year &&
+    (monthHistoryPreview.month + 1) === currentManila.month;
   const dayHeaders = Array.from({ length: cutoff.endDay - cutoff.startDay + 1 }, (_, index) => String(cutoff.startDay + index));
   const rows = [
-    [monthLabel, ...dayHeaders, 'Total']
+    ['Aavgo Cutoff Export'],
+    ['Group', normalizedTeam],
+    ['Cutoff', cutoff.rangeLabel],
+    ['Month', monthLabel],
+    [],
+    ['Name', ...dayHeaders, 'Total']
   ];
 
   if (includedMembers.length === 0) {
-    rows.push([normalizedTeam, 'No active members found in this view.']);
+    rows.push(['No active members found in this view.']);
     return rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
   }
 
@@ -736,7 +752,12 @@ function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) 
       const dayEntry = monthHistory.days[day - 1];
       const dayHours = Number(dayEntry?.totalHours || 0);
       cutoffTotal += dayHours;
-      dayValues.push(dayHours > 0 ? formatHours(dayHours) : 'OFF');
+      const isFutureDay = isCurrentMonthExport && day > currentManila.day;
+      if (isFutureDay) {
+        dayValues.push('');
+      } else {
+        dayValues.push(dayHours > 0 ? formatHours(dayHours) : 'OFF');
+      }
     }
 
     const bucket = sectionBuckets.get(sectionLabel) || {
@@ -747,7 +768,7 @@ function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) 
     bucket.members.push({
       name: String(member.display_name || member.username || 'Unknown').trim() || 'Unknown',
       dayValues,
-      total: formatHours(cutoffTotal)
+      total: formatRoundedHourTotal(cutoffTotal)
     });
     sectionBuckets.set(sectionLabel, bucket);
   }
@@ -758,12 +779,12 @@ function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) 
   });
 
   for (const [sectionLabel, bucket] of orderedSections) {
-    rows.push([sectionLabel, ...Array(dayHeaders.length + 1).fill('')]);
+    rows.push([]);
+    rows.push([sectionLabel]);
     const sortedMembers = bucket.members.sort((a, b) => a.name.localeCompare(b.name));
     for (const memberRow of sortedMembers) {
       rows.push([memberRow.name, ...memberRow.dayValues, memberRow.total]);
     }
-    rows.push(Array(dayHeaders.length + 2).fill(''));
   }
 
   while (rows.length > 0 && rows[rows.length - 1].every(cell => !cell)) {

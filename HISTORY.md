@@ -1246,3 +1246,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/profilePanel.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+
+- Task 2.5 refined the Profiles cutoff Excel export layout and values.
+  - Summary: The cutoff export now writes a cleaner spreadsheet layout with separate `Group`, `Cutoff`, and `Month` rows before the table so Excel no longer misreads the month header as a date like `Apr-26`.
+  - Summary: Future dates in the current month now stay blank instead of showing `OFF`, while past zero-hour dates still show `OFF`.
+  - Summary: The total column now uses whole-number rounding (`.5+` up, below `.5` down) instead of decimal totals.
+  - Why: Video feedback requested cleaner spacing/design, blank future days, and rounded totals in the cutoff export.
+  - Behavior impact:
+    - Export opens with a clearer top section and table layout.
+    - Future dates in the active month are blank.
+    - Total values are whole numbers.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
