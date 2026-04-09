@@ -448,17 +448,39 @@ function parseSessionTimestamp(value) {
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
+function getSessionTimeTravelOffsetMs(session) {
+  const raw = Number(session?.time_travel_offset_ms ?? 0);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  // Safety cap: 7 days of simulated offset.
+  return Math.min(raw, 7 * 24 * 60 * 60 * 1000);
+}
+
+function formatDurationHms(totalMs = 0) {
+  const safeMs = Math.max(0, Number(totalMs) || 0);
+  const totalSeconds = Math.floor(safeMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}h ${minutes}m ${seconds}s`;
+}
+
 function getCappedLogoutIso(loginTimeValue, capMs = OVERTIME_WARNING_MS) {
   const loginMs = parseSessionTimestamp(loginTimeValue);
   return new Date(loginMs + capMs).toISOString();
 }
 
 function getSessionNextWarningDueMs(session, warningThresholdMs = OVERTIME_WARNING_MS) {
-  return parseSessionTimestamp(session?.login_time) + warningThresholdMs;
+  if (session?.overtime_next_warning_at) {
+    // This is already a concrete wall-clock schedule.
+    return parseSessionTimestamp(session.overtime_next_warning_at);
+  }
+  const timeTravelOffsetMs = getSessionTimeTravelOffsetMs(session);
+  return parseSessionTimestamp(session?.login_time) + warningThresholdMs - timeTravelOffsetMs;
 }
 
 function getSessionFinalLimitDueMs(session, finalLimitMs = OVERTIME_FINAL_LIMIT_MS) {
-  return parseSessionTimestamp(session?.login_time) + finalLimitMs;
+  const timeTravelOffsetMs = getSessionTimeTravelOffsetMs(session);
+  return parseSessionTimestamp(session?.login_time) + finalLimitMs - timeTravelOffsetMs;
 }
 
 function getOvertimeThresholdLabel(warningThresholdMs = OVERTIME_WARNING_MS) {
@@ -2861,6 +2883,7 @@ async function monitorOvertimeSessionsLegacy(client) {
         sessions.id,
         sessions.agent_id,
         sessions.login_time,
+        COALESCE(sessions.time_travel_offset_ms, 0) AS time_travel_offset_ms,
         sessions.overtime_warning_at,
         sessions.overtime_next_warning_at,
         COALESCE(sessions.overtime_confirmed, 0) AS overtime_confirmed,
@@ -2907,7 +2930,14 @@ async function monitorOvertimeSessionsLegacy(client) {
 
         try {
           const agentSessions = db.prepare(`
-            SELECT sessions.id, sessions.hotel_id, sessions.login_time, COALESCE(sessions.session_kind, 'shift') AS session_kind, agents.discord_id, agents.role
+            SELECT
+              sessions.id,
+              sessions.hotel_id,
+              sessions.login_time,
+              COALESCE(sessions.time_travel_offset_ms, 0) AS time_travel_offset_ms,
+              COALESCE(sessions.session_kind, 'shift') AS session_kind,
+              agents.discord_id,
+              agents.role
             FROM sessions
             JOIN agents ON agents.id = sessions.agent_id
             WHERE sessions.agent_id = ? AND sessions.status = 'active'
@@ -2929,7 +2959,8 @@ async function monitorOvertimeSessionsLegacy(client) {
             const activeThresholdMs = getOvertimeWarningThresholdMs(active, client.guilds.cache.first());
             const activeDueMs = getSessionNextWarningDueMs(active, activeThresholdMs);
             const wasOverLimit = nowMs >= activeDueMs;
-            const cappedIso = wasOverLimit
+            const usingSimulatedOffset = getSessionTimeTravelOffsetMs(active) > 0;
+            const cappedIso = (wasOverLimit && !usingSimulatedOffset)
               ? new Date(activeDueMs).toISOString()
               : new Date(nowMs).toISOString();
             db.prepare("UPDATE sessions SET logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0, overtime_next_warning_at = NULL WHERE id = ?").run(cappedIso, active.id);
@@ -2988,6 +3019,7 @@ async function monitorOvertimeSessions(client) {
         sessions.id,
         sessions.agent_id,
         sessions.login_time,
+        COALESCE(sessions.time_travel_offset_ms, 0) AS time_travel_offset_ms,
         sessions.overtime_warning_at,
         sessions.overtime_next_warning_at,
         COALESCE(sessions.overtime_confirmed, 0) AS overtime_confirmed,
@@ -3088,7 +3120,14 @@ async function monitorOvertimeSessions(client) {
 
         try {
           const agentSessions = db.prepare(`
-            SELECT sessions.id, sessions.hotel_id, sessions.login_time, COALESCE(sessions.session_kind, 'shift') AS session_kind, agents.discord_id, agents.role
+            SELECT
+              sessions.id,
+              sessions.hotel_id,
+              sessions.login_time,
+              COALESCE(sessions.time_travel_offset_ms, 0) AS time_travel_offset_ms,
+              COALESCE(sessions.session_kind, 'shift') AS session_kind,
+              agents.discord_id,
+              agents.role
             FROM sessions
             JOIN agents ON agents.id = sessions.agent_id
             WHERE sessions.agent_id = ? AND sessions.status = 'active'
@@ -3107,7 +3146,8 @@ async function monitorOvertimeSessions(client) {
 
           for (const active of agentSessions) {
             const activeFinalDueMs = getSessionFinalLimitDueMs(active, OVERTIME_FINAL_LIMIT_MS);
-            const cappedIso = nowMs >= activeFinalDueMs
+            const usingSimulatedOffset = getSessionTimeTravelOffsetMs(active) > 0;
+            const cappedIso = (nowMs >= activeFinalDueMs && !usingSimulatedOffset)
               ? new Date(activeFinalDueMs).toISOString()
               : new Date(nowMs).toISOString();
             db.prepare('UPDATE sessions SET logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0, overtime_next_warning_at = NULL WHERE id = ?').run(cappedIso, active.id);
@@ -3176,7 +3216,14 @@ async function monitorOvertimeSessions(client) {
 
         try {
           const agentSessions = db.prepare(`
-            SELECT sessions.id, sessions.hotel_id, sessions.login_time, COALESCE(sessions.session_kind, 'shift') AS session_kind, agents.discord_id, agents.role
+            SELECT
+              sessions.id,
+              sessions.hotel_id,
+              sessions.login_time,
+              COALESCE(sessions.time_travel_offset_ms, 0) AS time_travel_offset_ms,
+              COALESCE(sessions.session_kind, 'shift') AS session_kind,
+              agents.discord_id,
+              agents.role
             FROM sessions
             JOIN agents ON agents.id = sessions.agent_id
             WHERE sessions.agent_id = ? AND sessions.status = 'active'
@@ -3196,7 +3243,8 @@ async function monitorOvertimeSessions(client) {
           for (const active of agentSessions) {
             const activeThresholdMs = getOvertimeWarningThresholdMs(active, guild);
             const activeDueMs = getSessionNextWarningDueMs(active, activeThresholdMs);
-            const cappedIso = nowMs >= activeDueMs
+            const usingSimulatedOffset = getSessionTimeTravelOffsetMs(active) > 0;
+            const cappedIso = (nowMs >= activeDueMs && !usingSimulatedOffset)
               ? new Date(activeDueMs).toISOString()
               : new Date(nowMs).toISOString();
             db.prepare('UPDATE sessions SET logout_time = ?, overtime_warning_at = NULL, overtime_confirmed = 0, overtime_next_warning_at = NULL WHERE id = ?').run(cappedIso, active.id);
@@ -8436,6 +8484,7 @@ async function handleHelpStaff(interaction) {
         '> `/add-hours`: Add manual hours to an agent record.\n' +
         '> `/end-shift user:@name`: End your own shift or force-end another active shift (OM/Developer).\n' +
         '> `/limit-warning user:@name`: Manually trigger overtime warning (DM + ping).\n' +
+        '> `/time-travel name:@name hours:# minutes:# seconds:#`: Simulate elapsed time for overtime testing without changing real worked hours.\n' +
         '> `/guide` and `/add-guide`: Search or update SOP knowledge.\n' +
         '> `/db-set-schedule`: Assign shifts to agents.\n' +
         '> `/set-hotel-shifts`: Store two hotel shift options and sync matching hotel roles.\n' +
@@ -8539,6 +8588,7 @@ async function handleOvertimeConfirm(interaction) {
         sessions.agent_id,
         sessions.login_time,
         COALESCE(sessions.overtime_confirmed, 0) AS overtime_confirmed,
+        COALESCE(sessions.time_travel_offset_ms, 0) AS time_travel_offset_ms,
         sessions.overtime_next_warning_at,
         COALESCE(sessions.session_kind, 'shift') AS session_kind,
         agents.discord_id,
@@ -8667,6 +8717,111 @@ async function handleOvertimeEndShift(interaction) {
       await interaction.followUp({ content: '❌ Failed to redirect to the log-in channel.', ephemeral: true }).catch(() => {});
     } else {
       await interaction.reply({ content: '❌ Failed to redirect to the log-in channel.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
+async function handleTimeTravel(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const targetUser = interaction.options.getUser('name');
+    const hours = interaction.options.getInteger('hours') ?? 0;
+    const minutes = interaction.options.getInteger('minutes') ?? 0;
+    const seconds = interaction.options.getInteger('seconds') ?? 0;
+    const totalOffsetMs = ((hours * 60 * 60) + (minutes * 60) + seconds) * 1000;
+
+    const activeSessions = db.prepare(`
+      SELECT
+        sessions.id,
+        sessions.login_time,
+        COALESCE(sessions.time_travel_offset_ms, 0) AS time_travel_offset_ms,
+        COALESCE(sessions.session_kind, 'shift') AS session_kind,
+        agents.discord_id,
+        agents.username
+      FROM sessions
+      JOIN agents ON agents.id = sessions.agent_id
+      WHERE sessions.status = 'active'
+        AND agents.discord_id = ?
+      ORDER BY sessions.login_time DESC
+    `).all(targetUser.id);
+
+    if (activeSessions.length === 0) {
+      return interaction.editReply({
+        content: `❌ **${targetUser.username}** has no active shift/training session right now.`
+      });
+    }
+
+    const applyOffsetTx = db.transaction((sessionIds, offsetMs) => {
+      const stmt = db.prepare(`
+        UPDATE sessions
+        SET
+          time_travel_offset_ms = ?,
+          overtime_warning_at = NULL,
+          overtime_confirmed = 0,
+          overtime_next_warning_at = NULL
+        WHERE id = ? AND status = 'active'
+      `);
+      for (const sessionId of sessionIds) {
+        stmt.run(offsetMs, sessionId);
+      }
+    });
+    applyOffsetTx(activeSessions.map(row => row.id), totalOffsetMs);
+
+    for (const session of activeSessions) {
+      const sessionKey = String(session.id);
+      overtimeWarnedSessionIds.delete(sessionKey);
+      overtimeConfirmedSessionIds.delete(sessionKey);
+    }
+
+    // Trigger checks immediately so warning tests do not require waiting for the next minute tick.
+    await monitorOvertimeSessions(interaction.client);
+
+    const previewLines = activeSessions.slice(0, 3).map(session => {
+      const elapsedMs = Math.max(0, Date.now() - parseSessionTimestamp(session.login_time) + totalOffsetMs);
+      return `- Session #${session.id} (${session.session_kind === 'training' ? 'Training' : 'Shift'}): simulated elapsed **${formatDurationHms(elapsedMs)}**`;
+    });
+    if (activeSessions.length > 3) {
+      previewLines.push(`- ...and ${activeSessions.length - 3} more active session(s).`);
+    }
+
+    const offsetLabel = formatDurationHms(totalOffsetMs);
+    const modeLabel = totalOffsetMs === 0 ? 'cleared' : 'applied';
+    const overtimeHint = totalOffsetMs >= OVERTIME_WARNING_MS
+      ? '\n⚠️ This offset is above the 8-hour warning threshold and can trigger overtime alerts immediately.'
+      : '';
+
+    sendAuditLog(interaction.client, {
+      title: totalOffsetMs === 0 ? '🧪 Time Travel Cleared' : '🧪 Time Travel Applied',
+      description:
+        `**Target:** ${targetUser.username} (<@${targetUser.id}>)\n` +
+        `**Offset:** ${offsetLabel}\n` +
+        `**Active Sessions Updated:** ${activeSessions.length}\n` +
+        `**Triggered By:** {{AGENT_NAME}}`,
+      color: 0x3498DB,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    });
+
+    await interaction.editReply({
+      content:
+        `✅ Time travel ${modeLabel} for **${targetUser.username}**.\n` +
+        `Simulated offset: **${offsetLabel}**\n` +
+        `Updated sessions: **${activeSessions.length}**\n` +
+        `\n${previewLines.join('\n')}` +
+        `${overtimeHint}\n\n` +
+        `This does **not** edit real login timestamps or add permanent worked hours.`
+    });
+  } catch (error) {
+    console.error('Error in handleTimeTravel:', error);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: '❌ Failed to apply time travel offset.' }).catch(() => {});
+    } else {
+      await interaction.reply({ content: '❌ Failed to apply time travel offset.', ephemeral: true }).catch(() => {});
     }
   }
 }
@@ -10077,6 +10232,7 @@ module.exports = {
   handleOvertimeConfirm,
   handleOvertimeEndShift,
   handleLimitWarning,
+  handleTimeTravel,
   handleSelectTrainee,
   handleNewcomerPromotion,
   handleNewcomerAgentPinSubmit,

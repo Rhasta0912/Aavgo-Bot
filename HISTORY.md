@@ -1191,3 +1191,21 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/profilePanel.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Task 4.0 added `/time-travel` for overtime testing without waiting real hours.
+  - Summary: Added a new management/developer slash command `/time-travel name:@user hours:# minutes:# seconds:#` to simulate elapsed session time for active shifts/training sessions.
+  - Summary: Added `sessions.time_travel_offset_ms` (migration-safe) and updated overtime warning checks to use this simulated offset for threshold timing.
+  - Summary: Command resets overtime warning state for the target active sessions, then triggers an immediate overtime monitor pass so warning tests can run right away.
+  - Summary: Real `login_time` and payroll hour accumulation are not edited by this command; it is test-state only.
+  - Summary: Added guard behavior so auto-logout capping never writes a simulated “past” logout time when a time-travel offset is active.
+  - Why: Task 4.0 requested a fast testing path to validate 8h/12h overtime notifications without waiting in real-time.
+  - Behavior impact:
+    - `/time-travel` can set or clear simulated elapsed time (`0h 0m 0s` clears).
+    - Overtime warnings can be triggered immediately for test scenarios.
+    - Real shift history fields remain intact for normal hour tracking.
+  - Files touched:
+    - src/commands.js
+    - src/index.js
+    - src/auth.js
+    - src/database.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

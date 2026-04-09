@@ -562,6 +562,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleHelpAgent(interaction);
     } else if (commandName === 'limit-warning') {
       await auth.handleLimitWarning(interaction);
+    } else if (commandName === 'time-travel') {
+      await auth.handleTimeTravel(interaction);
     } else if (commandName === 'select-trainee') {
       await auth.handleSelectTrainee(interaction);
     } else if (commandName === 'assign-team') {

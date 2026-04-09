@@ -283,6 +283,13 @@ const commandData = [
     .setDescription('(Developer/Operations Manager) Manually send an overtime warning to an active agent/trainee')
     .addUserOption(option => option.setName('user').setDescription('The active agent/trainee to warn').setRequired(true)),
   new SlashCommandBuilder()
+    .setName('time-travel')
+    .setDescription('(Developer/Operations Manager) Simulate elapsed session time for overtime testing')
+    .addUserOption(option => option.setName('name').setDescription('The active user to simulate').setRequired(true))
+    .addIntegerOption(option => option.setName('hours').setDescription('Simulated elapsed hours').setRequired(true).setMinValue(0).setMaxValue(48))
+    .addIntegerOption(option => option.setName('minutes').setDescription('Simulated elapsed minutes').setRequired(true).setMinValue(0).setMaxValue(59))
+    .addIntegerOption(option => option.setName('seconds').setDescription('Simulated elapsed seconds').setRequired(true).setMinValue(0).setMaxValue(59)),
+  new SlashCommandBuilder()
     .setName('select-trainee')
     .setDescription('(Management/Developer) Assign the Trainees role to a user')
     .addUserOption(option => option.setName('name').setDescription('The user to mark as trainee').setRequired(true)),
