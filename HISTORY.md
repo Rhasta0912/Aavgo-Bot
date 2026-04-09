@@ -1233,3 +1233,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Files touched:
     - src/auth.js
     - HISTORY.md
+
+- Task 2.4 added an `Excel` cutoff export button to Profiles payroll views.
+  - Summary: Cutoff hour screens in Profiles (`Agents`, `SME`, `Team Leader`, `Trainees`) now include an `Excel` button that generates an Excel-friendly CSV attachment from the currently selected cutoff (`1-15` or `16-End`).
+  - Summary: The export uses spreadsheet-style day columns, grouped section rows, per-member hour cells with `OFF` on zero-hour days, and a total column to match the payroll reference layout shown in the video.
+  - Why: Video request asked for a fast spreadsheet-style payroll export directly from the existing Profiles cutoff flow without adding a separate command or changing the beginner-friendly panel flow.
+  - Behavior impact:
+    - Profiles cutoff screens now have an `Excel` action.
+    - Pressing `Excel` sends an attachment that can be opened in Excel or Google Sheets.
+    - The main Profiles panel stays in place while the export is delivered privately.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

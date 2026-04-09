@@ -406,6 +406,10 @@ function buildCutoffViewRow(teamName, activeCutoff = CUTOFF_FIRST_HALF) {
       .setLabel('Cutoff 16-End')
       .setStyle(secondStyle),
     new ButtonBuilder()
+      .setCustomId(`profiles_export_cutoff:${teamName}:${activeCutoff}`)
+      .setLabel('Excel')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
       .setCustomId(`profiles_back_team:${teamName}`)
       .setLabel('Back')
       .setStyle(ButtonStyle.Secondary)
@@ -667,6 +671,134 @@ function buildCutoffHoursPayload(teamName, members, cutoffKey = CUTOFF_FIRST_HAL
   };
 }
 
+function escapeCsvValue(value) {
+  const text = String(value ?? '');
+  return `"${text.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
+}
+
+function slugifyFilePart(value, fallback = 'export') {
+  const cleaned = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return cleaned || fallback;
+}
+
+function getCutoffExportSectionLabel(teamName, member) {
+  const normalizedTeam = normalizeTeamName(teamName) || TEAM_AGENTS;
+  if (normalizedTeam === TEAM_SME || normalizedTeam === TEAM_TEAM_LEADER) {
+    return 'SME / TL';
+  }
+
+  const primaryLabel = String(member?.primary_hotel_name || '').trim();
+  const assignedLabel = String(member?.assigned_hotel_name || '').trim();
+  if (primaryLabel) return primaryLabel;
+  if (assignedLabel) return assignedLabel;
+
+  return normalizedTeam === TEAM_TRAINEES ? 'Trainees' : 'Unassigned';
+}
+
+function getCutoffExportSectionOrder(member) {
+  const primaryHotelId = String(member?.primary_hotel_id || '').trim().toUpperCase();
+  const assignedHotelId = String(member?.hotel_id || '').trim().toUpperCase();
+  const hotelId = primaryHotelId || assignedHotelId;
+  const hotelIndex = HOTEL_IDS.indexOf(hotelId);
+  return hotelIndex === -1 ? Number.MAX_SAFE_INTEGER : hotelIndex;
+}
+
+function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) {
+  const normalizedTeam = normalizeTeamName(teamName) || TEAM_AGENTS;
+  const cutoff = getCutoffConfig(cutoffKey);
+  const includedMembers = (members || [])
+    .filter(member => member && member.id && member.discord_id)
+    .sort((a, b) => String(a.display_name || a.username || '').localeCompare(String(b.display_name || b.username || '')));
+
+  const monthLabel = getMonthDailyHourHistory(db, includedMembers[0]?.id || 0, 0).label;
+  const dayHeaders = Array.from({ length: cutoff.endDay - cutoff.startDay + 1 }, (_, index) => String(cutoff.startDay + index));
+  const rows = [
+    [monthLabel, ...dayHeaders, 'Total']
+  ];
+
+  if (includedMembers.length === 0) {
+    rows.push([normalizedTeam, 'No active members found in this view.']);
+    return rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
+  }
+
+  const sectionBuckets = new Map();
+  for (const member of includedMembers) {
+    const sectionLabel = getCutoffExportSectionLabel(normalizedTeam, member);
+    const monthHistory = getMonthDailyHourHistory(db, member.id, 0);
+    const dayValues = [];
+    let cutoffTotal = 0;
+
+    for (let day = cutoff.startDay; day <= cutoff.endDay; day += 1) {
+      const dayEntry = monthHistory.days[day - 1];
+      const dayHours = Number(dayEntry?.totalHours || 0);
+      cutoffTotal += dayHours;
+      dayValues.push(dayHours > 0 ? formatHours(dayHours) : 'OFF');
+    }
+
+    const bucket = sectionBuckets.get(sectionLabel) || {
+      order: getCutoffExportSectionOrder(member),
+      members: []
+    };
+    bucket.order = Math.min(bucket.order, getCutoffExportSectionOrder(member));
+    bucket.members.push({
+      name: String(member.display_name || member.username || 'Unknown').trim() || 'Unknown',
+      dayValues,
+      total: formatHours(cutoffTotal)
+    });
+    sectionBuckets.set(sectionLabel, bucket);
+  }
+
+  const orderedSections = [...sectionBuckets.entries()].sort((a, b) => {
+    if (a[1].order !== b[1].order) return a[1].order - b[1].order;
+    return a[0].localeCompare(b[0]);
+  });
+
+  for (const [sectionLabel, bucket] of orderedSections) {
+    rows.push([sectionLabel, ...Array(dayHeaders.length + 1).fill('')]);
+    const sortedMembers = bucket.members.sort((a, b) => a.name.localeCompare(b.name));
+    for (const memberRow of sortedMembers) {
+      rows.push([memberRow.name, ...memberRow.dayValues, memberRow.total]);
+    }
+    rows.push(Array(dayHeaders.length + 2).fill(''));
+  }
+
+  while (rows.length > 0 && rows[rows.length - 1].every(cell => !cell)) {
+    rows.pop();
+  }
+
+  return rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
+}
+
+async function exportCutoffHoursSpreadsheet(interaction, teamName, cutoffKey = CUTOFF_FIRST_HALF) {
+  const normalizedTeam = normalizeTeamName(teamName);
+  if (!normalizedTeam || !isPayrollTeamView(normalizedTeam)) {
+    return sendComponentReply(interaction, {
+      content: 'Cutoff export is available for Agents, SME, Team Leader, and Trainees only.',
+      ephemeral: true
+    });
+  }
+
+  const members = await fetchTeamMembers(interaction.guild, normalizedTeam);
+  const cutoff = getCutoffConfig(cutoffKey);
+  const csv = buildCutoffExportCsv(normalizedTeam, members, cutoffKey);
+  const fileName = [
+    'aavgo-cutoff',
+    slugifyFilePart(normalizedTeam, 'group'),
+    slugifyFilePart(cutoff.rangeLabel, 'cutoff'),
+    slugifyFilePart(getMonthDailyHourHistory(db, members[0]?.id || 0, 0).label, 'month')
+  ].join('-') + '.csv';
+
+  return sendComponentReply(interaction, {
+    content: `Excel cutoff export ready for **${normalizedTeam} (${cutoff.rangeLabel})**. Open the attached CSV in Excel or Google Sheets.`,
+    files: [{ attachment: Buffer.from(csv, 'utf8'), name: fileName }],
+    ephemeral: true
+  });
+}
+
 async function syncLeadershipDiscordRoles(member, role) {
   if (!member) return;
 
@@ -788,6 +920,12 @@ async function fetchAgentsByDiscordIds(guild, discordIds, forcedRole = null) {
       a.role,
       a.agent_status,
       a.team,
+      a.hotel_id,
+      h_agent.name AS assigned_hotel_name,
+      hsa.primary_hotel_id,
+      h_primary.name AS primary_hotel_name,
+      hsa.secondary_hotel_id,
+      h_secondary.name AS secondary_hotel_name,
       COALESCE(NULLIF(a.team, ''), h_agent.team, h_primary.team, h_secondary.team, 'Team 1') AS effective_team
     FROM agents a
     LEFT JOIN hotels h_agent ON h_agent.id = a.hotel_id
@@ -2032,6 +2170,13 @@ async function handleButton(interaction) {
     const teamName = normalizeTeamName(parts[1]) || TEAM_AGENTS;
     const cutoffKey = parts[2] === CUTOFF_SECOND_HALF ? CUTOFF_SECOND_HALF : CUTOFF_FIRST_HALF;
     return showCutoffHoursView(interaction, teamName, cutoffKey);
+  }
+
+  if (customId.startsWith('profiles_export_cutoff:')) {
+    const parts = customId.split(':');
+    const teamName = normalizeTeamName(parts[1]) || TEAM_AGENTS;
+    const cutoffKey = parts[2] === CUTOFF_SECOND_HALF ? CUTOFF_SECOND_HALF : CUTOFF_FIRST_HALF;
+    return exportCutoffHoursSpreadsheet(interaction, teamName, cutoffKey);
   }
 
   if (customId.startsWith('profiles_kick:')) {
