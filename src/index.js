@@ -346,11 +346,11 @@ client.once('ready', async () => {
       auth.checkSchedules(client);
     }, 5 * 60000);
 
-    // Overtime/session enforcement loop (every 1 minute):
+    // Overtime/session enforcement loop (every 15 seconds):
     // warning cycles, overtime auto-end, and offline auto-end checks.
     setInterval(() => {
       auth.monitorOvertimeSessions(client);
-    }, 60 * 1000);
+    }, 15 * 1000);
     
     // Initial check on boot
     auth.checkSchedules(client);
