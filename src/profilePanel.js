@@ -86,6 +86,7 @@ const HOTEL_GREEN_ROLE_IDS = {
 const PAYROLL_TEAM_VIEWS = [TEAM_AGENTS, TEAM_SME, TEAM_TEAM_LEADER, TEAM_TRAINEES];
 const CUTOFF_FIRST_HALF = 'cutoff_1_15';
 const CUTOFF_SECOND_HALF = 'cutoff_16_end';
+const FULL_MONTH_EXPORT = 'full_month';
 const MANILA_TIMEZONE = 'Asia/Manila';
 const CUTOFF_TABLE_MAX_CHARS = 3200;
 const ROSTER_PAGE_SIZE = 12;
@@ -248,17 +249,34 @@ function isPayrollTeamView(teamName) {
   return PAYROLL_TEAM_VIEWS.includes(normalized);
 }
 
-function getCutoffConfig(cutoffKey, nowInput = new Date()) {
-  const normalizedKey = cutoffKey === CUTOFF_SECOND_HALF ? CUTOFF_SECOND_HALF : CUTOFF_FIRST_HALF;
+function getDaysInManilaMonth(nowInput = new Date()) {
   const manila = getManilaDateParts(nowInput);
   const daysInMonth = new Date(Date.UTC(manila.year, manila.month, 0, 12, 0, 0)).getUTCDate();
+  return { manila, daysInMonth };
+}
+
+function getCutoffConfig(cutoffKey, nowInput = new Date()) {
+  const normalizedKey = cutoffKey === CUTOFF_SECOND_HALF ? CUTOFF_SECOND_HALF : CUTOFF_FIRST_HALF;
+  const { daysInMonth } = getDaysInManilaMonth(nowInput);
   const startDay = normalizedKey === CUTOFF_SECOND_HALF ? 16 : 1;
   const endDay = normalizedKey === CUTOFF_SECOND_HALF ? daysInMonth : 15;
   return {
     key: normalizedKey,
     startDay,
     endDay,
-    rangeLabel: normalizedKey === CUTOFF_SECOND_HALF ? '16-End' : '1-15'
+    rangeLabel: normalizedKey === CUTOFF_SECOND_HALF ? '16-End' : '1-15',
+    exportLabel: normalizedKey === CUTOFF_SECOND_HALF ? 'Days 16-End' : 'Days 1-15'
+  };
+}
+
+function getFullMonthExportConfig(nowInput = new Date()) {
+  const { daysInMonth } = getDaysInManilaMonth(nowInput);
+  return {
+    key: FULL_MONTH_EXPORT,
+    startDay: 1,
+    endDay: daysInMonth,
+    rangeLabel: '1-End',
+    exportLabel: 'Full Month'
   };
 }
 
@@ -301,8 +319,8 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
     ? 'Browse Team 3 members (current)'
     : 'Browse Team 3 members';
   const agentsDescription = normalizedSelected === TEAM_AGENTS
-    ? 'Browse agents only (current)'
-    : 'Browse agents only';
+    ? 'Browse all agent-role members (current)'
+    : 'Browse all agent-role members';
   const smeDescription = normalizedSelected === TEAM_SME
     ? 'Browse SME only (current)'
     : 'Browse SME only';
@@ -389,7 +407,11 @@ function buildCutoffShortcutRow(teamName) {
     new ButtonBuilder()
       .setCustomId(`profiles_view_cutoff:${teamName}:${CUTOFF_SECOND_HALF}`)
       .setLabel('Cutoff 16-End')
-      .setStyle(ButtonStyle.Secondary)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`profiles_export_month:${teamName}`)
+      .setLabel('Excel Month')
+      .setStyle(ButtonStyle.Success)
   );
 }
 
@@ -429,10 +451,10 @@ function buildDashboardEmbed(activeTeam = null) {
       '1. Select a group below\n' +
       '2. Pick an agent profile\n' +
       '3. Run an approved action\n' +
-      '4. Use cutoff shortcuts for fast payroll checks\n\n' +
+      '4. Use cutoff shortcuts or Excel Month for payroll checks\n\n' +
       '──────────────────────────────\n' +
       `🏨 **Current Group:** ${selected || 'Not selected'}\n` +
-      `👤 **Agents View:** Available in the group picker\n` +
+      `👤 **Agents View:** Includes agent-role members across team assignments\n` +
       `🎯 **SME View:** Available in the group picker\n` +
       `🧭 **Team Leader View:** Available in the group picker\n` +
       `🎓 **Trainees View:** Available in the group picker\n` +
@@ -605,9 +627,9 @@ function buildGroupPickerPayload(selectedTeam = null) {
 function buildCutoffHoursEmbed(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) {
   const normalizedTeam = normalizeTeamName(teamName) || TEAM_AGENTS;
   const cutoff = getCutoffConfig(cutoffKey);
-  const includedMembers = (members || [])
+  const includedMembers = uniqueMembersByDiscordId((members || [])
     .filter(member => member && member.id && member.discord_id)
-    .sort((a, b) => String(a.display_name || a.username || '').localeCompare(String(b.display_name || b.username || '')));
+    .sort((a, b) => String(a.display_name || a.username || '').localeCompare(String(b.display_name || b.username || ''))));
 
   if (includedMembers.length === 0) {
     return new EmbedBuilder()
@@ -691,6 +713,13 @@ function formatRoundedHourTotal(value) {
   return String(Math.round(numeric));
 }
 
+function buildHoursExportTitle(teamName, rangeConfig, monthHistory) {
+  const teamLabel = normalizeTeamName(teamName) || TEAM_AGENTS;
+  const rangeLabel = String(rangeConfig?.exportLabel || rangeConfig?.rangeLabel || 'Hours').trim() || 'Hours';
+  const monthLabel = String(monthHistory?.label || 'Current Month').trim() || 'Current Month';
+  return `Aavgo ${teamLabel} Hours Export - ${rangeLabel} - ${monthLabel}`;
+}
+
 function getCutoffExportSectionLabel(teamName, member) {
   const normalizedTeam = normalizeTeamName(teamName) || TEAM_AGENTS;
   if (normalizedTeam === TEAM_SME || normalizedTeam === TEAM_TEAM_LEADER) {
@@ -713,25 +742,23 @@ function getCutoffExportSectionOrder(member) {
   return hotelIndex === -1 ? Number.MAX_SAFE_INTEGER : hotelIndex;
 }
 
-function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) {
+function buildHoursExportCsv(teamName, members, rangeConfig) {
   const normalizedTeam = normalizeTeamName(teamName) || TEAM_AGENTS;
-  const cutoff = getCutoffConfig(cutoffKey);
-  const includedMembers = (members || [])
+  const resolvedRange = rangeConfig && Number.isFinite(rangeConfig.startDay) && Number.isFinite(rangeConfig.endDay)
+    ? rangeConfig
+    : getCutoffConfig(CUTOFF_FIRST_HALF);
+  const includedMembers = uniqueMembersByDiscordId((members || [])
     .filter(member => member && member.id && member.discord_id)
-    .sort((a, b) => String(a.display_name || a.username || '').localeCompare(String(b.display_name || b.username || '')));
+    .sort((a, b) => String(a.display_name || a.username || '').localeCompare(String(b.display_name || b.username || ''))));
 
   const currentManila = getManilaDateParts(new Date());
   const monthHistoryPreview = getMonthDailyHourHistory(db, includedMembers[0]?.id || 0, 0);
-  const monthLabel = monthHistoryPreview.label;
   const isCurrentMonthExport =
     monthHistoryPreview.year === currentManila.year &&
     (monthHistoryPreview.month + 1) === currentManila.month;
-  const dayHeaders = Array.from({ length: cutoff.endDay - cutoff.startDay + 1 }, (_, index) => String(cutoff.startDay + index));
+  const dayHeaders = Array.from({ length: resolvedRange.endDay - resolvedRange.startDay + 1 }, (_, index) => String(resolvedRange.startDay + index));
   const rows = [
-    ['Aavgo Cutoff Export'],
-    ['Group', normalizedTeam],
-    ['Cutoff', cutoff.rangeLabel],
-    ['Month', monthLabel],
+    [buildHoursExportTitle(normalizedTeam, resolvedRange, monthHistoryPreview)],
     [],
     ['Name', ...dayHeaders, 'Total']
   ];
@@ -748,7 +775,7 @@ function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) 
     const dayValues = [];
     let cutoffTotal = 0;
 
-    for (let day = cutoff.startDay; day <= cutoff.endDay; day += 1) {
+    for (let day = resolvedRange.startDay; day <= resolvedRange.endDay; day += 1) {
       const dayEntry = monthHistory.days[day - 1];
       const dayHours = Number(dayEntry?.totalHours || 0);
       cutoffTotal += dayHours;
@@ -794,6 +821,14 @@ function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) 
   return rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
 }
 
+function buildCutoffExportCsv(teamName, members, cutoffKey = CUTOFF_FIRST_HALF) {
+  return buildHoursExportCsv(teamName, members, getCutoffConfig(cutoffKey));
+}
+
+function buildMonthExportCsv(teamName, members) {
+  return buildHoursExportCsv(teamName, members, getFullMonthExportConfig());
+}
+
 async function exportCutoffHoursSpreadsheet(interaction, teamName, cutoffKey = CUTOFF_FIRST_HALF) {
   const normalizedTeam = normalizeTeamName(teamName);
   if (!normalizedTeam || !isPayrollTeamView(normalizedTeam)) {
@@ -815,6 +850,31 @@ async function exportCutoffHoursSpreadsheet(interaction, teamName, cutoffKey = C
 
   return sendComponentReply(interaction, {
     content: `Excel cutoff export ready for **${normalizedTeam} (${cutoff.rangeLabel})**. Open the attached CSV in Excel or Google Sheets.`,
+    files: [{ attachment: Buffer.from(csv, 'utf8'), name: fileName }],
+    ephemeral: true
+  });
+}
+
+async function exportMonthHoursSpreadsheet(interaction, teamName) {
+  const normalizedTeam = normalizeTeamName(teamName);
+  if (!normalizedTeam || !isPayrollTeamView(normalizedTeam)) {
+    return sendComponentReply(interaction, {
+      content: 'Monthly export is available for Agents, SME, Team Leader, and Trainees only.',
+      ephemeral: true
+    });
+  }
+
+  const members = await fetchTeamMembers(interaction.guild, normalizedTeam);
+  const monthConfig = getFullMonthExportConfig();
+  const csv = buildMonthExportCsv(normalizedTeam, members);
+  const fileName = [
+    'aavgo-month',
+    slugifyFilePart(normalizedTeam, 'group'),
+    slugifyFilePart(getMonthDailyHourHistory(db, members[0]?.id || 0, 0).label, 'month')
+  ].join('-') + '.csv';
+
+  return sendComponentReply(interaction, {
+    content: `Excel month export ready for **${normalizedTeam} (${monthConfig.rangeLabel})**. Open the attached CSV in Excel or Google Sheets.`,
     files: [{ attachment: Buffer.from(csv, 'utf8'), name: fileName }],
     ephemeral: true
   });
@@ -1010,15 +1070,14 @@ async function fetchTeamMembers(guild, teamName) {
   }
 
   if (normalizedTeam === TEAM_AGENTS) {
-    const rows = await fetchStrictRoleMembers(guild, {
+    return fetchStrictRoleMembers(guild, {
       includeRoleId: AGENT_ROLE_ID,
       includeRoleNames: ['agents', 'agent'],
-      excludeRoleIds: [TRAINEE_ROLE_ID, SME_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID, DEVELOPER_ROLE_ID],
-      excludeRoleNames: [...SME_ROLE_NAMES, ...TEAM_LEADER_ROLE_NAMES, ...OPERATIONS_MANAGER_ROLE_NAMES, ...DEVELOPER_ROLE_NAMES],
+      excludeRoleIds: [TRAINEE_ROLE_ID, SME_ROLE_ID, TEAM_LEADER_ROLE_ID, OPERATIONS_MANAGER_ROLE_ID, DEVELOPER_ROLE_ID, APPLICANTS_ROLE_ID],
+      excludeRoleNames: ['trainees', 'trainee', 'applicants', 'applicant', ...SME_ROLE_NAMES, ...TEAM_LEADER_ROLE_NAMES, ...OPERATIONS_MANAGER_ROLE_NAMES, ...DEVELOPER_ROLE_NAMES],
       forcedRole: 'agent',
-      enforceNoTeamAssignment: true
+      enforceNoTeamAssignment: false
     });
-    return rows.filter(row => !normalizeTeamName(row.team));
   }
 
   if (normalizedTeam === TEAM_SME) {
@@ -2198,6 +2257,11 @@ async function handleButton(interaction) {
     const teamName = normalizeTeamName(parts[1]) || TEAM_AGENTS;
     const cutoffKey = parts[2] === CUTOFF_SECOND_HALF ? CUTOFF_SECOND_HALF : CUTOFF_FIRST_HALF;
     return exportCutoffHoursSpreadsheet(interaction, teamName, cutoffKey);
+  }
+
+  if (customId.startsWith('profiles_export_month:')) {
+    const teamName = normalizeTeamName(customId.split(':')[1]) || TEAM_AGENTS;
+    return exportMonthHoursSpreadsheet(interaction, teamName);
   }
 
   if (customId.startsWith('profiles_kick:')) {

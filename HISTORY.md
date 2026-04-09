@@ -1260,3 +1260,7 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/profilePanel.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Task 2.6 fixed the Profiles Agents roster and added a full-month Excel export.
+  - Agents view now includes agent-role members even if they are assigned to Team 1, Team 2, or Team 3.
+  - Payroll groups now have an Excel Month button that exports days 1 through end-of-month.
+  - Export titles now use clearer text so Excel stops turning the range and month labels into dates.
