@@ -1225,3 +1225,11 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Files touched:
     - src/auth.js
     - HISTORY.md
+
+- Fixed overtime monitor crash from stale offline-auto-logout reference.
+  - Summary: Removed the leftover offline-presence auto-logout branch from `monitorOvertimeSessions()` that still referenced `offlineAutoLogoutAgentIds` after offline auto-logout was retired.
+  - Why: The undefined variable caused repeated `[OVERTIME] Monitor tick failed: offlineAutoLogoutAgentIds is not defined`, which interrupted overtime monitor cycles.
+  - Behavior impact: Overtime monitor ticks run normally again (warning/final-limit logic continues) while keeping the intended policy that offline presence does not auto-end sessions.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
