@@ -508,6 +508,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleCheckHours(interaction);
     } else if (commandName === 'add-hours') {
       await auth.handleAddHours(interaction);
+    } else if (commandName === 'remove-hours') {
+      await auth.handleRemoveHours(interaction);
     } else if (commandName === 'hours-export') {
       await auth.handleHoursExport(interaction);
     } else if (commandName === 'end-shift') {

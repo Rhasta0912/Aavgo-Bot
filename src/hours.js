@@ -96,6 +96,9 @@ function getManualShiftTimestampMs(shiftDate, clockValue) {
 }
 
 function getAdjustmentReferenceMs(adjustment) {
+  const effectiveAtMs = parseDbTimestamp(adjustment?.effective_at, NaN);
+  if (Number.isFinite(effectiveAtMs)) return effectiveAtMs;
+
   const manualLoginMs = getManualShiftTimestampMs(adjustment?.shift_date, adjustment?.login_time);
   if (Number.isFinite(manualLoginMs)) return manualLoginMs;
 
@@ -112,6 +115,12 @@ function getOverlapMs(startMs, endMs, rangeStartMs, rangeEndMs) {
 
 function normalizeSessionKind(sessionKind) {
   return String(sessionKind || 'shift').toLowerCase() === 'training' ? 'training' : 'shift';
+}
+
+function normalizeAdjustmentMode(mode) {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (normalized === 'training') return 'training';
+  return 'shift';
 }
 
 function mergeIntervals(intervals) {
@@ -286,12 +295,12 @@ function buildPeriodHourHistory(db, agentId, period = 'month', nowInput = new Da
   distributeMergedIntervalsAcrossDays(mergedIntervals.training, daily, range.startMs, 'trainingMs');
 
   const adjustments = db.prepare(`
-    SELECT hours, created_at, shift_date, login_time, logout_time
+    SELECT hours, mode, created_at, effective_at, shift_date, login_time, logout_time
     FROM hour_adjustments
     WHERE agent_id = ?
       AND (
         (shift_date IS NOT NULL AND shift_date != '')
-        OR (created_at >= datetime(?, 'unixepoch') AND created_at < datetime(?, 'unixepoch'))
+        OR (COALESCE(effective_at, created_at) >= datetime(?, 'unixepoch') AND COALESCE(effective_at, created_at) < datetime(?, 'unixepoch'))
       )
   `).all(agentId, Math.floor(range.startMs / 1000), Math.floor(range.endMs / 1000));
 
@@ -302,19 +311,24 @@ function buildPeriodHourHistory(db, agentId, period = 'month', nowInput = new Da
 
     const dayIndex = Math.floor((createdMs - range.startMs) / DAY_MS);
     if (dayIndex < 0 || dayIndex >= daily.length) continue;
-    daily[dayIndex].shiftMs += hours * HOUR_MS;
+    const adjustmentMode = normalizeAdjustmentMode(adjustment.mode);
+    if (adjustmentMode === 'training') {
+      daily[dayIndex].trainingMs += hours * HOUR_MS;
+    } else {
+      daily[dayIndex].shiftMs += hours * HOUR_MS;
+    }
 
     const manualLoginMs = getManualShiftTimestampMs(adjustment.shift_date, adjustment.login_time);
     let manualLogoutMs = getManualShiftTimestampMs(adjustment.shift_date, adjustment.logout_time);
     if (Number.isFinite(manualLoginMs) && Number.isFinite(manualLogoutMs) && manualLogoutMs <= manualLoginMs) {
       manualLogoutMs += DAY_MS;
     }
-    if (Number.isFinite(manualLoginMs)) {
+    if (adjustmentMode === 'shift' && Number.isFinite(manualLoginMs)) {
       daily[dayIndex].firstLoginMs = daily[dayIndex].firstLoginMs === null
         ? manualLoginMs
         : Math.min(daily[dayIndex].firstLoginMs, manualLoginMs);
     }
-    if (Number.isFinite(manualLogoutMs)) {
+    if (adjustmentMode === 'shift' && Number.isFinite(manualLogoutMs)) {
       daily[dayIndex].lastLogoutMs = daily[dayIndex].lastLogoutMs === null
         ? manualLogoutMs
         : Math.max(daily[dayIndex].lastLogoutMs, manualLogoutMs);
@@ -396,12 +410,12 @@ function getMonthDailyHourHistory(db, agentId, monthOffset = 0, nowInput = new D
   }
 
   const adjustments = db.prepare(`
-    SELECT hours, created_at, shift_date
+    SELECT hours, mode, created_at, effective_at, shift_date
     FROM hour_adjustments
     WHERE agent_id = ?
       AND (
         (shift_date IS NOT NULL AND shift_date != '')
-        OR (created_at >= datetime(?, 'unixepoch') AND created_at < datetime(?, 'unixepoch'))
+        OR (COALESCE(effective_at, created_at) >= datetime(?, 'unixepoch') AND COALESCE(effective_at, created_at) < datetime(?, 'unixepoch'))
       )
   `).all(agentId, Math.floor(monthStartMs / 1000), Math.floor(nextMonthStartMs / 1000));
 
@@ -412,7 +426,12 @@ function getMonthDailyHourHistory(db, agentId, monthOffset = 0, nowInput = new D
 
     const dayIndex = Math.floor((createdMs - monthStartMs) / DAY_MS);
     if (dayIndex < 0 || dayIndex >= daysInMonth) continue;
-    daily[dayIndex].shiftMs += hours * HOUR_MS;
+    const adjustmentMode = normalizeAdjustmentMode(adjustment.mode);
+    if (adjustmentMode === 'training') {
+      daily[dayIndex].trainingMs += hours * HOUR_MS;
+    } else {
+      daily[dayIndex].shiftMs += hours * HOUR_MS;
+    }
   }
 
   const days = daily.map((item, idx) => {
@@ -451,7 +470,7 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
   `).all(agentId);
 
   const adjustments = db.prepare(`
-    SELECT hours, created_at, shift_date
+    SELECT hours, mode, created_at, effective_at, shift_date
     FROM hour_adjustments
     WHERE agent_id = ?
   `).all(agentId);
@@ -472,14 +491,16 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
     if (!Number.isFinite(hours) || hours === 0) continue;
 
     const adjustmentMs = hours * HOUR_MS;
-    shiftTotals.allMs += adjustmentMs;
+    const adjustmentMode = normalizeAdjustmentMode(adjustment.mode);
+    const targetTotals = adjustmentMode === 'training' ? trainingTotals : shiftTotals;
+    targetTotals.allMs += adjustmentMs;
 
     const createdMs = getAdjustmentReferenceMs(adjustment);
     if (Number.isFinite(createdMs) && createdMs >= weeklyStartMs) {
-      shiftTotals.weeklyMs += adjustmentMs;
+      targetTotals.weeklyMs += adjustmentMs;
     }
     if (Number.isFinite(createdMs) && createdMs >= monthlyStartMs) {
-      shiftTotals.monthlyMs += adjustmentMs;
+      targetTotals.monthlyMs += adjustmentMs;
     }
   }
 

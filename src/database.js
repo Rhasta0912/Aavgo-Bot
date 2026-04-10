@@ -111,8 +111,10 @@ db.exec(`
     login_time TEXT,
     logout_time TEXT,
     hours REAL NOT NULL,
+    mode TEXT NOT NULL DEFAULT 'shift',
     reason TEXT,
     note TEXT,
+    effective_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_by TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
@@ -303,8 +305,10 @@ db.pragma('foreign_keys = ON');
           login_time TEXT,
           logout_time TEXT,
           hours REAL NOT NULL,
+          mode TEXT NOT NULL DEFAULT 'shift',
           reason TEXT,
           note TEXT,
+          effective_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           created_by TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
@@ -328,6 +332,14 @@ db.pragma('foreign_keys = ON');
     if (!hourAdjustmentsTableInfo.find(col => col.name === 'reason')) {
       db.prepare("ALTER TABLE hour_adjustments ADD COLUMN reason TEXT").run();
     }
+    if (!hourAdjustmentsTableInfo.find(col => col.name === 'mode')) {
+      db.prepare("ALTER TABLE hour_adjustments ADD COLUMN mode TEXT DEFAULT 'shift'").run();
+    }
+    if (!hourAdjustmentsTableInfo.find(col => col.name === 'effective_at')) {
+      db.prepare("ALTER TABLE hour_adjustments ADD COLUMN effective_at DATETIME").run();
+    }
+    db.prepare("UPDATE hour_adjustments SET mode = 'shift' WHERE mode IS NULL OR TRIM(mode) = ''").run();
+    db.prepare("UPDATE hour_adjustments SET effective_at = created_at WHERE effective_at IS NULL OR TRIM(effective_at) = ''").run();
     db.prepare("UPDATE sessions SET session_kind = 'shift' WHERE session_kind IS NULL OR session_kind = ''").run();
     db.prepare("UPDATE sessions SET time_travel_offset_ms = 0 WHERE time_travel_offset_ms IS NULL").run();
     db.prepare("UPDATE sessions SET overtime_confirmed = 0 WHERE overtime_confirmed IS NULL").run();

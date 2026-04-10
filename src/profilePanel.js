@@ -309,15 +309,6 @@ function getProfilePanelKey(channelId) {
 
 function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null, placeholder = 'Select Group') {
   const normalizedSelected = normalizeTeamName(selectedTeam);
-  const team1Description = normalizedSelected === TEAM_1
-    ? 'Browse Team 1 members (current)'
-    : 'Browse Team 1 members';
-  const team2Description = normalizedSelected === TEAM_2
-    ? 'Browse Team 2 members (current)'
-    : 'Browse Team 2 members';
-  const team3Description = normalizedSelected === TEAM_3
-    ? 'Browse Team 3 members (current)'
-    : 'Browse Team 3 members';
   const agentsDescription = normalizedSelected === TEAM_AGENTS
     ? 'Browse all agent-role members (current)'
     : 'Browse all agent-role members';
@@ -330,26 +321,11 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   const traineesDescription = normalizedSelected === TEAM_TRAINEES
     ? 'Browse trainees only (current)'
     : 'Browse trainees only';
-  const applicantsDescription = normalizedSelected === TEAM_APPLICANTS
-    ? 'Browse applicants only (current)'
-    : 'Browse applicants only';
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(customId)
     .setPlaceholder(placeholder)
     .addOptions(
-      new StringSelectMenuOptionBuilder()
-        .setLabel(TEAM_1)
-        .setDescription(team1Description)
-        .setValue(TEAM_1),
-      new StringSelectMenuOptionBuilder()
-        .setLabel(TEAM_2)
-        .setDescription(team2Description)
-        .setValue(TEAM_2),
-      new StringSelectMenuOptionBuilder()
-        .setLabel(TEAM_3)
-        .setDescription(team3Description)
-        .setValue(TEAM_3),
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_AGENTS)
         .setDescription(agentsDescription)
@@ -365,11 +341,7 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
       new StringSelectMenuOptionBuilder()
         .setLabel(TEAM_TRAINEES)
         .setDescription(traineesDescription)
-        .setValue(TEAM_TRAINEES),
-      new StringSelectMenuOptionBuilder()
-        .setLabel(TEAM_APPLICANTS)
-        .setDescription(applicantsDescription)
-        .setValue(TEAM_APPLICANTS)
+        .setValue(TEAM_TRAINEES)
     );
 
   return new ActionRowBuilder().addComponents(menu);
@@ -457,8 +429,7 @@ function buildDashboardEmbed(activeTeam = null) {
       `👤 **Agents View:** Includes agent-role members across team assignments\n` +
       `🎯 **SME View:** Available in the group picker\n` +
       `🧭 **Team Leader View:** Available in the group picker\n` +
-      `🎓 **Trainees View:** Available in the group picker\n` +
-      `📄 **Applicants View:** Available in the group picker`
+      `🎓 **Trainees View:** Available in the group picker`
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations - Automated Access Control' })

@@ -91,11 +91,34 @@ const commandData = [
     .addUserOption(option => option.setName('user').setDescription('The agent to update').setRequired(true))
     .addStringOption(option => option.setName('login').setDescription('Login time (HH, HH:MM, or 3pm PH time)').setRequired(true))
     .addStringOption(option => option.setName('logout').setDescription('Logout time (HH, HH:MM, or 11pm PH time)').setRequired(true))
+    .addStringOption(option => option
+      .setName('mode')
+      .setDescription('Where to apply the hours')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Live Shift', value: 'live' },
+        { name: 'Training', value: 'training' }
+      ))
     .addStringOption(option => option.setName('reason').setDescription('Why manual hours had to be added').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('Optional; defaults to the agent linked/last hotel').setRequired(false)
       .addChoices(...HOTEL_CHOICES))
     .addStringOption(option => option.setName('date').setDescription('Optional; YYYY-MM-DD, YYYY/M/D, YYYY:M:D, Today, Yesterday').setRequired(false))
     .addNumberOption(option => option.setName('hours').setDescription('Optional; auto-calculated from login/logout').setRequired(false).setMinValue(0.01)),
+  new SlashCommandBuilder()
+    .setName('remove-hours')
+    .setDescription('(Developer/Operations Manager) Remove manual hours from an agent')
+    .addUserOption(option => option.setName('user').setDescription('The agent to update').setRequired(true))
+    .addNumberOption(option => option.setName('hours').setDescription('Hours to remove (supports decimals)').setRequired(true).setMinValue(0.01))
+    .addStringOption(option => option
+      .setName('mode')
+      .setDescription('Where to remove the hours from')
+      .setRequired(true)
+      .addChoices(
+        { name: 'Live Shift', value: 'live' },
+        { name: 'Training', value: 'training' }
+      ))
+    .addStringOption(option => option.setName('date').setDescription('Date to remove from (YYYY-MM-DD, YYYY/M/D, Today, Yesterday)').setRequired(true))
+    .addStringOption(option => option.setName('reason').setDescription('Why this removal is needed').setRequired(true)),
   new SlashCommandBuilder()
     .setName('hours-export')
     .setDescription('(Developer/Operations Manager) Export hours logs as a horizontal Excel-style timesheet')

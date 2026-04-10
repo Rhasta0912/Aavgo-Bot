@@ -6947,10 +6947,21 @@ function buildManualShiftTiming(dateValue, loginValue, logoutValue) {
   };
 }
 
+function normalizeHoursAdjustmentMode(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'training') return 'training';
+  if (normalized === 'live' || normalized === 'shift') return 'shift';
+  return null;
+}
+
+function getHoursAdjustmentModeLabel(mode) {
+  return mode === 'training' ? 'Training' : 'Live Shift';
+}
+
 async function handleAddHours(interaction) {
   try {
     if (!isDeveloper(interaction)) {
-      return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
+      return interaction.reply({ content: 'Developer or Operations Manager access required.', ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
@@ -6960,47 +6971,59 @@ async function handleAddHours(interaction) {
     const rawDate = interaction.options.getString('date');
     const rawLogin = interaction.options.getString('login');
     const rawLogout = interaction.options.getString('logout');
+    const selectedMode = interaction.options.getString('mode') || 'live';
     const providedHours = interaction.options.getNumber('hours');
     const reason = String(interaction.options.getString('reason') || '').trim();
+    const adjustmentMode = normalizeHoursAdjustmentMode(selectedMode);
 
     if (!reason) {
-      return interaction.editReply({ content: '❌ Please provide the reason for this manual hours correction.' });
+      return interaction.editReply({ content: 'Please provide the reason for this manual hours correction.' });
+    }
+    if (!adjustmentMode) {
+      return interaction.editReply({ content: 'Invalid mode. Please select Live Shift or Training.' });
     }
 
     const timing = buildManualShiftTiming(rawDate, rawLogin, rawLogout);
     if (!timing) {
       return interaction.editReply({
-        content: '❌ Use `date` like `YYYY-MM-DD`, `YYYY/M/D`, `YYYY:M:D`, `Today`, or `Yesterday`, and `login` / `logout` like `03`, `03:00`, or `3pm`.'
+        content: 'Use `date` like `YYYY-MM-DD`, `YYYY/M/D`, `YYYY:M:D`, `Today`, or `Yesterday`, and `login` / `logout` like `03`, `03:00`, or `3pm`.'
       });
     }
 
     const hours = Number.isFinite(providedHours) ? providedHours : roundManualHours(timing.durationHours);
     if (!Number.isFinite(hours) || hours <= 0) {
-      return interaction.editReply({ content: '❌ Please provide a valid hour amount.' });
+      return interaction.editReply({ content: 'Please provide a valid hour amount.' });
     }
     if (hours > timing.durationHours + 0.01) {
       return interaction.editReply({
-        content: `❌ Manual hours cannot exceed the login/logout span of **${formatHours(timing.durationHours)} hrs**.`
+        content: `Manual hours cannot exceed the login/logout span of **${formatHours(timing.durationHours)} hrs**.`
       });
     }
 
     const agent = db.prepare('SELECT id, username, hotel_id FROM agents WHERE discord_id = ?').get(targetUser.id);
     if (!agent) {
-      return interaction.editReply({ content: `❌ **${targetUser.username}** is not a registered agent.` });
+      return interaction.editReply({ content: `**${targetUser.username}** is not a registered agent.` });
     }
 
-    const resolvedHotel = resolveManualCorrectionHotel(agent, rawHotel);
-    if (!resolvedHotel.hotelId) {
-      return interaction.editReply({ content: '❌ Please choose a hotel, or link the agent to a hotel first so /add-hours can auto-fill it.' });
-    }
+    const modeLabel = getHoursAdjustmentModeLabel(adjustmentMode);
+    let resolvedHotel = { hotelId: null, source: null };
+    let hotel = null;
 
-    const hotel = db.prepare('SELECT id, name FROM hotels WHERE id = ?').get(resolvedHotel.hotelId);
-    if (!hotel) {
-      return interaction.editReply({ content: `Hotel \`${resolvedHotel.hotelId}\` is not configured in the database.` });
+    if (adjustmentMode === 'shift') {
+      resolvedHotel = resolveManualCorrectionHotel(agent, rawHotel);
+      if (!resolvedHotel.hotelId) {
+        return interaction.editReply({ content: 'Please choose a hotel, or link the agent to a hotel first so /add-hours can auto-fill it.' });
+      }
+
+      hotel = db.prepare('SELECT id, name FROM hotels WHERE id = ?').get(resolvedHotel.hotelId);
+      if (!hotel) {
+        return interaction.editReply({ content: `Hotel \`${resolvedHotel.hotelId}\` is not configured in the database.` });
+      }
     }
 
     const note = [
-      `Manual correction for ${hotel.name} (${hotel.id})`,
+      `Manual correction (${modeLabel})`,
+      `Hotel: ${hotel ? `${hotel.name} (${hotel.id})` : 'N/A (Training mode)'}`,
       `Date: ${timing.shiftDate}`,
       `Login: ${timing.loginTime}`,
       `Logout: ${timing.logoutTime}`,
@@ -7008,10 +7031,25 @@ async function handleAddHours(interaction) {
       `Reason: ${reason}`
     ].join(' | ');
 
+    const effectiveAt = `${timing.shiftDate} 00:00:00`;
     db.prepare(`
-      INSERT INTO hour_adjustments (agent_id, hotel_id, shift_date, login_time, logout_time, hours, reason, note, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(agent.id, hotel.id, timing.shiftDate, timing.loginTime, timing.logoutTime, hours, reason, note, interaction.user.id);
+      INSERT INTO hour_adjustments (
+        agent_id, hotel_id, shift_date, login_time, logout_time, hours, mode, reason, note, effective_at, created_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      agent.id,
+      hotel ? hotel.id : null,
+      timing.shiftDate,
+      timing.loginTime,
+      timing.logoutTime,
+      hours,
+      adjustmentMode,
+      reason,
+      note,
+      effectiveAt,
+      interaction.user.id
+    );
 
     const signedHours = hours > 0 ? `+${formatHours(hours)}` : formatHours(hours);
     const autofillNotes = [];
@@ -7021,16 +7059,19 @@ async function handleAddHours(interaction) {
     if (!Number.isFinite(providedHours)) {
       autofillNotes.push(`Hours auto-calculated from the login/logout span to **${formatHours(hours)} hrs**.`);
     }
-    if (resolvedHotel.source === 'agent_link') {
-      autofillNotes.push('Hotel auto-filled from the agent linked hotel.');
-    } else if (resolvedHotel.source === 'last_session') {
-      autofillNotes.push('Hotel auto-filled from the agent last used hotel.');
+    if (adjustmentMode === 'shift') {
+      if (resolvedHotel.source === 'agent_link') {
+        autofillNotes.push('Hotel auto-filled from the agent linked hotel.');
+      } else if (resolvedHotel.source === 'last_session') {
+        autofillNotes.push('Hotel auto-filled from the agent last used hotel.');
+      }
     }
 
     await interaction.editReply({
       content:
         `Manual hours correction saved for **${targetUser.username}**.\n` +
-        `Hotel: **${hotel.name}** (\`${hotel.id}\`)\n` +
+        `Mode: **${modeLabel}**\n` +
+        `Hotel: **${hotel ? `${hotel.name} (\`${hotel.id}\`)` : 'N/A (Training mode)'}**\n` +
         `Date: **${timing.shiftDate}**\n` +
         `Login / Logout: **${timing.loginTime} - ${timing.logoutTime}**\n` +
         `Hours: **${signedHours} hrs**\n` +
@@ -7042,7 +7083,8 @@ async function handleAddHours(interaction) {
       title: 'Manual Hours Added',
       description:
         `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n` +
-        `**Hotel:** ${hotel.name} (\`${hotel.id}\`)\n` +
+        `**Mode:** ${modeLabel}\n` +
+        `**Hotel:** ${hotel ? `${hotel.name} (\`${hotel.id}\`)` : 'N/A (Training mode)'}\n` +
         `**Date:** ${timing.shiftDate}\n` +
         `**Login:** ${timing.loginTime}\n` +
         `**Logout:** ${timing.logoutTime}\n` +
@@ -7062,9 +7104,113 @@ async function handleAddHours(interaction) {
   } catch (error) {
     console.error('Error in handleAddHours:', error);
     if (!interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: '❌ Something went wrong while adding hours.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: 'Something went wrong while adding hours.', ephemeral: true }).catch(() => {});
     } else {
-      await interaction.editReply({ content: '❌ Something went wrong while adding hours.' }).catch(() => {});
+      await interaction.editReply({ content: 'Something went wrong while adding hours.' }).catch(() => {});
+    }
+  }
+}
+
+async function handleRemoveHours(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: 'Developer or Operations Manager access required.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+
+    const targetUser = interaction.options.getUser('user');
+    const hours = interaction.options.getNumber('hours');
+    const selectedMode = interaction.options.getString('mode');
+    const dateInput = interaction.options.getString('date');
+    const reason = String(interaction.options.getString('reason') || '').trim();
+
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return interaction.editReply({ content: 'Please provide a valid positive hour amount.' });
+    }
+
+    const adjustmentMode = normalizeHoursAdjustmentMode(selectedMode);
+    if (!adjustmentMode) {
+      return interaction.editReply({ content: 'Invalid mode. Please select Live Shift or Training.' });
+    }
+
+    const shiftDate = normalizeManualShiftDate(dateInput);
+    if (!shiftDate) {
+      return interaction.editReply({ content: 'Invalid date. Use YYYY-MM-DD, YYYY/M/D, Today, or Yesterday.' });
+    }
+
+    if (!reason) {
+      return interaction.editReply({ content: 'Please provide the reason for this removal.' });
+    }
+
+    const agent = db.prepare('SELECT id, username FROM agents WHERE discord_id = ?').get(targetUser.id);
+    if (!agent) {
+      return interaction.editReply({ content: `**${targetUser.username}** is not a registered agent.` });
+    }
+
+    const modeLabel = getHoursAdjustmentModeLabel(adjustmentMode);
+    const removeValue = -Math.abs(hours);
+    const note = [
+      `Manual removal (${modeLabel})`,
+      `Date: ${shiftDate}`,
+      `Hours: -${formatHours(hours)}`,
+      `Reason: ${reason}`
+    ].join(' | ');
+
+    const effectiveAt = `${shiftDate} 00:00:00`;
+    db.prepare(`
+      INSERT INTO hour_adjustments (
+        agent_id, hotel_id, shift_date, login_time, logout_time, hours, mode, reason, note, effective_at, created_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      agent.id,
+      null,
+      shiftDate,
+      null,
+      null,
+      removeValue,
+      adjustmentMode,
+      reason,
+      note,
+      effectiveAt,
+      interaction.user.id
+    );
+
+    await interaction.editReply({
+      content:
+        `Manual hours removal saved for **${targetUser.username}**.\n` +
+        `Mode: **${modeLabel}**\n` +
+        `Date: **${shiftDate}**\n` +
+        `Removed: **${formatHours(hours)} hrs**\n` +
+        `Reason: ${reason}`
+    });
+
+    const removeAuditPayload = {
+      title: 'Manual Hours Removed',
+      description:
+        `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n` +
+        `**Mode:** ${modeLabel}\n` +
+        `**Date:** ${shiftDate}\n` +
+        `**Hours:** -${formatHours(hours)} hrs\n` +
+        `**Reason:** ${reason}\n` +
+        '**Removed By:** {{AGENT_NAME}}',
+      color: 0xE67E22,
+      userId: interaction.user.id,
+      guild: interaction.guild
+    };
+
+    sendAuditLog(interaction.client, removeAuditPayload);
+    sendAuditLog(interaction.client, {
+      ...removeAuditPayload,
+      channelIdOverride: MANUAL_HOURS_LOG_CHANNEL_ID
+    });
+  } catch (error) {
+    console.error('Error in handleRemoveHours:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: 'Something went wrong while removing hours.', ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.editReply({ content: 'Something went wrong while removing hours.' }).catch(() => {});
     }
   }
 }
@@ -8820,7 +8966,8 @@ async function handleHelpStaff(interaction) {
         '> `/find-guest`: Search guest records by name or room.\n' +
         '> `/db-log-checkin`: Manually log a guest check-in to management tracking.\n' +
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
-        '> `/add-hours`: Add a dated manual hours correction. Hotel can fall back, date accepts friendly formats, and hours can auto-calculate.\n' +
+        '> `/add-hours`: Add a dated manual hours correction with mode (live/training). Hotel can fall back, date accepts friendly formats, and hours can auto-calculate.\n' +
+        '> `/remove-hours`: Remove manual hours by mode and date (supports Today/Yesterday).\n' +
         '> `/end-shift user:@name`: End your own shift or force-end another active shift (OM/Developer).\n' +
         '> `/limit-warning user:@name`: Manually trigger overtime warning (DM + ping).\n' +
         '> `/time-travel name:@name hours:# minutes:# seconds:#`: Simulate elapsed time for overtime testing without changing real worked hours.\n' +
@@ -10538,6 +10685,7 @@ module.exports = {
   handleRemoveAgentCommand,
   handleCheckHours,
   handleAddHours,
+  handleRemoveHours,
   handleHoursExport,
   handleClearHours,
   handlePurge,
