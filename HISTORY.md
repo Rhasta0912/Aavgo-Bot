@@ -1316,3 +1316,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Polished Profile hour history and Excel exports for easier payroll review.
+  - Summary: The View Hour History panel now rounds display-only values to cleaner whole hours, highlights live-shift activity more clearly, and removes the old table-style layout that was hard to scan.
+  - Summary: Excel exports now attach a styled workbook with wider name columns, bold hotel sections, color-coded day cells, and cleaner report headers while still including the CSV fallback.
+  - Summary: Export totals now use the requested custom rule where `.7` and above rounds up, while the history panel keeps `.5` rounding for quick review readability.
+  - Why: Management needed the profile history and Excel payroll exports to be easier to read, with less clipping, less visual noise, and more predictable rounded totals.
+  - Behavior impact:
+    - Profile history reads like a review panel instead of a raw text table.
+    - Excel exports keep full names readable and make hotel groupings stand out more clearly.
+    - The styled Excel workbook is sent together with the CSV fallback so the flow stays beginner-friendly.
+  - Files touched:
+    - src/profilePanel.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

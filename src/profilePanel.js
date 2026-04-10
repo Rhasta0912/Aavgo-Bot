@@ -707,17 +707,35 @@ function slugifyFilePart(value, fallback = 'export') {
   return cleaned || fallback;
 }
 
-function formatRoundedHourTotal(value) {
+function roundHoursByThreshold(value, threshold = 0.5) {
   const numeric = Number(value || 0);
-  if (!Number.isFinite(numeric)) return '0';
-  return String(Math.round(numeric));
+  if (!Number.isFinite(numeric)) return 0;
+
+  const sign = numeric < 0 ? -1 : 1;
+  const absoluteValue = Math.abs(numeric);
+  const wholeHours = Math.floor(absoluteValue);
+  const fractionalHours = Number((absoluteValue - wholeHours).toFixed(4));
+  return sign * (wholeHours + (fractionalHours >= threshold ? 1 : 0));
+}
+
+function formatRoundedHourTotal(value) {
+  return String(roundHoursByThreshold(value, 0.7));
+}
+
+function formatHistoryHourValue(value) {
+  return String(roundHoursByThreshold(value, 0.5));
+}
+
+function formatHistoryHourMetric(value) {
+  const roundedValue = roundHoursByThreshold(value, 0.5);
+  return roundedValue > 0 ? `${roundedValue}h` : '-';
 }
 
 function buildHoursExportTitle(teamName, rangeConfig, monthHistory) {
   const teamLabel = normalizeTeamName(teamName) || TEAM_AGENTS;
   const rangeLabel = String(rangeConfig?.exportLabel || rangeConfig?.rangeLabel || 'Hours').trim() || 'Hours';
   const monthLabel = String(monthHistory?.label || 'Current Month').trim() || 'Current Month';
-  return `Aavgo ${teamLabel} Hours Export - ${rangeLabel} - ${monthLabel}`;
+  return `Aavgo ${teamLabel} Hours Report | ${rangeLabel} | ${monthLabel}`;
 }
 
 function getCutoffExportSectionLabel(teamName, member) {
@@ -742,7 +760,7 @@ function getCutoffExportSectionOrder(member) {
   return hotelIndex === -1 ? Number.MAX_SAFE_INTEGER : hotelIndex;
 }
 
-function buildHoursExportCsv(teamName, members, rangeConfig) {
+function buildHoursExportDataset(teamName, members, rangeConfig) {
   const normalizedTeam = normalizeTeamName(teamName) || TEAM_AGENTS;
   const resolvedRange = rangeConfig && Number.isFinite(rangeConfig.startDay) && Number.isFinite(rangeConfig.endDay)
     ? rangeConfig
@@ -757,22 +775,12 @@ function buildHoursExportCsv(teamName, members, rangeConfig) {
     monthHistoryPreview.year === currentManila.year &&
     (monthHistoryPreview.month + 1) === currentManila.month;
   const dayHeaders = Array.from({ length: resolvedRange.endDay - resolvedRange.startDay + 1 }, (_, index) => String(resolvedRange.startDay + index));
-  const rows = [
-    [buildHoursExportTitle(normalizedTeam, resolvedRange, monthHistoryPreview)],
-    [],
-    ['Name', ...dayHeaders, 'Total']
-  ];
-
-  if (includedMembers.length === 0) {
-    rows.push(['No active members found in this view.']);
-    return rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
-  }
 
   const sectionBuckets = new Map();
   for (const member of includedMembers) {
     const sectionLabel = getCutoffExportSectionLabel(normalizedTeam, member);
     const monthHistory = getMonthDailyHourHistory(db, member.id, 0);
-    const dayValues = [];
+    const dayEntries = [];
     let cutoffTotal = 0;
 
     for (let day = resolvedRange.startDay; day <= resolvedRange.endDay; day += 1) {
@@ -780,11 +788,21 @@ function buildHoursExportCsv(teamName, members, rangeConfig) {
       const dayHours = Number(dayEntry?.totalHours || 0);
       cutoffTotal += dayHours;
       const isFutureDay = isCurrentMonthExport && day > currentManila.day;
+      let displayValue = '';
+      let styleKind = 'future';
       if (isFutureDay) {
-        dayValues.push('');
+        displayValue = '';
       } else {
-        dayValues.push(dayHours > 0 ? formatHours(dayHours) : 'OFF');
+        displayValue = dayHours > 0 ? formatHours(dayHours) : 'OFF';
+        styleKind = dayHours > 0 ? 'active' : 'off';
       }
+      dayEntries.push({
+        day,
+        rawHours: dayHours,
+        displayValue,
+        isFutureDay,
+        styleKind
+      });
     }
 
     const bucket = sectionBuckets.get(sectionLabel) || {
@@ -794,8 +812,9 @@ function buildHoursExportCsv(teamName, members, rangeConfig) {
     bucket.order = Math.min(bucket.order, getCutoffExportSectionOrder(member));
     bucket.members.push({
       name: String(member.display_name || member.username || 'Unknown').trim() || 'Unknown',
-      dayValues,
-      total: formatRoundedHourTotal(cutoffTotal)
+      dayEntries,
+      total: formatRoundedHourTotal(cutoffTotal),
+      rawTotal: cutoffTotal
     });
     sectionBuckets.set(sectionLabel, bucket);
   }
@@ -805,12 +824,45 @@ function buildHoursExportCsv(teamName, members, rangeConfig) {
     return a[0].localeCompare(b[0]);
   });
 
-  for (const [sectionLabel, bucket] of orderedSections) {
+  for (const [, bucket] of orderedSections) {
+    bucket.members.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  return {
+    normalizedTeam,
+    resolvedRange,
+    includedMembers,
+    monthHistoryPreview,
+    dayHeaders,
+    orderedSections,
+    title: buildHoursExportTitle(normalizedTeam, resolvedRange, monthHistoryPreview),
+    metaLine: `Month: ${monthHistoryPreview.label} | Range: ${resolvedRange.rangeLabel} | Total rounding: .7 and above rounds up`
+  };
+}
+
+function buildHoursExportCsv(teamName, members, rangeConfig) {
+  const dataset = buildHoursExportDataset(teamName, members, rangeConfig);
+  const rows = [
+    [dataset.title],
+    [dataset.metaLine],
+    [],
+    ['Hotel / Name', ...dataset.dayHeaders, 'Total']
+  ];
+
+  if (dataset.includedMembers.length === 0) {
+    rows.push(['No active members found in this view.']);
+    return rows.map(row => row.map(escapeCsvValue).join(',')).join('\n');
+  }
+
+  for (const [sectionLabel, bucket] of dataset.orderedSections) {
     rows.push([]);
-    rows.push([sectionLabel]);
-    const sortedMembers = bucket.members.sort((a, b) => a.name.localeCompare(b.name));
-    for (const memberRow of sortedMembers) {
-      rows.push([memberRow.name, ...memberRow.dayValues, memberRow.total]);
+    rows.push([`HOTEL: ${String(sectionLabel || 'Unassigned').toUpperCase()}`]);
+    for (const memberRow of bucket.members) {
+      rows.push([
+        memberRow.name,
+        ...memberRow.dayEntries.map(dayEntry => dayEntry.displayValue),
+        memberRow.total
+      ]);
     }
   }
 
@@ -829,6 +881,137 @@ function buildMonthExportCsv(teamName, members) {
   return buildHoursExportCsv(teamName, members, getFullMonthExportConfig());
 }
 
+function escapeXmlValue(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function sanitizeWorksheetName(value, fallback = 'Hours Report') {
+  const cleaned = String(value || '')
+    .replace(/[\\/?*[\]:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 31);
+  return cleaned || fallback;
+}
+
+function buildSpreadsheetXmlCell(value, styleId, options = {}) {
+  const styleAttribute = styleId ? ` ss:StyleID="${styleId}"` : '';
+  const mergeAcross = Number.isFinite(options.mergeAcross) && options.mergeAcross > 0
+    ? ` ss:MergeAcross="${options.mergeAcross}"`
+    : '';
+  const type = options.type || 'String';
+
+  if (value === null || value === undefined || value === '') {
+    return `<Cell${styleAttribute}${mergeAcross}></Cell>`;
+  }
+
+  return `<Cell${styleAttribute}${mergeAcross}><Data ss:Type="${type}">${escapeXmlValue(value)}</Data></Cell>`;
+}
+
+function buildSpreadsheetXmlRow(cells, options = {}) {
+  const heightAttribute = Number.isFinite(options.height) && options.height > 0
+    ? ` ss:AutoFitHeight="0" ss:Height="${options.height}"`
+    : '';
+  return `<Row${heightAttribute}>${cells.join('')}</Row>`;
+}
+
+function buildHoursExportWorkbookXml(teamName, members, rangeConfig) {
+  const dataset = buildHoursExportDataset(teamName, members, rangeConfig);
+  const columnCount = dataset.dayHeaders.length + 2;
+  const sheetName = sanitizeWorksheetName(`${dataset.normalizedTeam} Hours`, 'Hours Report');
+  const rows = [
+    buildSpreadsheetXmlRow([
+      buildSpreadsheetXmlCell(dataset.title, 'Title', { mergeAcross: columnCount - 1 })
+    ], { height: 28 }),
+    buildSpreadsheetXmlRow([
+      buildSpreadsheetXmlCell(dataset.metaLine, 'Meta', { mergeAcross: columnCount - 1 })
+    ], { height: 20 }),
+    buildSpreadsheetXmlRow([buildSpreadsheetXmlCell('', 'Spacer', { mergeAcross: columnCount - 1 })], { height: 8 }),
+    buildSpreadsheetXmlRow(
+      ['Hotel / Name', ...dataset.dayHeaders, 'Total'].map(value => buildSpreadsheetXmlCell(value, 'Header')),
+      { height: 22 }
+    )
+  ];
+
+  if (dataset.includedMembers.length === 0) {
+    rows.push(buildSpreadsheetXmlRow([
+      buildSpreadsheetXmlCell('No active members found in this view.', 'Note', { mergeAcross: columnCount - 1 })
+    ], { height: 22 }));
+  } else {
+    for (const [sectionLabel, bucket] of dataset.orderedSections) {
+      rows.push(buildSpreadsheetXmlRow([buildSpreadsheetXmlCell('', 'Spacer', { mergeAcross: columnCount - 1 })], { height: 8 }));
+      rows.push(buildSpreadsheetXmlRow([
+        buildSpreadsheetXmlCell(String(sectionLabel || 'Unassigned').toUpperCase(), 'Section', { mergeAcross: columnCount - 1 })
+      ], { height: 22 }));
+
+      for (const memberRow of bucket.members) {
+        const memberCells = [
+          buildSpreadsheetXmlCell(memberRow.name, 'Name'),
+          ...memberRow.dayEntries.map(dayEntry => {
+            const styleId = dayEntry.styleKind === 'active'
+              ? 'DayActive'
+              : dayEntry.styleKind === 'off'
+                ? 'DayOff'
+                : 'DayFuture';
+            return buildSpreadsheetXmlCell(dayEntry.displayValue, styleId);
+          }),
+          buildSpreadsheetXmlCell(memberRow.total, 'Total')
+        ];
+        rows.push(buildSpreadsheetXmlRow(memberCells, { height: 22 }));
+      }
+    }
+  }
+
+  const columns = [
+    '<Column ss:AutoFitWidth="0" ss:Width="220"/>',
+    ...dataset.dayHeaders.map(() => '<Column ss:AutoFitWidth="0" ss:Width="42"/>'),
+    '<Column ss:AutoFitWidth="0" ss:Width="66"/>'
+  ];
+
+  return [
+    '<?xml version="1.0"?>',
+    '<?mso-application progid="Excel.Sheet"?>',
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"',
+    ' xmlns:o="urn:schemas-microsoft-com:office:office"',
+    ' xmlns:x="urn:schemas-microsoft-com:office:excel"',
+    ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"',
+    ' xmlns:html="http://www.w3.org/TR/REC-html40">',
+    '<Styles>',
+    '<Style ss:ID="Default" ss:Name="Normal"><Alignment ss:Vertical="Center"/><Borders/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Color="#1F2933"/><Interior/><NumberFormat/><Protection/></Style>',
+    '<Style ss:ID="Title"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="14" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#1F4E78" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="Meta"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Italic="1" ss:Color="#334155"/><Interior ss:Color="#DCE6F1" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="Spacer"><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="Header"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#2F75B5" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="Section"><Alignment ss:Vertical="Center"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0F766E" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="Name"><Alignment ss:Vertical="Center" ss:WrapText="1"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Bold="1" ss:Color="#111827"/><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="DayActive"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Bold="1" ss:Color="#9F1239"/><Interior ss:Color="#FDE2E8" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="DayOff"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Italic="1" ss:Color="#6B7280"/><Interior ss:Color="#F3F4F6" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="DayFuture"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Interior ss:Color="#FFFFFF" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="Total"><Alignment ss:Horizontal="Center" ss:Vertical="Center"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#0F766E" ss:Pattern="Solid"/></Style>',
+    '<Style ss:ID="Note"><Alignment ss:Vertical="Center"/><Font ss:FontName="Segoe UI" x:Family="Swiss" ss:Size="10" ss:Italic="1" ss:Color="#475569"/><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/></Style>',
+    '</Styles>',
+    `<Worksheet ss:Name="${escapeXmlValue(sheetName)}">`,
+    `<Table x:FullColumns="1" x:FullRows="1">${columns.join('')}${rows.join('')}</Table>`,
+    '<WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">',
+    '<FreezePanes/>',
+    '<FrozenNoSplit/>',
+    '<SplitHorizontal>4</SplitHorizontal>',
+    '<TopRowBottomPane>4</TopRowBottomPane>',
+    '<ActivePane>2</ActivePane>',
+    '<Panes><Pane><Number>3</Number></Pane><Pane><Number>2</Number><ActiveRow>4</ActiveRow></Pane></Panes>',
+    '<ProtectObjects>False</ProtectObjects>',
+    '<ProtectScenarios>False</ProtectScenarios>',
+    '</WorksheetOptions>',
+    '</Worksheet>',
+    '</Workbook>'
+  ].join('');
+}
+
 async function exportCutoffHoursSpreadsheet(interaction, teamName, cutoffKey = CUTOFF_FIRST_HALF) {
   const normalizedTeam = normalizeTeamName(teamName);
   if (!normalizedTeam || !isPayrollTeamView(normalizedTeam)) {
@@ -841,16 +1024,20 @@ async function exportCutoffHoursSpreadsheet(interaction, teamName, cutoffKey = C
   const members = await fetchTeamMembers(interaction.guild, normalizedTeam);
   const cutoff = getCutoffConfig(cutoffKey);
   const csv = buildCutoffExportCsv(normalizedTeam, members, cutoffKey);
-  const fileName = [
+  const workbookXml = buildHoursExportWorkbookXml(normalizedTeam, members, cutoff);
+  const baseFileName = [
     'aavgo-cutoff',
     slugifyFilePart(normalizedTeam, 'group'),
     slugifyFilePart(cutoff.rangeLabel, 'cutoff'),
     slugifyFilePart(getMonthDailyHourHistory(db, members[0]?.id || 0, 0).label, 'month')
-  ].join('-') + '.csv';
+  ].join('-');
 
   return sendComponentReply(interaction, {
-    content: `Excel cutoff export ready for **${normalizedTeam} (${cutoff.rangeLabel})**. Open the attached CSV in Excel or Google Sheets.`,
-    files: [{ attachment: Buffer.from(csv, 'utf8'), name: fileName }],
+    content: `Excel cutoff export ready for **${normalizedTeam} (${cutoff.rangeLabel})**. Open the attached \`.xml\` workbook in Excel for the formatted sheet. The CSV fallback is also attached for Google Sheets or quick imports.`,
+    files: [
+      { attachment: Buffer.from(workbookXml, 'utf8'), name: `${baseFileName}.xml` },
+      { attachment: Buffer.from(csv, 'utf8'), name: `${baseFileName}.csv` }
+    ],
     ephemeral: true
   });
 }
@@ -867,15 +1054,19 @@ async function exportMonthHoursSpreadsheet(interaction, teamName) {
   const members = await fetchTeamMembers(interaction.guild, normalizedTeam);
   const monthConfig = getFullMonthExportConfig();
   const csv = buildMonthExportCsv(normalizedTeam, members);
-  const fileName = [
+  const workbookXml = buildHoursExportWorkbookXml(normalizedTeam, members, monthConfig);
+  const baseFileName = [
     'aavgo-month',
     slugifyFilePart(normalizedTeam, 'group'),
     slugifyFilePart(getMonthDailyHourHistory(db, members[0]?.id || 0, 0).label, 'month')
-  ].join('-') + '.csv';
+  ].join('-');
 
   return sendComponentReply(interaction, {
-    content: `Excel month export ready for **${normalizedTeam} (${monthConfig.rangeLabel})**. Open the attached CSV in Excel or Google Sheets.`,
-    files: [{ attachment: Buffer.from(csv, 'utf8'), name: fileName }],
+    content: `Excel month export ready for **${normalizedTeam} (${monthConfig.rangeLabel})**. Open the attached \`.xml\` workbook in Excel for the formatted sheet. The CSV fallback is also attached for Google Sheets or quick imports.`,
+    files: [
+      { attachment: Buffer.from(workbookXml, 'utf8'), name: `${baseFileName}.xml` },
+      { attachment: Buffer.from(csv, 'utf8'), name: `${baseFileName}.csv` }
+    ],
     ephemeral: true
   });
 }
@@ -1484,37 +1675,53 @@ function buildConfigEmbed(title, description) {
 }
 
 function buildHourHistoryEmbed(profile, monthHistory) {
-  const header = 'Date | Shift | Training | Total';
   const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const rows = monthHistory.days.map(day => {
     const date = String(day.day).padStart(2, '0');
     const weekday = dayNames[new Date(Date.UTC(monthHistory.year, monthHistory.month, day.day, 12, 0, 0)).getUTCDay()];
-    return `${weekday} ${date} | ${formatHours(day.shiftHours)}h | ${formatHours(day.trainingHours)}h | ${formatHours(day.totalHours)}h`;
+    const shiftHours = Number(day.shiftHours || 0);
+    const trainingHours = Number(day.trainingHours || 0);
+    const totalHours = Number(day.totalHours || 0);
+    let stateLabel = 'NO LOG';
+
+    if (shiftHours > 0 && trainingHours > 0) {
+      stateLabel = 'LIVE SHIFT + TRAINING';
+    } else if (shiftHours > 0) {
+      stateLabel = 'LIVE SHIFT';
+    } else if (trainingHours > 0) {
+      stateLabel = 'TRAINING';
+    }
+
+    if (totalHours <= 0) {
+      return `- **${weekday} ${date}** - ${stateLabel}`;
+    }
+
+    return `- **${weekday} ${date}** - ${stateLabel} | Live: **${formatHistoryHourMetric(shiftHours)}** | Training: **${formatHistoryHourMetric(trainingHours)}** | Total: **${formatHistoryHourMetric(totalHours)}**`;
   });
 
-  let calendarTable = `${header}\n${rows.join('\n')}`;
-  const maxChars = 1700;
-  if (calendarTable.length > maxChars) {
-    calendarTable = `${calendarTable.slice(0, maxChars).trimEnd()}\n[Trimmed for Discord limit]`;
+  let calendarSummary = rows.join('\n');
+  const maxChars = 2300;
+  if (calendarSummary.length > maxChars) {
+    calendarSummary = `${calendarSummary.slice(0, maxChars).trimEnd()}\n[Trimmed for Discord limit]`;
   }
+
+  const hasLiveShiftHours = Number(monthHistory.monthShiftHours || 0) > 0;
+  const hasTrainingHours = Number(monthHistory.monthTrainingHours || 0) > 0;
+  const embedColor = hasLiveShiftHours ? 0xD92D20 : hasTrainingHours ? 0xF59E0B : 0x2563EB;
 
   return new EmbedBuilder()
     .setTitle('Hour History Calendar')
     .setDescription(
       `## ${profile.shortName} - ${monthHistory.label}\n` +
-      `> Live Shift Total (Month): ${formatHours(monthHistory.monthShiftHours)} hrs\n` +
-      `> Training Total (Month): ${formatHours(monthHistory.monthTrainingHours)} hrs\n` +
-      `> Combined Total (Month): ${formatHours(monthHistory.monthTotalHours)} hrs\n\n` +
-      '```text\n' +
-      `${calendarTable}\n` +
-      '```\n\n' +
-      '━━━━━━━━━━━━━━━━━━━━\n' +
-      '**Month Summary**\n' +
-      `Live Shift: **${formatHours(monthHistory.monthShiftHours)} hrs**\n` +
-      `Training: **${formatHours(monthHistory.monthTrainingHours)} hrs**\n` +
-      `Total: **${formatHours(monthHistory.monthTotalHours)} hrs**`
+      '**Quick Totals**\n' +
+      `- Live Shift: **${formatHistoryHourValue(monthHistory.monthShiftHours)}h**\n` +
+      `- Training: **${formatHistoryHourValue(monthHistory.monthTrainingHours)}h**\n` +
+      `- Combined: **${formatHistoryHourValue(monthHistory.monthTotalHours)}h**\n\n` +
+      '**Daily Review**\n' +
+      `${calendarSummary}\n\n` +
+      '_Display note: This history view rounds hours to whole numbers for quicker review._'
     )
-    .setColor(0x3498DB)
+    .setColor(embedColor)
     .setFooter({ text: 'Aavgo Operations - Monthly Hour History' })
     .setTimestamp();
 }
