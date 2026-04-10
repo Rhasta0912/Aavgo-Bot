@@ -1302,3 +1302,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Made /add-hours easier to use while keeping payroll details explicit.
+  - Summary: /add-hours now accepts friendlier date/time input, can auto-calculate hours from login/logout, and can fall back to the agent's linked or last-used hotel when hotel is left blank.
+  - Summary: Successful /add-hours replies now show which fields were auto-filled so payroll corrections stay transparent.
+  - Summary: Missing per-hotel status channels are now remembered in config so the bot stops retrying and re-logging the same deleted channel IDs on every restart until a manual hotel-status refresh is triggered.
+  - Why: Management needed faster manual payroll correction entry for missed logins, and the startup log was being cluttered by stale hotel status channel mappings that no longer exist.
+  - Behavior impact:
+    - /add-hours accepts `2026:10:4`, `2026/10/4`, `Today`, `Yesterday`, `3`, `03:00`, and `3pm` style input.
+    - Hotel and hours can auto-fill when safe; reason stays required.
+    - Hotel status missing-channel warnings now self-suppress across restarts while the combined team boards continue refreshing.
+  - Files touched:
+    - src/commands.js
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

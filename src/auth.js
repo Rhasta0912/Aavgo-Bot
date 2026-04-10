@@ -2050,6 +2050,16 @@ async function updateHotelStatusEmbed(client, hotelId) {
       return;
     }
 
+    const suppressedChannelId = getSuppressedHotelStatusChannelId(statusKey);
+    if (suppressedChannelId && suppressedChannelId === hotelChannelId) {
+      scheduleCombinedHotelStatusRefresh(client);
+      return;
+    }
+    if (suppressedChannelId && suppressedChannelId !== hotelChannelId) {
+      clearSuppressedHotelStatusChannel(statusKey);
+      missingHotelStatusChannelWarnings.delete(`${statusKey}:${suppressedChannelId}`);
+    }
+
     const channel = await client.channels.fetch(hotelChannelId).catch(error => {
       if (!isUnknownChannelError(error)) {
         throw error;
@@ -2062,6 +2072,7 @@ async function updateHotelStatusEmbed(client, hotelId) {
       return null;
     });
     if (!channel) return;
+    clearSuppressedHotelStatusChannel(statusKey, hotelChannelId);
     missingHotelStatusChannelWarnings.delete(`${statusKey}:${hotelChannelId}`);
 
     const placeholders = hotelGroup.hotelIds.map(() => '?').join(', ');
@@ -2309,6 +2320,42 @@ function isUnknownChannelError(error) {
   return /Unknown Channel/i.test(String(error.message || ''));
 }
 
+function getMissingHotelStatusChannelConfigKey(statusKey) {
+  const normalizedKey = String(statusKey || '').trim().toUpperCase();
+  if (!normalizedKey) return null;
+  return `hotel_status_missing_channel:${normalizedKey}`;
+}
+
+function getSuppressedHotelStatusChannelId(statusKey) {
+  const configKey = getMissingHotelStatusChannelConfigKey(statusKey);
+  if (!configKey) return null;
+  return db.prepare("SELECT value FROM config WHERE key = ?").get(configKey)?.value || null;
+}
+
+function suppressMissingHotelStatusChannel(statusKey, hotelChannelId) {
+  const configKey = getMissingHotelStatusChannelConfigKey(statusKey);
+  if (!configKey || !hotelChannelId) return;
+  db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(configKey, String(hotelChannelId));
+}
+
+function clearSuppressedHotelStatusChannel(statusKey, hotelChannelId = null) {
+  const configKey = getMissingHotelStatusChannelConfigKey(statusKey);
+  if (!configKey) return;
+
+  if (hotelChannelId) {
+    const currentValue = db.prepare("SELECT value FROM config WHERE key = ?").get(configKey)?.value || null;
+    if (currentValue && currentValue !== String(hotelChannelId)) return;
+  }
+
+  db.prepare("DELETE FROM config WHERE key = ?").run(configKey);
+}
+
+function clearSuppressedHotelStatusChannelForHotel(hotelId) {
+  const hotelGroup = getHotelStatusGroup(hotelId);
+  const statusKey = hotelGroup?.key || String(hotelId || '').trim().toUpperCase();
+  clearSuppressedHotelStatusChannel(statusKey);
+}
+
 function handleMissingHotelStatusChannel(client, {
   statusKey,
   hotelId,
@@ -2322,6 +2369,8 @@ function handleMissingHotelStatusChannel(client, {
   if (normalizedHotelId && normalizedHotelId !== normalizedStatusKey) {
     db.prepare("DELETE FROM hotel_status WHERE hotel_id = ?").run(normalizedHotelId);
   }
+
+  suppressMissingHotelStatusChannel(normalizedStatusKey || normalizedHotelId, hotelChannelId);
 
   const warningKey = `${normalizedStatusKey || normalizedHotelId || 'unknown'}:${hotelChannelId || 'missing'}`;
   if (!missingHotelStatusChannelWarnings.has(warningKey)) {
@@ -6755,12 +6804,64 @@ async function handleCheckHours(interaction) {
 }
 
 function normalizeManualShiftDate(value) {
-  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const raw = String(value || '').trim();
+  if (!raw) return getRelativePhilippineIsoDate(0);
+
+  const lowered = raw.toLowerCase();
+  if (lowered === 'today') return getRelativePhilippineIsoDate(0);
+  if (lowered === 'yesterday') return getRelativePhilippineIsoDate(-1);
+
+  const normalized = raw.replace(/[./:]/g, '-').replace(/\s+/g, '');
+  let match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (match) {
+    return buildValidatedManualShiftDate(
+      Number.parseInt(match[1], 10),
+      Number.parseInt(match[2], 10),
+      Number.parseInt(match[3], 10)
+    );
+  }
+
+  match = normalized.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if (match) {
+    return buildValidatedManualShiftDate(
+      Number.parseInt(match[3], 10),
+      Number.parseInt(match[1], 10),
+      Number.parseInt(match[2], 10)
+    );
+  }
+
+  return null;
+}
+
+function normalizeManualShiftClock(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  const compact = raw.toLowerCase().replace(/\s+/g, '');
+  let match = compact.match(/^(\d{1,2})(?::(\d{1,2}))?(am|pm)$/);
+  if (match) {
+    let hours = Number.parseInt(match[1], 10);
+    const minutes = match[2] ? Number.parseInt(match[2], 10) : 0;
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 1 || hours > 12 || minutes < 0 || minutes > 59) {
+      return null;
+    }
+    if (match[3] === 'pm' && hours !== 12) hours += 12;
+    if (match[3] === 'am' && hours === 12) hours = 0;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  match = compact.match(/^(\d{1,2})(?::(\d{1,2}))?$/);
   if (!match) return null;
 
-  const year = Number.parseInt(match[1], 10);
-  const month = Number.parseInt(match[2], 10);
-  const day = Number.parseInt(match[3], 10);
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = match[2] ? Number.parseInt(match[2], 10) : 0;
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function buildValidatedManualShiftDate(year, month, day) {
   if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
 
@@ -6770,13 +6871,54 @@ function normalizeManualShiftDate(value) {
     return null;
   }
 
-  return `${match[1]}-${match[2]}-${match[3]}`;
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function normalizeManualShiftClock(value) {
-  const match = String(value || '').trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
-  if (!match) return null;
-  return `${match[1]}:${match[2]}`;
+function getRelativePhilippineIsoDate(dayOffset = 0, nowInput = new Date()) {
+  const baseDate = nowInput instanceof Date ? new Date(nowInput.getTime()) : new Date(nowInput);
+  if (!Number.isFinite(baseDate.getTime())) return null;
+
+  const philippineDate = new Date(baseDate.getTime() + (8 * 60 * 60 * 1000));
+  philippineDate.setUTCDate(philippineDate.getUTCDate() + dayOffset);
+  return buildValidatedManualShiftDate(
+    philippineDate.getUTCFullYear(),
+    philippineDate.getUTCMonth() + 1,
+    philippineDate.getUTCDate()
+  );
+}
+
+function roundManualHours(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return NaN;
+  return Math.round(numeric * 100) / 100;
+}
+
+function resolveManualCorrectionHotel(agent, explicitHotelInput) {
+  const explicitHotelId = normalizeCombinedHotelId(normalizeHotelInput(explicitHotelInput));
+  if (explicitHotelId && HOTEL_NAMES[explicitHotelId]) {
+    return { hotelId: explicitHotelId, source: 'explicit' };
+  }
+
+  const linkedHotelId = normalizeCombinedHotelId(agent?.hotel_id);
+  if (linkedHotelId && HOTEL_NAMES[linkedHotelId]) {
+    return { hotelId: linkedHotelId, source: 'agent_link' };
+  }
+
+  const latestSession = db.prepare(`
+    SELECT hotel_id
+    FROM sessions
+    WHERE agent_id = ?
+      AND COALESCE(hotel_id, '') != ''
+    ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, COALESCE(logout_time, login_time) DESC, id DESC
+    LIMIT 1
+  `).get(agent?.id || 0);
+
+  const lastHotelId = normalizeCombinedHotelId(latestSession?.hotel_id);
+  if (lastHotelId && HOTEL_NAMES[lastHotelId]) {
+    return { hotelId: lastHotelId, source: 'last_session' };
+  }
+
+  return { hotelId: null, source: null };
 }
 
 function buildManualShiftTiming(dateValue, loginValue, logoutValue) {
@@ -6814,19 +6956,13 @@ async function handleAddHours(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
     const targetUser = interaction.options.getUser('user');
-    const hotelId = normalizeHotelInput(interaction.options.getString('hotel'));
+    const rawHotel = interaction.options.getString('hotel');
     const rawDate = interaction.options.getString('date');
     const rawLogin = interaction.options.getString('login');
     const rawLogout = interaction.options.getString('logout');
-    const hours = interaction.options.getNumber('hours');
+    const providedHours = interaction.options.getNumber('hours');
     const reason = String(interaction.options.getString('reason') || '').trim();
 
-    if (!Number.isFinite(hours) || hours === 0) {
-      return interaction.editReply({ content: '❌ Please provide a valid hour amount.' });
-    }
-    if (!hotelId) {
-      return interaction.editReply({ content: '❌ Please choose a valid hotel.' });
-    }
     if (!reason) {
       return interaction.editReply({ content: '❌ Please provide the reason for this manual hours correction.' });
     }
@@ -6834,8 +6970,13 @@ async function handleAddHours(interaction) {
     const timing = buildManualShiftTiming(rawDate, rawLogin, rawLogout);
     if (!timing) {
       return interaction.editReply({
-        content: '❌ Use `date` in `YYYY-MM-DD` and `login` / `logout` in 24-hour `HH:MM` Philippine time.'
+        content: '❌ Use `date` like `YYYY-MM-DD`, `YYYY/M/D`, `YYYY:M:D`, `Today`, or `Yesterday`, and `login` / `logout` like `03`, `03:00`, or `3pm`.'
       });
+    }
+
+    const hours = Number.isFinite(providedHours) ? providedHours : roundManualHours(timing.durationHours);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return interaction.editReply({ content: '❌ Please provide a valid hour amount.' });
     }
     if (hours > timing.durationHours + 0.01) {
       return interaction.editReply({
@@ -6843,14 +6984,19 @@ async function handleAddHours(interaction) {
       });
     }
 
-    const agent = db.prepare('SELECT id, username FROM agents WHERE discord_id = ?').get(targetUser.id);
+    const agent = db.prepare('SELECT id, username, hotel_id FROM agents WHERE discord_id = ?').get(targetUser.id);
     if (!agent) {
       return interaction.editReply({ content: `❌ **${targetUser.username}** is not a registered agent.` });
     }
 
-    const hotel = db.prepare("SELECT id, name FROM hotels WHERE id = ?").get(hotelId);
+    const resolvedHotel = resolveManualCorrectionHotel(agent, rawHotel);
+    if (!resolvedHotel.hotelId) {
+      return interaction.editReply({ content: '❌ Please choose a hotel, or link the agent to a hotel first so /add-hours can auto-fill it.' });
+    }
+
+    const hotel = db.prepare('SELECT id, name FROM hotels WHERE id = ?').get(resolvedHotel.hotelId);
     if (!hotel) {
-      return interaction.editReply({ content: `❌ Hotel \`${hotelId}\` is not configured in the database.` });
+      return interaction.editReply({ content: `Hotel \`${resolvedHotel.hotelId}\` is not configured in the database.` });
     }
 
     const note = [
@@ -6868,18 +7014,32 @@ async function handleAddHours(interaction) {
     `).run(agent.id, hotel.id, timing.shiftDate, timing.loginTime, timing.logoutTime, hours, reason, note, interaction.user.id);
 
     const signedHours = hours > 0 ? `+${formatHours(hours)}` : formatHours(hours);
+    const autofillNotes = [];
+    if (!String(rawDate || '').trim()) {
+      autofillNotes.push(`Date defaulted to **${timing.shiftDate}** (Philippine today).`);
+    }
+    if (!Number.isFinite(providedHours)) {
+      autofillNotes.push(`Hours auto-calculated from the login/logout span to **${formatHours(hours)} hrs**.`);
+    }
+    if (resolvedHotel.source === 'agent_link') {
+      autofillNotes.push('Hotel auto-filled from the agent linked hotel.');
+    } else if (resolvedHotel.source === 'last_session') {
+      autofillNotes.push('Hotel auto-filled from the agent last used hotel.');
+    }
+
     await interaction.editReply({
       content:
-        `✅ Manual hours correction saved for **${targetUser.username}**.\n` +
+        `Manual hours correction saved for **${targetUser.username}**.\n` +
         `Hotel: **${hotel.name}** (\`${hotel.id}\`)\n` +
         `Date: **${timing.shiftDate}**\n` +
         `Login / Logout: **${timing.loginTime} - ${timing.logoutTime}**\n` +
         `Hours: **${signedHours} hrs**\n` +
-        `Reason: ${reason}`
+        `Reason: ${reason}` +
+        (autofillNotes.length > 0 ? `\n\nAuto-filled:\n- ${autofillNotes.join('\n- ')}` : '')
     });
 
     const manualHoursAuditPayload = {
-      title: '⏱️ Manual Hours Added',
+      title: 'Manual Hours Added',
       description:
         `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n` +
         `**Hotel:** ${hotel.name} (\`${hotel.id}\`)\n` +
@@ -8660,7 +8820,7 @@ async function handleHelpStaff(interaction) {
         '> `/find-guest`: Search guest records by name or room.\n' +
         '> `/db-log-checkin`: Manually log a guest check-in to management tracking.\n' +
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
-        '> `/add-hours`: Add a dated manual hours correction with hotel, login, logout, hours, and reason.\n' +
+        '> `/add-hours`: Add a dated manual hours correction. Hotel can fall back, date accepts friendly formats, and hours can auto-calculate.\n' +
         '> `/end-shift user:@name`: End your own shift or force-end another active shift (OM/Developer).\n' +
         '> `/limit-warning user:@name`: Manually trigger overtime warning (DM + ping).\n' +
         '> `/time-travel name:@name hours:# minutes:# seconds:#`: Simulate elapsed time for overtime testing without changing real worked hours.\n' +
@@ -9219,6 +9379,7 @@ async function handleHotelStatusRefresh(interaction) {
     if (action === 'refresh_all') {
       const hotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT'").all();
       for (const h of hotels) {
+        clearSuppressedHotelStatusChannelForHotel(h.id);
         await updateHotelStatusEmbed(interaction.client, h.id);
       }
       await updateAllHotelStatusEmbed(interaction.client);
@@ -9238,6 +9399,7 @@ async function handleHotelStatusRefresh(interaction) {
       });
     } else {
       if (!specificHotel) return interaction.editReply({ content: '❌ Please specify a hotel to refresh.' });
+      clearSuppressedHotelStatusChannelForHotel(specificHotel);
       await updateHotelStatusEmbed(interaction.client, specificHotel);
       await interaction.editReply({ content: `✅ Successfully refreshed status for **${HOTEL_NAMES[specificHotel] || specificHotel}**.` });
     }
