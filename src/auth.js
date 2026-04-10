@@ -336,6 +336,7 @@ const HOTEL_LOGIN_CHANNELS = {
 
 const APPROVAL_CHANNEL_ID = '1482240202503098398';
 const PROMOTION_REVIEW_CHANNEL_ID = '1483405048309354497';
+const MANUAL_HOURS_LOG_CHANNEL_ID = PROMOTION_REVIEW_CHANNEL_ID;
 const AUDIT_LOG_CHANNEL_ID = '1482239767134339182';
 const SHIFT_ACTIVITY_LOG_CHANNEL_ID = '1484192529485140099';
 const TEAM_1_LOG_CHANNEL_ID = '1482383356753612991';
@@ -6877,7 +6878,7 @@ async function handleAddHours(interaction) {
         `Reason: ${reason}`
     });
 
-    sendAuditLog(interaction.client, {
+    const manualHoursAuditPayload = {
       title: '⏱️ Manual Hours Added',
       description:
         `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n` +
@@ -6891,6 +6892,12 @@ async function handleAddHours(interaction) {
       color: 0x3498DB,
       userId: interaction.user.id,
       guild: interaction.guild
+    };
+
+    sendAuditLog(interaction.client, manualHoursAuditPayload);
+    sendAuditLog(interaction.client, {
+      ...manualHoursAuditPayload,
+      channelIdOverride: MANUAL_HOURS_LOG_CHANNEL_ID
     });
   } catch (error) {
     console.error('Error in handleAddHours:', error);

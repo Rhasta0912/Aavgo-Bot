@@ -1292,3 +1292,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/hours.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Added a dedicated channel copy for /add-hours payroll correction logs.
+  - Summary: Manual /add-hours corrections now keep their normal audit log and also post a duplicate payroll record to channel 1483405048309354497.
+  - Why: Manual hour corrections affect money, so payroll-related edits needed a fixed review channel in addition to normal audit routing.
+  - Behavior impact:
+    - Every successful /add-hours action now posts the same detailed hotel/date/login/logout/hours/reason log into 1483405048309354497.
+    - Existing audit routing for /add-hours stays in place, so this is additive and low-risk.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
