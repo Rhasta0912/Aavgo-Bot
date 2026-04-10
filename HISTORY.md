@@ -1264,3 +1264,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
   - Agents view now includes agent-role members even if they are assigned to Team 1, Team 2, or Team 3.
   - Payroll groups now have an Excel Month button that exports days 1 through end-of-month.
   - Export titles now use clearer text so Excel stops turning the range and month labels into dates.
+- Fixed repeated hotel status Unknown Channel log spam and restored update-log history parsing.
+  - Summary: Hotel status refresh now detects missing Discord channels, clears stale tracked status rows, warns once per missing hotel channel, and still refreshes the combined team board instead of spamming the same failure on every login/logout.
+  - Summary: Added the missing top-level path import so the startup update-log reader can parse HISTORY.md without throwing path is not defined.
+  - Why: Production logs were being flooded by repeated [STATUS] Failed to update hotel status embed: Unknown Channel, and startup update-log broadcasts were failing before they could read the latest history entry.
+  - Behavior impact:
+    - Missing hotel status channels now self-heal into a one-time warning per process instead of constant repeated spam.
+    - The combined live hotel board still refreshes even when an old per-hotel channel is gone.
+    - Update-log parsing can read HISTORY.md again during startup/push broadcast.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

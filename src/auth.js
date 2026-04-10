@@ -14,6 +14,7 @@ const db = require('./database');
 const { calculateAgentHourTotals, buildPeriodHourHistory, formatHours } = require('./hours');
 const { execSync } = require('child_process');
 const fs = require('fs');
+const path = require('path');
 const { createTestUiHandlers } = require('./testui');
 
 // ─── Identity Helpers ────────────────────────────────
@@ -388,6 +389,7 @@ const overtimeWarnedSessionIds = new Set();
 const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
 let combinedHotelStatusRefreshTimer = null;
+const missingHotelStatusChannelWarnings = new Set();
 const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   TEAM_LEADER_ROLE_ID,
   SME_ROLE_ID,
@@ -2035,16 +2037,31 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
 // ─── Single Persistent Hotel Status Embed ────────────
 async function updateHotelStatusEmbed(client, hotelId) {
+  let statusKey = hotelId;
+  let hotelChannelId = null;
+
   try {
     const hotelGroup = getHotelStatusGroup(hotelId);
-    const hotelChannelId = HOTEL_LOGIN_CHANNELS[hotelGroup.key] || HOTEL_LOGIN_CHANNELS[hotelId];
+    statusKey = hotelGroup.key;
+    hotelChannelId = HOTEL_LOGIN_CHANNELS[hotelGroup.key] || HOTEL_LOGIN_CHANNELS[hotelId];
     if (!hotelChannelId) {
       scheduleCombinedHotelStatusRefresh(client);
       return;
     }
 
-    const channel = await client.channels.fetch(hotelChannelId);
+    const channel = await client.channels.fetch(hotelChannelId).catch(error => {
+      if (!isUnknownChannelError(error)) {
+        throw error;
+      }
+      handleMissingHotelStatusChannel(client, {
+        statusKey,
+        hotelId,
+        hotelChannelId
+      });
+      return null;
+    });
     if (!channel) return;
+    missingHotelStatusChannelWarnings.delete(`${statusKey}:${hotelChannelId}`);
 
     const placeholders = hotelGroup.hotelIds.map(() => '?').join(', ');
 
@@ -2063,8 +2080,6 @@ async function updateHotelStatusEmbed(client, hotelId) {
     const OVERTIME_HOURS = 8;
     let embedColor, embedTitle, description;
     let components = [];
-    const statusKey = hotelGroup.key;
-
     if (activeSessions.length === 0) {
       // No one on shift
       embedColor = 0x2C2F33;
@@ -2275,8 +2290,47 @@ async function updateHotelStatusEmbed(client, hotelId) {
     scheduleCombinedHotelStatusRefresh(client);
 
   } catch (e) {
+    if (isUnknownChannelError(e)) {
+      handleMissingHotelStatusChannel(client, {
+        statusKey,
+        hotelId,
+        hotelChannelId
+      });
+      return;
+    }
     console.warn('[STATUS] Failed to update hotel status embed:', e.message);
   }
+}
+
+function isUnknownChannelError(error) {
+  if (!error) return false;
+  if (Number(error.code) === 10003) return true;
+  return /Unknown Channel/i.test(String(error.message || ''));
+}
+
+function handleMissingHotelStatusChannel(client, {
+  statusKey,
+  hotelId,
+  hotelChannelId
+} = {}) {
+  const normalizedStatusKey = String(statusKey || hotelId || '').trim().toUpperCase();
+  const normalizedHotelId = String(hotelId || '').trim().toUpperCase();
+  if (normalizedStatusKey) {
+    db.prepare("DELETE FROM hotel_status WHERE hotel_id = ?").run(normalizedStatusKey);
+  }
+  if (normalizedHotelId && normalizedHotelId !== normalizedStatusKey) {
+    db.prepare("DELETE FROM hotel_status WHERE hotel_id = ?").run(normalizedHotelId);
+  }
+
+  const warningKey = `${normalizedStatusKey || normalizedHotelId || 'unknown'}:${hotelChannelId || 'missing'}`;
+  if (!missingHotelStatusChannelWarnings.has(warningKey)) {
+    missingHotelStatusChannelWarnings.add(warningKey);
+    console.warn(
+      `[STATUS] Skipping hotel status embed for ${normalizedStatusKey || normalizedHotelId || 'unknown'}: channel ${hotelChannelId || 'missing'} not found.`
+    );
+  }
+
+  scheduleCombinedHotelStatusRefresh(client);
 }
 
 function getHotelStatusGroupsForTeam(teamName) {
@@ -9647,64 +9701,72 @@ function readLatestHistoryEntryForUpdateLog() {
       .pop();
     if (latestHeaderIndex === -1) return null;
 
-    for (let i = latestHeaderIndex + 1; i < lines.length; i += 1) {
-      const raw = lines[i] || '';
-      const trimmed = raw.trim();
-      if (!trimmed) continue;
-      if (trimmed.startsWith('## ')) break;
-      if (!raw.startsWith('- ')) continue;
+    const sectionEndIndex = lines
+      .map((line, index) => (index > latestHeaderIndex && line.trim().startsWith('## ') ? index : -1))
+      .find(index => index >= 0);
+    const safeSectionEndIndex = sectionEndIndex >= 0 ? sectionEndIndex : lines.length;
 
-      const title = raw.slice(2).trim();
-      const detailLines = [];
-      const files = [];
-      const notes = [];
-      let summary = '';
-      let section = '';
+    let targetIndex = -1;
+    for (let i = safeSectionEndIndex - 1; i > latestHeaderIndex; i -= 1) {
+      if (String(lines[i] || '').startsWith('- ')) {
+        targetIndex = i;
+        break;
+      }
+    }
 
-      for (let j = i + 1; j < lines.length; j += 1) {
-        const innerRaw = lines[j] || '';
-        const innerTrimmed = innerRaw.trim();
-        if (!innerTrimmed) continue;
-        if (innerTrimmed.startsWith('## ')) break;
-        if (innerRaw.startsWith('- ')) break;
+    if (targetIndex === -1) return null;
 
-        const withoutBullet = innerTrimmed.replace(/^-+\s*/, '').trim();
-        if (!withoutBullet) continue;
+    const raw = lines[targetIndex] || '';
+    const title = raw.slice(2).trim();
+    const detailLines = [];
+    const files = [];
+    const notes = [];
+    let summary = '';
+    let section = '';
 
-        const lower = withoutBullet.toLowerCase();
-        if (lower.startsWith('summary:')) {
-          summary = withoutBullet.slice('summary:'.length).trim();
-          section = '';
-          detailLines.push(summary);
-          continue;
-        }
-        if (lower.startsWith('files touched:')) {
-          section = 'files';
-          continue;
-        }
-        if (lower.startsWith('notes:')) {
-          section = 'notes';
-          continue;
-        }
+    for (let j = targetIndex + 1; j < safeSectionEndIndex; j += 1) {
+      const innerRaw = lines[j] || '';
+      const innerTrimmed = innerRaw.trim();
+      if (!innerTrimmed) continue;
+      if (innerTrimmed.startsWith('## ')) break;
+      if (innerRaw.startsWith('- ')) break;
 
-        if (section === 'files') {
-          files.push(withoutBullet);
-        } else if (section === 'notes') {
-          notes.push(withoutBullet);
-        } else {
-          detailLines.push(withoutBullet);
-        }
+      const withoutBullet = innerTrimmed.replace(/^-+\s*/, '').trim();
+      if (!withoutBullet) continue;
+
+      const lower = withoutBullet.toLowerCase();
+      if (lower.startsWith('summary:')) {
+        summary = withoutBullet.slice('summary:'.length).trim();
+        section = '';
+        detailLines.push(summary);
+        continue;
+      }
+      if (lower.startsWith('files touched:')) {
+        section = 'files';
+        continue;
+      }
+      if (lower.startsWith('notes:')) {
+        section = 'notes';
+        continue;
       }
 
-      const resolvedSummary = summary || detailLines[0] || title;
-      return {
-        title,
-        summary: resolvedSummary,
-        files: uniqueNonEmptyLines(files),
-        notes: uniqueNonEmptyLines(notes),
-        detailLines: uniqueNonEmptyLines(detailLines)
-      };
+      if (section === 'files') {
+        files.push(withoutBullet);
+      } else if (section === 'notes') {
+        notes.push(withoutBullet);
+      } else {
+        detailLines.push(withoutBullet);
+      }
     }
+
+    const resolvedSummary = summary || detailLines[0] || title;
+    return {
+      title,
+      summary: resolvedSummary,
+      files: uniqueNonEmptyLines(files),
+      notes: uniqueNonEmptyLines(notes),
+      detailLines: uniqueNonEmptyLines(detailLines)
+    };
   } catch (error) {
     console.warn('[UPDATE-LOG] Could not parse HISTORY.md entry:', error.message);
   }
