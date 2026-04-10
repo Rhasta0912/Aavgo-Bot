@@ -87,10 +87,15 @@ const commandData = [
     .addUserOption(option => option.setName('user').setDescription('The user to check (Managers only)').setRequired(false)),
   new SlashCommandBuilder()
     .setName('add-hours')
-    .setDescription('(Developer/Operations Manager) Add manual hours to an agent')
+    .setDescription('(Developer/Operations Manager) Add a dated manual hours correction to an agent')
     .addUserOption(option => option.setName('user').setDescription('The agent to update').setRequired(true))
+    .addStringOption(option => option.setName('hotel').setDescription('Hotel worked for this missed shift').setRequired(true)
+      .addChoices(...HOTEL_CHOICES))
+    .addStringOption(option => option.setName('date').setDescription('Shift date in YYYY-MM-DD (PH time)').setRequired(true))
+    .addStringOption(option => option.setName('login').setDescription('Login time in 24h HH:MM (PH time)').setRequired(true))
+    .addStringOption(option => option.setName('logout').setDescription('Logout time in 24h HH:MM (PH time)').setRequired(true))
     .addNumberOption(option => option.setName('hours').setDescription('Hours to add (supports decimals)').setRequired(true).setMinValue(0.01))
-    .addStringOption(option => option.setName('note').setDescription('Reason or note').setRequired(false)),
+    .addStringOption(option => option.setName('reason').setDescription('Why manual hours had to be added').setRequired(true)),
   new SlashCommandBuilder()
     .setName('hours-export')
     .setDescription('(Developer/Operations Manager) Export hours logs as a horizontal Excel-style timesheet')

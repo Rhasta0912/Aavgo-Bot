@@ -6753,20 +6753,93 @@ async function handleCheckHours(interaction) {
   }
 }
 
+function normalizeManualShiftDate(value) {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+
+  const utcMs = Date.UTC(year, month - 1, day, 0, 0, 0) - (8 * 60 * 60 * 1000);
+  const check = new Date(utcMs + (8 * 60 * 60 * 1000));
+  if (check.getUTCFullYear() !== year || (check.getUTCMonth() + 1) !== month || check.getUTCDate() !== day) {
+    return null;
+  }
+
+  return `${match[1]}-${match[2]}-${match[3]}`;
+}
+
+function normalizeManualShiftClock(value) {
+  const match = String(value || '').trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return null;
+  return `${match[1]}:${match[2]}`;
+}
+
+function buildManualShiftTiming(dateValue, loginValue, logoutValue) {
+  const shiftDate = normalizeManualShiftDate(dateValue);
+  const loginTime = normalizeManualShiftClock(loginValue);
+  const logoutTime = normalizeManualShiftClock(logoutValue);
+  if (!shiftDate || !loginTime || !logoutTime) return null;
+
+  const [year, month, day] = shiftDate.split('-').map(part => Number.parseInt(part, 10));
+  const [loginHour, loginMinute] = loginTime.split(':').map(part => Number.parseInt(part, 10));
+  const [logoutHour, logoutMinute] = logoutTime.split(':').map(part => Number.parseInt(part, 10));
+  const dayStartMs = Date.UTC(year, month - 1, day, 0, 0, 0) - (8 * 60 * 60 * 1000);
+  const loginMs = dayStartMs + (((loginHour * 60) + loginMinute) * 60 * 1000);
+  let logoutMs = dayStartMs + (((logoutHour * 60) + logoutMinute) * 60 * 1000);
+  if (logoutMs <= loginMs) {
+    logoutMs += 24 * 60 * 60 * 1000;
+  }
+
+  return {
+    shiftDate,
+    loginTime,
+    logoutTime,
+    loginMs,
+    logoutMs,
+    durationHours: (logoutMs - loginMs) / (60 * 60 * 1000)
+  };
+}
+
 async function handleAddHours(interaction) {
   try {
-    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+    if (!isDeveloper(interaction)) {
       return interaction.reply({ content: '❌ Developer or Operations Manager access required.', ephemeral: true });
     }
 
     await interaction.deferReply({ ephemeral: true });
 
     const targetUser = interaction.options.getUser('user');
+    const hotelId = normalizeHotelInput(interaction.options.getString('hotel'));
+    const rawDate = interaction.options.getString('date');
+    const rawLogin = interaction.options.getString('login');
+    const rawLogout = interaction.options.getString('logout');
     const hours = interaction.options.getNumber('hours');
-    const note = interaction.options.getString('note') || 'Manual adjustment';
+    const reason = String(interaction.options.getString('reason') || '').trim();
 
     if (!Number.isFinite(hours) || hours === 0) {
       return interaction.editReply({ content: '❌ Please provide a valid hour amount.' });
+    }
+    if (!hotelId) {
+      return interaction.editReply({ content: '❌ Please choose a valid hotel.' });
+    }
+    if (!reason) {
+      return interaction.editReply({ content: '❌ Please provide the reason for this manual hours correction.' });
+    }
+
+    const timing = buildManualShiftTiming(rawDate, rawLogin, rawLogout);
+    if (!timing) {
+      return interaction.editReply({
+        content: '❌ Use `date` in `YYYY-MM-DD` and `login` / `logout` in 24-hour `HH:MM` Philippine time.'
+      });
+    }
+    if (hours > timing.durationHours + 0.01) {
+      return interaction.editReply({
+        content: `❌ Manual hours cannot exceed the login/logout span of **${formatHours(timing.durationHours)} hrs**.`
+      });
     }
 
     const agent = db.prepare('SELECT id, username FROM agents WHERE discord_id = ?').get(targetUser.id);
@@ -6774,19 +6847,47 @@ async function handleAddHours(interaction) {
       return interaction.editReply({ content: `❌ **${targetUser.username}** is not a registered agent.` });
     }
 
+    const hotel = db.prepare("SELECT id, name FROM hotels WHERE id = ?").get(hotelId);
+    if (!hotel) {
+      return interaction.editReply({ content: `❌ Hotel \`${hotelId}\` is not configured in the database.` });
+    }
+
+    const note = [
+      `Manual correction for ${hotel.name} (${hotel.id})`,
+      `Date: ${timing.shiftDate}`,
+      `Login: ${timing.loginTime}`,
+      `Logout: ${timing.logoutTime}`,
+      `Hours: ${formatHours(hours)}`,
+      `Reason: ${reason}`
+    ].join(' | ');
+
     db.prepare(`
-      INSERT INTO hour_adjustments (agent_id, hours, note, created_by)
-      VALUES (?, ?, ?, ?)
-    `).run(agent.id, hours, note, interaction.user.id);
+      INSERT INTO hour_adjustments (agent_id, hotel_id, shift_date, login_time, logout_time, hours, reason, note, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(agent.id, hotel.id, timing.shiftDate, timing.loginTime, timing.logoutTime, hours, reason, note, interaction.user.id);
 
     const signedHours = hours > 0 ? `+${formatHours(hours)}` : formatHours(hours);
     await interaction.editReply({
-      content: `✅ Added **${signedHours} hrs** to **${targetUser.username}**.\nNote: ${note}`
+      content:
+        `✅ Manual hours correction saved for **${targetUser.username}**.\n` +
+        `Hotel: **${hotel.name}** (\`${hotel.id}\`)\n` +
+        `Date: **${timing.shiftDate}**\n` +
+        `Login / Logout: **${timing.loginTime} - ${timing.logoutTime}**\n` +
+        `Hours: **${signedHours} hrs**\n` +
+        `Reason: ${reason}`
     });
 
     sendAuditLog(interaction.client, {
       title: '⏱️ Manual Hours Added',
-      description: `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n**Hours:** ${signedHours} hrs\n**Note:** ${note}\n**Added By:** {{AGENT_NAME}}`,
+      description:
+        `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n` +
+        `**Hotel:** ${hotel.name} (\`${hotel.id}\`)\n` +
+        `**Date:** ${timing.shiftDate}\n` +
+        `**Login:** ${timing.loginTime}\n` +
+        `**Logout:** ${timing.logoutTime}\n` +
+        `**Hours:** ${signedHours} hrs\n` +
+        `**Reason:** ${reason}\n` +
+        '**Added By:** {{AGENT_NAME}}',
       color: 0x3498DB,
       userId: interaction.user.id,
       guild: interaction.guild
@@ -6801,7 +6902,6 @@ async function handleAddHours(interaction) {
   }
 }
 
-// ─── /clear-hours (Admin) ─────────────────────────────
 function escapeCsvValue(value) {
   const text = String(value ?? '');
   return `"${text.replace(/"/g, '""').replace(/\r?\n/g, ' ')}"`;
@@ -8553,7 +8653,7 @@ async function handleHelpStaff(interaction) {
         '> `/find-guest`: Search guest records by name or room.\n' +
         '> `/db-log-checkin`: Manually log a guest check-in to management tracking.\n' +
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
-        '> `/add-hours`: Add manual hours to an agent record.\n' +
+        '> `/add-hours`: Add a dated manual hours correction with hotel, login, logout, hours, and reason.\n' +
         '> `/end-shift user:@name`: End your own shift or force-end another active shift (OM/Developer).\n' +
         '> `/limit-warning user:@name`: Manually trigger overtime warning (DM + ping).\n' +
         '> `/time-travel name:@name hours:# minutes:# seconds:#`: Simulate elapsed time for overtime testing without changing real worked hours.\n' +
@@ -10358,4 +10458,3 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny
 };
-

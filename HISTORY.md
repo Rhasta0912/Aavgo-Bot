@@ -1276,3 +1276,19 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/auth.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Tightened /add-hours into a payroll-safe manual correction flow.
+  - Summary: /add-hours now requires the agent, hotel, shift date, login time, logout time, hours, and a reason instead of a broad free-form note.
+  - Summary: Manual hour corrections now store hotel/date/login/logout/reason metadata in hour_adjustments, and the hours engine uses the recorded shift date so missed-shift corrections land on the correct day in cutoff/month Excel exports.
+  - Summary: The command now rejects manual hours that exceed the stated login/logout span and logs the full correction details to the audit log.
+  - Why: Payroll corrections affect money, so manual hour adds needed stronger audit detail and date-accurate placement in exports when an agent forgot to log in.
+  - Behavior impact:
+    - /add-hours is now a structured manual correction command for Developer / Operations Manager use.
+    - Profile and hours exports place manual corrections on the intended date instead of the date the command was run.
+    - Timesheet-style rows can show the recorded manual login/logout window when the correction is the only source for that day.
+  - Files touched:
+    - src/commands.js
+    - src/auth.js
+    - src/database.js
+    - src/hours.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

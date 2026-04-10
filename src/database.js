@@ -106,11 +106,17 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS hour_adjustments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id INTEGER NOT NULL,
+    hotel_id TEXT,
+    shift_date TEXT,
+    login_time TEXT,
+    logout_time TEXT,
     hours REAL NOT NULL,
+    reason TEXT,
     note TEXT,
     created_by TEXT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+    FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+    FOREIGN KEY (hotel_id) REFERENCES hotels(id)
   );
 
   CREATE TABLE IF NOT EXISTS maintenance_logs (
@@ -286,19 +292,41 @@ db.pragma('foreign_keys = ON');
     if (!sessionTableInfo.find(col => col.name === 'overtime_next_warning_at')) {
       db.prepare("ALTER TABLE sessions ADD COLUMN overtime_next_warning_at DATETIME").run();
     }
-    const hourAdjustmentsTableInfo = db.prepare("PRAGMA table_info(hour_adjustments)").all();
+    let hourAdjustmentsTableInfo = db.prepare("PRAGMA table_info(hour_adjustments)").all();
     if (!hourAdjustmentsTableInfo || hourAdjustmentsTableInfo.length === 0) {
       db.exec(`
         CREATE TABLE IF NOT EXISTS hour_adjustments (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           agent_id INTEGER NOT NULL,
+          hotel_id TEXT,
+          shift_date TEXT,
+          login_time TEXT,
+          logout_time TEXT,
           hours REAL NOT NULL,
+          reason TEXT,
           note TEXT,
           created_by TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
+          FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE,
+          FOREIGN KEY (hotel_id) REFERENCES hotels(id)
         );
       `);
+      hourAdjustmentsTableInfo = db.prepare("PRAGMA table_info(hour_adjustments)").all();
+    }
+    if (!hourAdjustmentsTableInfo.find(col => col.name === 'hotel_id')) {
+      db.prepare("ALTER TABLE hour_adjustments ADD COLUMN hotel_id TEXT").run();
+    }
+    if (!hourAdjustmentsTableInfo.find(col => col.name === 'shift_date')) {
+      db.prepare("ALTER TABLE hour_adjustments ADD COLUMN shift_date TEXT").run();
+    }
+    if (!hourAdjustmentsTableInfo.find(col => col.name === 'login_time')) {
+      db.prepare("ALTER TABLE hour_adjustments ADD COLUMN login_time TEXT").run();
+    }
+    if (!hourAdjustmentsTableInfo.find(col => col.name === 'logout_time')) {
+      db.prepare("ALTER TABLE hour_adjustments ADD COLUMN logout_time TEXT").run();
+    }
+    if (!hourAdjustmentsTableInfo.find(col => col.name === 'reason')) {
+      db.prepare("ALTER TABLE hour_adjustments ADD COLUMN reason TEXT").run();
     }
     db.prepare("UPDATE sessions SET session_kind = 'shift' WHERE session_kind IS NULL OR session_kind = ''").run();
     db.prepare("UPDATE sessions SET time_travel_offset_ms = 0 WHERE time_travel_offset_ms IS NULL").run();

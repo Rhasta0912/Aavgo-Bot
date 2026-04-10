@@ -63,6 +63,47 @@ function getDayResetStartMs(nowInput = new Date()) {
   return Date.UTC(ph.year, ph.month, ph.day, 0, 0, 0) - PH_OFFSET_MS;
 }
 
+function parseManualShiftDateStartMs(shiftDate) {
+  const match = String(shiftDate || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return NaN;
+
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return NaN;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return NaN;
+
+  const utcMs = Date.UTC(year, month - 1, day, 0, 0, 0) - PH_OFFSET_MS;
+  const check = getPhilippineParts(new Date(utcMs));
+  if (check.year !== year || (check.month + 1) !== month || check.day !== day) return NaN;
+  return utcMs;
+}
+
+function parseManualClockMinutes(value) {
+  const match = String(value || '').trim().match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return NaN;
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return NaN;
+  return (hours * 60) + minutes;
+}
+
+function getManualShiftTimestampMs(shiftDate, clockValue) {
+  const dayStartMs = parseManualShiftDateStartMs(shiftDate);
+  const clockMinutes = parseManualClockMinutes(clockValue);
+  if (!Number.isFinite(dayStartMs) || !Number.isFinite(clockMinutes)) return NaN;
+  return dayStartMs + (clockMinutes * 60 * 1000);
+}
+
+function getAdjustmentReferenceMs(adjustment) {
+  const manualLoginMs = getManualShiftTimestampMs(adjustment?.shift_date, adjustment?.login_time);
+  if (Number.isFinite(manualLoginMs)) return manualLoginMs;
+
+  const shiftDateMs = parseManualShiftDateStartMs(adjustment?.shift_date);
+  if (Number.isFinite(shiftDateMs)) return shiftDateMs + (12 * 60 * 60 * 1000);
+  return parseDbTimestamp(adjustment?.created_at, NaN);
+}
+
 function getOverlapMs(startMs, endMs, rangeStartMs, rangeEndMs) {
   const overlapStart = Math.max(startMs, rangeStartMs);
   const overlapEnd = Math.min(endMs, rangeEndMs);
@@ -245,21 +286,39 @@ function buildPeriodHourHistory(db, agentId, period = 'month', nowInput = new Da
   distributeMergedIntervalsAcrossDays(mergedIntervals.training, daily, range.startMs, 'trainingMs');
 
   const adjustments = db.prepare(`
-    SELECT hours, created_at
+    SELECT hours, created_at, shift_date, login_time, logout_time
     FROM hour_adjustments
     WHERE agent_id = ?
-      AND created_at >= datetime(?, 'unixepoch')
-      AND created_at < datetime(?, 'unixepoch')
+      AND (
+        (shift_date IS NOT NULL AND shift_date != '')
+        OR (created_at >= datetime(?, 'unixepoch') AND created_at < datetime(?, 'unixepoch'))
+      )
   `).all(agentId, Math.floor(range.startMs / 1000), Math.floor(range.endMs / 1000));
 
   for (const adjustment of adjustments) {
-    const createdMs = parseDbTimestamp(adjustment.created_at, NaN);
+    const createdMs = getAdjustmentReferenceMs(adjustment);
     const hours = Number(adjustment.hours || 0);
     if (!Number.isFinite(createdMs) || !Number.isFinite(hours) || hours === 0) continue;
 
     const dayIndex = Math.floor((createdMs - range.startMs) / DAY_MS);
     if (dayIndex < 0 || dayIndex >= daily.length) continue;
     daily[dayIndex].shiftMs += hours * HOUR_MS;
+
+    const manualLoginMs = getManualShiftTimestampMs(adjustment.shift_date, adjustment.login_time);
+    let manualLogoutMs = getManualShiftTimestampMs(adjustment.shift_date, adjustment.logout_time);
+    if (Number.isFinite(manualLoginMs) && Number.isFinite(manualLogoutMs) && manualLogoutMs <= manualLoginMs) {
+      manualLogoutMs += DAY_MS;
+    }
+    if (Number.isFinite(manualLoginMs)) {
+      daily[dayIndex].firstLoginMs = daily[dayIndex].firstLoginMs === null
+        ? manualLoginMs
+        : Math.min(daily[dayIndex].firstLoginMs, manualLoginMs);
+    }
+    if (Number.isFinite(manualLogoutMs)) {
+      daily[dayIndex].lastLogoutMs = daily[dayIndex].lastLogoutMs === null
+        ? manualLogoutMs
+        : Math.max(daily[dayIndex].lastLogoutMs, manualLogoutMs);
+    }
   }
 
   const rows = daily.map(item => {
@@ -337,15 +396,17 @@ function getMonthDailyHourHistory(db, agentId, monthOffset = 0, nowInput = new D
   }
 
   const adjustments = db.prepare(`
-    SELECT hours, created_at
+    SELECT hours, created_at, shift_date
     FROM hour_adjustments
     WHERE agent_id = ?
-      AND created_at >= datetime(?, 'unixepoch')
-      AND created_at < datetime(?, 'unixepoch')
+      AND (
+        (shift_date IS NOT NULL AND shift_date != '')
+        OR (created_at >= datetime(?, 'unixepoch') AND created_at < datetime(?, 'unixepoch'))
+      )
   `).all(agentId, Math.floor(monthStartMs / 1000), Math.floor(nextMonthStartMs / 1000));
 
   for (const adjustment of adjustments) {
-    const createdMs = parseDbTimestamp(adjustment.created_at, NaN);
+    const createdMs = getAdjustmentReferenceMs(adjustment);
     const hours = Number(adjustment.hours || 0);
     if (!Number.isFinite(createdMs) || !Number.isFinite(hours) || hours === 0) continue;
 
@@ -390,7 +451,7 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
   `).all(agentId);
 
   const adjustments = db.prepare(`
-    SELECT hours, created_at
+    SELECT hours, created_at, shift_date
     FROM hour_adjustments
     WHERE agent_id = ?
   `).all(agentId);
@@ -413,7 +474,7 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
     const adjustmentMs = hours * HOUR_MS;
     shiftTotals.allMs += adjustmentMs;
 
-    const createdMs = parseDbTimestamp(adjustment.created_at, NaN);
+    const createdMs = getAdjustmentReferenceMs(adjustment);
     if (Number.isFinite(createdMs) && createdMs >= weeklyStartMs) {
       shiftTotals.weeklyMs += adjustmentMs;
     }
