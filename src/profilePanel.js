@@ -347,8 +347,8 @@ function buildTeamPickerRow(customId = 'profiles_team_pick', selectedTeam = null
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildTeamRosterControlRow(teamName, currentPage = 0, totalPages = 1) {
-  return new ActionRowBuilder().addComponents(
+function buildTeamRosterControlRow(teamName, currentPage = 0, totalPages = 1, includeDismissButton = false) {
+  const buttons = [
     new ButtonBuilder()
       .setCustomId(`profiles_reload_team:${teamName}:${currentPage}`)
       .setLabel('Refresh')
@@ -367,7 +367,18 @@ function buildTeamRosterControlRow(teamName, currentPage = 0, totalPages = 1) {
       .setCustomId(`profiles_change_group:${teamName}`)
       .setLabel('Change Group')
       .setStyle(ButtonStyle.Primary)
-  );
+  ];
+
+  if (includeDismissButton) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId('profiles_close_ephemeral')
+        .setLabel('Back')
+        .setStyle(ButtonStyle.Danger)
+    );
+  }
+
+  return new ActionRowBuilder().addComponents(...buttons);
 }
 
 function buildCutoffShortcutRow(teamName) {
@@ -570,14 +581,15 @@ function buildMemberPickerRowPaged(teamName, members, pageIndex = 0) {
   return new ActionRowBuilder().addComponents(menu);
 }
 
-function buildTeamRosterPayload(teamName, members, pageIndex = 0) {
+function buildTeamRosterPayload(teamName, members, pageIndex = 0, options = {}) {
+  const includeDismissButton = options?.includeDismissButton === true;
   const uniqueMembers = uniqueMembersByDiscordId(members);
   const pageData = getRosterPageData(uniqueMembers, pageIndex);
   const components = [];
   if (uniqueMembers.length > 0) {
     components.push(buildMemberPickerRowPaged(teamName, uniqueMembers, pageData.currentPage));
   }
-  components.push(buildTeamRosterControlRow(teamName, pageData.currentPage, pageData.totalPages));
+  components.push(buildTeamRosterControlRow(teamName, pageData.currentPage, pageData.totalPages, includeDismissButton));
   if (isPayrollTeamView(teamName)) {
     components.push(buildCutoffShortcutRow(teamName));
   }
@@ -1111,6 +1123,16 @@ function sendComponentReply(interaction, payload) {
     return interaction.followUp(payload);
   }
   return interaction.reply(payload);
+}
+
+function isEphemeralComponentMessage(interaction) {
+  const flags = interaction?.message?.flags;
+  if (!flags) return false;
+  if (typeof flags.has === 'function') {
+    return flags.has(64);
+  }
+  const raw = typeof flags.bitfield === 'number' ? flags.bitfield : Number(flags);
+  return Number.isFinite(raw) && (raw & 64) === 64;
 }
 
 async function resolveDisplayName(guild, discordId, fallback) {
@@ -2100,14 +2122,19 @@ async function handleTeamPick(interaction) {
   }
 
   const members = await fetchTeamMembers(interaction.guild, teamName);
-  const payload = buildTeamRosterPayload(teamName, members);
+  const payload = buildTeamRosterPayload(teamName, members, 0, {
+    includeDismissButton: isEphemeralComponentMessage(interaction)
+  });
 
   if (interaction.customId === 'profiles_team_pick') {
     await sendComponentUpdate(interaction, {
       embeds: [buildDashboardEmbed(teamName)],
       components: [buildTeamPickerRow('profiles_team_pick', teamName, 'Select Group')]
     });
-    return sendComponentReply(interaction, { ...payload, ephemeral: true });
+    return sendComponentReply(interaction, {
+      ...buildTeamRosterPayload(teamName, members, 0, { includeDismissButton: true }),
+      ephemeral: true
+    });
   }
 
   return sendComponentUpdate(interaction, payload);
@@ -2116,7 +2143,9 @@ async function handleTeamPick(interaction) {
 async function handleBackToTeam(interaction) {
   const { teamName, pageIndex } = parseTeamPageContext(interaction.customId, 'profiles_back_team:');
   const members = await fetchTeamMembers(interaction.guild, teamName);
-  return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex));
+  return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex, {
+    includeDismissButton: isEphemeralComponentMessage(interaction)
+  }));
 }
 
 async function handleChangeGroup(interaction) {
@@ -2348,9 +2377,29 @@ async function handleButton(interaction) {
     return interaction.reply({ content: 'Developer access required.', ephemeral: true });
   }
 
+  const customId = interaction.customId || '';
+  if (customId === 'profiles_close_ephemeral') {
+    await safeDeferComponentUpdate(interaction);
+    const messageId = interaction?.message?.id;
+    let dismissed = false;
+    if (messageId) {
+      await interaction.webhook.deleteMessage(messageId).then(() => {
+        dismissed = true;
+      }).catch(() => {});
+    }
+    if (!dismissed) {
+      await interaction.deleteReply().then(() => {
+        dismissed = true;
+      }).catch(() => {});
+    }
+    if (!dismissed) {
+      await interaction.editReply({ content: 'Dismissed.', embeds: [], components: [] }).catch(() => {});
+    }
+    return null;
+  }
+
   await safeDeferComponentUpdate(interaction);
 
-  const customId = interaction.customId || '';
   if (customId.startsWith('profiles_back_team:')) {
     return handleBackToTeam(interaction);
   }
@@ -2363,13 +2412,17 @@ async function handleButton(interaction) {
     const { teamName, pageIndex } = parseTeamPageContext(customId, 'profiles_roster_page_prev:');
     const members = await fetchTeamMembers(interaction.guild, teamName);
     const targetPage = pageIndex > 0 ? pageIndex - 1 : 0;
-    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, targetPage));
+    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, targetPage, {
+      includeDismissButton: isEphemeralComponentMessage(interaction)
+    }));
   }
 
   if (customId.startsWith('profiles_roster_page_next:')) {
     const { teamName, pageIndex } = parseTeamPageContext(customId, 'profiles_roster_page_next:');
     const members = await fetchTeamMembers(interaction.guild, teamName);
-    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex + 1));
+    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex + 1, {
+      includeDismissButton: isEphemeralComponentMessage(interaction)
+    }));
   }
 
   if (customId.startsWith('profiles_back_profile:')) {
@@ -2476,7 +2529,9 @@ async function handleButton(interaction) {
   if (customId.startsWith('profiles_reload_team:')) {
     const { teamName, pageIndex } = parseTeamPageContext(customId, 'profiles_reload_team:');
     const members = await fetchTeamMembers(interaction.guild, teamName);
-    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex));
+    return sendComponentUpdate(interaction, buildTeamRosterPayload(teamName, members, pageIndex, {
+      includeDismissButton: isEphemeralComponentMessage(interaction)
+    }));
   }
 
   return null;
