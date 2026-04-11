@@ -8,7 +8,7 @@ const {
 } = require('discord.js');
 const db = require('./database');
 const auth = require('./auth');
-const { calculateAgentHourTotals, getMonthDailyHourHistory, formatHours } = require('./hours');
+const { calculateAgentHourTotals, getMonthDailyHourHistory, formatHoursClock } = require('./hours');
 
 const PROFILES_CHANNEL_ID = '1485256962617643098';
 const PROFILE_PANEL_KEY_PREFIX = 'profiles_dashboard_msg_';
@@ -287,7 +287,7 @@ function buildCutoffDailyLine(monthHistory, startDay, endDay) {
     .map(day => {
       const weekday = dayNames[new Date(Date.UTC(monthHistory.year, monthHistory.month, day.day, 12, 0, 0)).getUTCDay()];
       const date = String(day.day).padStart(2, '0');
-      return `${weekday} ${date} (${formatHours(day.totalHours)}h)`;
+      return `${weekday} ${date} (${formatHoursClock(day.totalHours)})`;
     });
 
   if (entries.length === 0) {
@@ -639,7 +639,7 @@ function buildCutoffHoursEmbed(teamName, members, cutoffKey = CUTOFF_FIRST_HALF)
     }
     combinedHours += memberTotal;
 
-    const memberLine = `**${trimToTwoWords(member.display_name || member.username)}** - **${formatHours(memberTotal)}h**\n` +
+    const memberLine = `**${trimToTwoWords(member.display_name || member.username)}** - **${formatHoursClock(memberTotal)}**\n` +
       `> ${buildCutoffDailyLine(monthHistory, cutoff.startDay, cutoff.endDay)}\n`;
     if ((description + memberLine).length > CUTOFF_TABLE_MAX_CHARS) {
       omitted += 1;
@@ -661,7 +661,7 @@ function buildCutoffHoursEmbed(teamName, members, cutoffKey = CUTOFF_FIRST_HALF)
       `**Month:** ${monthLabel || 'Current month'}\n` +
       `**Members Listed:** ${includedMembers.length}\n` +
       `**With Logged Hours:** ${activeHoursCount}\n` +
-      `**Combined Hours:** ${formatHours(combinedHours)}h\n\n` +
+      `**Combined Hours:** ${formatHoursClock(combinedHours)}\n\n` +
       `${description}`
     )
     .setColor(0x3498DB)
@@ -690,28 +690,17 @@ function slugifyFilePart(value, fallback = 'export') {
   return cleaned || fallback;
 }
 
-function roundHoursByThreshold(value, threshold = 0.5) {
-  const numeric = Number(value || 0);
-  if (!Number.isFinite(numeric)) return 0;
-
-  const sign = numeric < 0 ? -1 : 1;
-  const absoluteValue = Math.abs(numeric);
-  const wholeHours = Math.floor(absoluteValue);
-  const fractionalHours = Number((absoluteValue - wholeHours).toFixed(4));
-  return sign * (wholeHours + (fractionalHours >= threshold ? 1 : 0));
-}
-
 function formatRoundedHourTotal(value) {
-  return String(roundHoursByThreshold(value, 0.7));
+  return formatHoursClock(value);
 }
 
 function formatHistoryHourValue(value) {
-  return String(roundHoursByThreshold(value, 0.5));
+  return formatHoursClock(value);
 }
 
 function formatHistoryHourMetric(value) {
-  const roundedValue = roundHoursByThreshold(value, 0.5);
-  return roundedValue > 0 ? `${roundedValue}h` : '-';
+  const numeric = Number(value || 0);
+  return numeric > 0 ? formatHoursClock(numeric) : '-';
 }
 
 function buildHoursExportTitle(teamName, rangeConfig, monthHistory) {
@@ -776,7 +765,7 @@ function buildHoursExportDataset(teamName, members, rangeConfig) {
       if (isFutureDay) {
         displayValue = '';
       } else {
-        displayValue = dayHours > 0 ? formatHours(dayHours) : 'OFF';
+        displayValue = dayHours > 0 ? formatHoursClock(dayHours) : 'OFF';
         styleKind = dayHours > 0 ? 'active' : 'off';
       }
       dayEntries.push({
@@ -819,7 +808,7 @@ function buildHoursExportDataset(teamName, members, rangeConfig) {
     dayHeaders,
     orderedSections,
     title: buildHoursExportTitle(normalizedTeam, resolvedRange, monthHistoryPreview),
-    metaLine: `Month: ${monthHistoryPreview.label} | Range: ${resolvedRange.rangeLabel} | Total rounding: .7 and above rounds up`
+    metaLine: `Month: ${monthHistoryPreview.label} | Range: ${resolvedRange.rangeLabel} | Format: base-60 (h/m)`
   };
 }
 
@@ -952,8 +941,8 @@ function buildHoursExportWorkbookXml(teamName, members, rangeConfig) {
 
   const columns = [
     '<Column ss:AutoFitWidth="0" ss:Width="220"/>',
-    ...dataset.dayHeaders.map(() => '<Column ss:AutoFitWidth="0" ss:Width="42"/>'),
-    '<Column ss:AutoFitWidth="0" ss:Width="66"/>'
+    ...dataset.dayHeaders.map(() => '<Column ss:AutoFitWidth="0" ss:Width="78"/>'),
+    '<Column ss:AutoFitWidth="0" ss:Width="92"/>'
   ];
 
   return [
@@ -1415,12 +1404,12 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
   const activeText = activeSession
     ? `${hotelName(activeSession.hotel_id)} since ${dateTag(activeSession.login_time)}`
     : 'Not on an active shift';
-  const shiftWeeklyHours = formatHours(hourTotals?.shift?.weeklyHours || 0);
-  const shiftMonthlyHours = formatHours(hourTotals?.shift?.monthlyHours || 0);
-  const shiftAllTimeHours = formatHours(hourTotals?.shift?.allHours || 0);
-  const trainingWeeklyHours = formatHours(hourTotals?.training?.weeklyHours || 0);
-  const trainingMonthlyHours = formatHours(hourTotals?.training?.monthlyHours || 0);
-  const trainingAllTimeHours = formatHours(hourTotals?.training?.allHours || 0);
+  const shiftWeeklyHours = formatHoursClock(hourTotals?.shift?.weeklyHours || 0);
+  const shiftMonthlyHours = formatHoursClock(hourTotals?.shift?.monthlyHours || 0);
+  const shiftAllTimeHours = formatHoursClock(hourTotals?.shift?.allHours || 0);
+  const trainingWeeklyHours = formatHoursClock(hourTotals?.training?.weeklyHours || 0);
+  const trainingMonthlyHours = formatHoursClock(hourTotals?.training?.monthlyHours || 0);
+  const trainingAllTimeHours = formatHoursClock(hourTotals?.training?.allHours || 0);
 
   const embed = new EmbedBuilder()
     .setTitle('✅ Active Agent · Verified')
@@ -1436,8 +1425,8 @@ function buildProfileEmbed(profile, reviewerTag, notice = null) {
       `> 🏢 Primary Hotel: ${hotelName(agent.hotel_id)}\n` +
       `> 🔗 Hotel Pair: ${pairText}\n` +
       `> 🟢 Live Session: ${activeText}\n` +
-      `> ✅ Live Shift Hours: Weekly ${shiftWeeklyHours} hrs | Monthly ${shiftMonthlyHours} hrs | All-Time ${shiftAllTimeHours} hrs\n` +
-      `> 🧪 Training Hours: Weekly ${trainingWeeklyHours} hrs | Monthly ${trainingMonthlyHours} hrs | All-Time ${trainingAllTimeHours} hrs\n` +
+      `> ✅ Live Shift Hours: Weekly ${shiftWeeklyHours} | Monthly ${shiftMonthlyHours} | All-Time ${shiftAllTimeHours}\n` +
+      `> 🧪 Training Hours: Weekly ${trainingWeeklyHours} | Monthly ${trainingMonthlyHours} | All-Time ${trainingAllTimeHours}\n` +
       '──────────────────────────────\n' +
       '*Review the profile below.*\n\n' +
       `**Reviewed by:** ${reviewerTag || 'System'}\n` +
@@ -1707,12 +1696,12 @@ function buildHourHistoryEmbed(profile, monthHistory) {
     .setDescription(
       `## ${profile.shortName} - ${monthHistory.label}\n` +
       '**Quick Totals**\n' +
-      `- Live Shift: **${formatHistoryHourValue(monthHistory.monthShiftHours)}h**\n` +
-      `- Training: **${formatHistoryHourValue(monthHistory.monthTrainingHours)}h**\n` +
-      `- Combined: **${formatHistoryHourValue(monthHistory.monthTotalHours)}h**\n\n` +
+      `- Live Shift: **${formatHistoryHourValue(monthHistory.monthShiftHours)}**\n` +
+      `- Training: **${formatHistoryHourValue(monthHistory.monthTrainingHours)}**\n` +
+      `- Combined: **${formatHistoryHourValue(monthHistory.monthTotalHours)}**\n\n` +
       '**Daily Review**\n' +
       `${calendarSummary}\n\n` +
-      '_Display note: This history view rounds hours to whole numbers for quicker review._'
+      '_Display note: Hours are shown in base-60 time (hours/minutes)._'
     )
     .setColor(embedColor)
     .setFooter({ text: 'Aavgo Operations - Monthly Hour History' })

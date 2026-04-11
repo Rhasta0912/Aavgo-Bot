@@ -209,6 +209,27 @@ function formatHours(value) {
   return num.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
 }
 
+function formatHoursClock(value, options = {}) {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num)) return '0h 0m';
+
+  const sign = num < 0 ? '-' : '';
+  const absoluteSeconds = Math.round(Math.abs(num) * 60 * 60);
+  const includeSeconds = options?.includeSeconds === true;
+
+  if (includeSeconds) {
+    const hours = Math.floor(absoluteSeconds / 3600);
+    const minutes = Math.floor((absoluteSeconds % 3600) / 60);
+    const seconds = absoluteSeconds % 60;
+    return `${sign}${hours}h ${minutes}m ${seconds}s`;
+  }
+
+  const roundedMinutes = Math.round(absoluteSeconds / 60);
+  const hours = Math.floor(roundedMinutes / 60);
+  const minutes = roundedMinutes % 60;
+  return `${sign}${hours}h ${minutes}m`;
+}
+
 function getMonthYearFromOffset(nowInput = new Date(), monthOffset = 0) {
   const ph = getPhilippineParts(nowInput);
   const total = (ph.year * 12) + ph.month + Number(monthOffset || 0);
@@ -532,6 +553,7 @@ module.exports = {
   getMonthDailyHourHistory,
   buildPeriodHourHistory,
   formatHours,
+  formatHoursClock,
   getWeeklyResetStartMs,
   getMonthlyResetStartMs,
   getPeriodRangeMs,

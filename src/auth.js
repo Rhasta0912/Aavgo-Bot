@@ -11,7 +11,7 @@ const {
   StringSelectMenuOptionBuilder 
 } = require('discord.js');
 const db = require('./database');
-const { calculateAgentHourTotals, buildPeriodHourHistory, formatHours } = require('./hours');
+const { calculateAgentHourTotals, buildPeriodHourHistory, formatHoursClock } = require('./hours');
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -6782,8 +6782,8 @@ async function handleCheckHours(interaction) {
       .setDescription(
         `**Agent:** ${nickname} (<@${targetUser.id}>)\n\n` +
         `**⏱️ Activity Breakdown:**\n` +
-        `> **Live Shift:** Weekly \`${formatHours(totals.shift?.weeklyHours || 0)} hrs\` | Monthly \`${formatHours(totals.shift?.monthlyHours || 0)} hrs\` | All-Time \`${formatHours(totals.shift?.allHours || 0)} hrs\`\n` +
-        `> **Training:** Weekly \`${formatHours(totals.training?.weeklyHours || 0)} hrs\` | Monthly \`${formatHours(totals.training?.monthlyHours || 0)} hrs\` | All-Time \`${formatHours(totals.training?.allHours || 0)} hrs\`\n\n` +
+        `> **Live Shift:** Weekly \`${formatHoursClock(totals.shift?.weeklyHours || 0)}\` | Monthly \`${formatHoursClock(totals.shift?.monthlyHours || 0)}\` | All-Time \`${formatHoursClock(totals.shift?.allHours || 0)}\`\n` +
+        `> **Training:** Weekly \`${formatHoursClock(totals.training?.weeklyHours || 0)}\` | Monthly \`${formatHoursClock(totals.training?.monthlyHours || 0)}\` | All-Time \`${formatHoursClock(totals.training?.allHours || 0)}\`\n\n` +
         `**Reset Windows:**\n` +
         `> Weekly: Monday 1:00 AM Philippine Time\n` +
         `> Monthly: 1st of each month at 1:00 AM Philippine Time`
@@ -6996,7 +6996,7 @@ async function handleAddHours(interaction) {
     }
     if (hours > timing.durationHours + 0.01) {
       return interaction.editReply({
-        content: `Manual hours cannot exceed the login/logout span of **${formatHours(timing.durationHours)} hrs**.`
+        content: `Manual hours cannot exceed the login/logout span of **${formatHoursClock(timing.durationHours)}**.`
       });
     }
 
@@ -7027,7 +7027,7 @@ async function handleAddHours(interaction) {
       `Date: ${timing.shiftDate}`,
       `Login: ${timing.loginTime}`,
       `Logout: ${timing.logoutTime}`,
-      `Hours: ${formatHours(hours)}`,
+      `Hours: ${formatHoursClock(hours)}`,
       `Reason: ${reason}`
     ].join(' | ');
 
@@ -7051,13 +7051,13 @@ async function handleAddHours(interaction) {
       interaction.user.id
     );
 
-    const signedHours = hours > 0 ? `+${formatHours(hours)}` : formatHours(hours);
+    const signedHours = hours > 0 ? `+${formatHoursClock(hours)}` : formatHoursClock(hours);
     const autofillNotes = [];
     if (!String(rawDate || '').trim()) {
       autofillNotes.push(`Date defaulted to **${timing.shiftDate}** (Philippine today).`);
     }
     if (!Number.isFinite(providedHours)) {
-      autofillNotes.push(`Hours auto-calculated from the login/logout span to **${formatHours(hours)} hrs**.`);
+      autofillNotes.push(`Hours auto-calculated from the login/logout span to **${formatHoursClock(hours)}**.`);
     }
     if (adjustmentMode === 'shift') {
       if (resolvedHotel.source === 'agent_link') {
@@ -7074,7 +7074,7 @@ async function handleAddHours(interaction) {
         `Hotel: **${hotel ? `${hotel.name} (\`${hotel.id}\`)` : 'N/A (Training mode)'}**\n` +
         `Date: **${timing.shiftDate}**\n` +
         `Login / Logout: **${timing.loginTime} - ${timing.logoutTime}**\n` +
-        `Hours: **${signedHours} hrs**\n` +
+        `Hours: **${signedHours}**\n` +
         `Reason: ${reason}` +
         (autofillNotes.length > 0 ? `\n\nAuto-filled:\n- ${autofillNotes.join('\n- ')}` : '')
     });
@@ -7088,7 +7088,7 @@ async function handleAddHours(interaction) {
         `**Date:** ${timing.shiftDate}\n` +
         `**Login:** ${timing.loginTime}\n` +
         `**Logout:** ${timing.logoutTime}\n` +
-        `**Hours:** ${signedHours} hrs\n` +
+        `**Hours:** ${signedHours}\n` +
         `**Reason:** ${reason}\n` +
         '**Added By:** {{AGENT_NAME}}',
       color: 0x3498DB,
@@ -7153,7 +7153,7 @@ async function handleRemoveHours(interaction) {
     const note = [
       `Manual removal (${modeLabel})`,
       `Date: ${shiftDate}`,
-      `Hours: -${formatHours(hours)}`,
+      `Hours: -${formatHoursClock(hours)}`,
       `Reason: ${reason}`
     ].join(' | ');
 
@@ -7182,7 +7182,7 @@ async function handleRemoveHours(interaction) {
         `Manual hours removal saved for **${targetUser.username}**.\n` +
         `Mode: **${modeLabel}**\n` +
         `Date: **${shiftDate}**\n` +
-        `Removed: **${formatHours(hours)} hrs**\n` +
+        `Removed: **${formatHoursClock(hours)}**\n` +
         `Reason: ${reason}`
     });
 
@@ -7192,7 +7192,7 @@ async function handleRemoveHours(interaction) {
         `**Agent:** ${targetUser.username} (<@${targetUser.id}>)\n` +
         `**Mode:** ${modeLabel}\n` +
         `**Date:** ${shiftDate}\n` +
-        `**Hours:** -${formatHours(hours)} hrs\n` +
+        `**Hours:** -${formatHoursClock(hours)}\n` +
         `**Reason:** ${reason}\n` +
         '**Removed By:** {{AGENT_NAME}}',
       color: 0xE67E22,
@@ -7284,9 +7284,9 @@ async function handleHoursExport(interaction) {
           date: day.dateLabel,
           inTime: formatExportClockTime(day.firstLoginMs),
           outTime: formatExportClockTime(day.lastLogoutMs),
-          shiftHours: formatHours(day.shiftHours || 0),
-          trainingHours: formatHours(day.trainingHours || 0),
-          totalHours: formatHours(totalHours)
+          shiftHours: formatHoursClock(day.shiftHours || 0),
+          trainingHours: formatHoursClock(day.trainingHours || 0),
+          totalHours: formatHoursClock(totalHours)
         });
       }
     }
