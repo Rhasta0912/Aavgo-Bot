@@ -1329,3 +1329,18 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/profilePanel.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+
+- Added the first secure website hours bridge and cleaned up the private dashboard layout.
+  - Summary: The bot now includes a protected website API endpoint that can expose real staff hour totals from the live SQLite database for the website admin board, instead of relying on mock cards.
+  - Summary: The website admin route was reorganized into a cleaner live hours board with a fixed left rail, calmer spacing, slightly tighter corner radius, team summaries, and an auto-refreshing real-hours table.
+  - Summary: The website now keeps the bot API token server-side through a same-origin PHP endpoint, so the browser never receives the bridge secret directly.
+  - Why: The previous admin/dashboard UI felt too smushed and decorative, and leadership needed actual live agent hours from the database rather than placeholder insight panels.
+  - Behavior impact:
+    - /admin can now render real people and real tracked hours once the website bridge URL/token and bot API token/port are configured on the live hosts.
+    - The left task rail and shared dark dashboard system are more organized across the private website surface.
+    - The bot remains safe by disabling the website API unless the bridge token is configured.
+  - Files touched:
+    - src/index.js
+    - src/websiteApi.js
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

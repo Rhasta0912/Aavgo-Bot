@@ -7,6 +7,7 @@ const tools = require('./tools');
 const profilePanel = require('./profilePanel');
 const devTodo = require('./devTodo');
 const { upsertBotStatusCard } = require('./botStatus');
+const { startWebsiteApiServer, stopWebsiteApiServer } = require('./websiteApi');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
@@ -287,6 +288,7 @@ async function handleBotShutdown(signal) {
     clearInterval(roleSyncWatcher);
     roleSyncWatcher = null;
   }
+  stopWebsiteApiServer();
 
   console.log(`[DISCORD] Received ${signal}. Marking bot offline before exit...`);
   await upsertBotStatusCard({
@@ -381,6 +383,7 @@ client.once('ready', async () => {
       stateLabel: 'Online'
     });
     startBotStatusHeartbeat();
+    startWebsiteApiServer(client);
   // Register Slash Commands
   try {
     if (String(process.env.AAVGO_WIPE_GLOBAL_COMMANDS || '').toLowerCase() === 'true') {
