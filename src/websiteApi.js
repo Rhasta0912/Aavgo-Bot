@@ -232,7 +232,10 @@ async function buildAdminHoursSnapshot(client) {
 
 function postJson(urlString, token, payload) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify(payload);
+    const body = JSON.stringify({
+      ...payload,
+      token
+    });
     const url = new URL(urlString);
     const transport = url.protocol === 'https:' ? https : http;
 
@@ -245,6 +248,8 @@ function postJson(urlString, token, payload) {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
+        'X-Aavgo-Token': token,
+        'X-Aavgo-Website-Token': token,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(body)
       },

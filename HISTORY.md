@@ -1384,3 +1384,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - discord-auth-config.example.php
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Hardened website hours sync auth so cPanel header stripping does not break live pushes.
+  - Summary: The website sync endpoint now accepts the shared hours token through normal bearer auth, server-safe custom headers, or a body fallback, and the bot now sends all three forms on each snapshot push.
+  - Why: The bot was reaching the website but shared hosting was still returning 401 Unauthorized, which strongly pointed to the Authorization header being dropped before PHP could read it.
+  - Behavior impact:
+    - Bot snapshot pushes are now resilient on hosts that strip or rewrite Authorization.
+    - The website still requires the same shared secret; it just reads it more reliably.
+    - If sync still fails after this, the remaining cause is a real token mismatch rather than a hosting header issue.
+  - Files touched:
+    - src/websiteApi.js
+    - api/admin-hours-sync/index.php
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
