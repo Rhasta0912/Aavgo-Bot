@@ -1452,3 +1452,5 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - **Discord Guild-List Fallback**: Added a simpler membership verification lane using the user's Discord guild list, so the website no longer treats the live guild-member role endpoint as the only path during login handoff. This should help the app/browser authorization issue on other PCs.
 
 - **Roster-First Discord Login**: Changed website login so once Discord identity and guild membership are confirmed, known Aavgo staff are admitted from the bot-pushed auth roster before the live member-role endpoint is consulted. This removes a major failure point for other-PC sign-ins.
+
+- **Discord Login Simplification**: Removed the live Discord member-role lookup from the website front door. Login now only requires Discord identity plus guild membership, then routes access from the bot-pushed private auth roster. This strips out the flaky extra Discord step that was still breaking some other-PC sign-ins.
