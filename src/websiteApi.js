@@ -159,6 +159,112 @@ function toRoleLabels(row, member) {
   }
 }
 
+function mergeRoleLabels(baseLabels = [], nextLabels = []) {
+  const merged = new Set();
+  for (const label of [...baseLabels, ...nextLabels]) {
+    const value = String(label || '').trim();
+    if (value) merged.add(value);
+  }
+  return [...merged];
+}
+
+function buildAuthRosterEntry({ discordId, username, displayName, roleLabels }) {
+  const normalizedLabels = mergeRoleLabels([], roleLabels);
+  if (!discordId || normalizedLabels.length === 0) return null;
+
+  const primaryRole = normalizedLabels[0] || 'Agent';
+  return {
+    discordId: String(discordId),
+    username: String(username || displayName || 'Unknown'),
+    displayName: String(displayName || username || 'Unknown'),
+    role: primaryRole,
+    roleLabels: normalizedLabels,
+    roleSummary: normalizedLabels.join(' / ') || primaryRole,
+    route: toRouteLabel(primaryRole)
+  };
+}
+
+function buildAuthRoster(guild, people) {
+  const roster = new Map();
+  const developerRows = db.prepare('SELECT discord_id, username FROM developers ORDER BY lower(username) ASC').all();
+
+  for (const person of people) {
+    const entry = buildAuthRosterEntry({
+      discordId: person.discordId,
+      username: person.username,
+      displayName: person.displayName,
+      roleLabels: person.roleLabels
+    });
+    if (entry) {
+      roster.set(entry.discordId, entry);
+    }
+  }
+
+  const memberCollection = guild?.members?.cache || null;
+  if (memberCollection) {
+    for (const member of memberCollection.values()) {
+      const roleLabels = toRoleLabels({ discord_id: member.id, role: '' }, member)
+        .filter(label => label !== 'Applicant');
+      const entry = buildAuthRosterEntry({
+        discordId: member.id,
+        username: member.user?.username || member.displayName || member.id,
+        displayName: member.displayName || member.user?.username || member.id,
+        roleLabels
+      });
+      if (!entry) continue;
+
+      const existing = roster.get(entry.discordId);
+      if (!existing) {
+        roster.set(entry.discordId, entry);
+        continue;
+      }
+
+      const mergedLabels = mergeRoleLabels(existing.roleLabels, entry.roleLabels);
+      roster.set(entry.discordId, {
+        ...existing,
+        username: existing.username || entry.username,
+        displayName: existing.displayName || entry.displayName,
+        role: mergedLabels[0] || existing.role || entry.role,
+        roleLabels: mergedLabels,
+        roleSummary: mergedLabels.join(' / ') || existing.roleSummary || entry.roleSummary,
+        route: toRouteLabel(mergedLabels[0] || existing.role || entry.role)
+      });
+    }
+  }
+
+  for (const developer of developerRows) {
+    const discordId = String(developer.discord_id || '').trim();
+    if (!discordId) continue;
+
+    const existing = roster.get(discordId);
+    if (!existing) {
+      const entry = buildAuthRosterEntry({
+        discordId,
+        username: developer.username,
+        displayName: developer.username,
+        roleLabels: ['Developer']
+      });
+      if (entry) {
+        roster.set(discordId, entry);
+      }
+      continue;
+    }
+
+    const mergedLabels = mergeRoleLabels(existing.roleLabels, ['Developer']);
+    roster.set(discordId, {
+      ...existing,
+      role: mergedLabels[0] || existing.role,
+      roleLabels: mergedLabels,
+      roleSummary: mergedLabels.join(' / ') || existing.roleSummary,
+      route: toRouteLabel(mergedLabels[0] || existing.role)
+    });
+  }
+
+  return [...roster.values()].sort((left, right) => {
+    return String(left.displayName || left.username).localeCompare(String(right.displayName || right.username));
+  });
+}
+
 function toRouteLabel(roleLabel) {
   if (['Developer', 'Operations Manager', 'Team Leader'].includes(roleLabel)) {
     return '/admin';
@@ -346,6 +452,8 @@ async function buildAdminHoursSnapshot(client) {
     monthlyHours: 0
   });
 
+  const authRoster = buildAuthRoster(guild, people);
+
   return {
     generatedAt: now.toISOString(),
     summary: {
@@ -363,7 +471,8 @@ async function buildAdminHoursSnapshot(client) {
       teams: buildTeamOptions(rows)
     },
     teams: teamSummaries,
-    people
+    people,
+    authRoster
   };
 }
 
