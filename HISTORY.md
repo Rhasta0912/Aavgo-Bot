@@ -1396,3 +1396,21 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - api/admin-hours-sync/index.php
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Cleaned up the private website routes so the user page focuses on personal hours, the admin page has real filters, and Discord sign-in is more resilient across app/browser handoff.
+  - Summary: The user workspace now shows the staff member's own tracked hours and current lane instead of filler insight cards, the admin board now has role, team, hotel, and status filters plus cleaner no-avatar profile blocks, and the Discord callback now accepts a signed state fallback so approving through the Discord app is less likely to fail.
+  - Why: The private site felt cluttered, leadership needed faster ways to narrow the live hours board, and Discord sign-in could break when the app handed authorization back to a different browser session.
+  - Behavior impact:
+    - Admin can filter the live hours board by search, role, team, hotel, or active status without snapping back to stale bootstrap data after refreshes.
+    - User route is reduced to the essentials: personal today, week, month, and all-time hours, current hotel/team/status, and quick sign-out/navigation.
+    - Denied and sign-in error pages now use the same cleaner private dashboard language without the old avatar-heavy sidebar.
+    - Discord login is more tolerant of app-to-browser authorization handoff because the callback can verify a signed state token even if the exact browser session changed.
+  - Files touched:
+    - auth/bootstrap.php
+    - auth/discord/login/index.php
+    - auth/discord/callback/index.php
+    - admin/index.php
+    - user/index.php
+    - script.js
+    - styles.css
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
