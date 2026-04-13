@@ -1344,3 +1344,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - src/websiteApi.js
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Refined the public website front door into a more discreet premium login screen.
+  - Summary: The root Aavgo website now opens with a centered, quieter Discord login experience that keeps the same visual language but hides route details and internal workspace hints from public view.
+  - Why: The previous front page still explained too much and felt more like an access dashboard than a polished private entrance.
+  - Behavior impact:
+    - The live homepage now focuses on a single premium login action.
+    - Public visitors see less operational detail before authentication.
+    - This was pushed specifically to verify the GitHub auto-deploy path on the website.
+  - Files touched:
+    - index.html
+    - styles.css
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
