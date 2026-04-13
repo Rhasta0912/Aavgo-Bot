@@ -1457,3 +1457,6 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 
 - **Exact Callback-Bound Discord Login**: Changed the website OAuth flow so each login now signs and remembers the exact callback URL used when the user starts sign-in. The callback then exchanges the Discord code against that same callback URL instead of guessing across apex/www variants, which should stop single-use OAuth codes from failing on other PCs during the app/browser handoff.
 
+
+- **Discord Login Debug Surface**: The website login failure screen now shows a safe debug trace with the failing auth stage, Discord status/message, request host, and callback URL, plus a direct OAuth retry button. This makes other-PC sign-in failures diagnosable from a screenshot instead of a generic error card.
+
