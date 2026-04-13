@@ -1,4 +1,5 @@
 const http = require('http');
+const https = require('https');
 const db = require('./database');
 const { calculateAgentHourTotals, buildPeriodHourHistory, parseDbTimestamp, formatHours } = require('./hours');
 
@@ -11,19 +12,28 @@ const AGENT_ROLE_ID = '1482227287159078964';
 const TRAINEE_ROLE_ID = '1484705126026449029';
 
 let websiteApiServer = null;
+let websiteSyncTimer = null;
+let websiteSyncInFlight = false;
 
 function getWebsiteApiConfig() {
   const token = String(process.env.AAVGO_WEBSITE_API_TOKEN || '').trim();
   const host = String(process.env.AAVGO_WEBSITE_API_HOST || '0.0.0.0').trim() || '0.0.0.0';
+  const syncUrl = String(process.env.AAVGO_WEBSITE_SYNC_URL || '').trim();
   const port = Number.parseInt(
     String(process.env.AAVGO_WEBSITE_API_PORT || process.env.PORT || '3000').trim(),
+    10
+  );
+  const syncIntervalMs = Number.parseInt(
+    String(process.env.AAVGO_WEBSITE_SYNC_INTERVAL_MS || '30000').trim(),
     10
   );
 
   return {
     token,
     host,
-    port: Number.isFinite(port) && port > 0 ? port : 3000
+    syncUrl,
+    port: Number.isFinite(port) && port > 0 ? port : 3000,
+    syncIntervalMs: Number.isFinite(syncIntervalMs) && syncIntervalMs >= 10000 ? syncIntervalMs : 30000
   };
 }
 
@@ -220,6 +230,112 @@ async function buildAdminHoursSnapshot(client) {
   };
 }
 
+function postJson(urlString, token, payload) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload);
+    const url = new URL(urlString);
+    const transport = url.protocol === 'https:' ? https : http;
+
+    const request = transport.request({
+      protocol: url.protocol,
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: `${url.pathname}${url.search}`,
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body)
+      },
+      timeout: 20000
+    }, response => {
+      let responseBody = '';
+      response.setEncoding('utf8');
+      response.on('data', chunk => {
+        responseBody += chunk;
+      });
+      response.on('end', () => {
+        const statusCode = Number(response.statusCode || 0);
+        if (statusCode >= 200 && statusCode < 300) {
+          resolve({ statusCode, body: responseBody });
+          return;
+        }
+
+        reject(new Error(`Snapshot push failed (${statusCode}): ${responseBody || 'No response body.'}`));
+      });
+    });
+
+    request.on('error', reject);
+    request.on('timeout', () => {
+      request.destroy(new Error('Snapshot push timed out.'));
+    });
+
+    request.write(body);
+    request.end();
+  });
+}
+
+async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
+  const config = getWebsiteApiConfig();
+  if (!config.token || !config.syncUrl) {
+    return false;
+  }
+
+  if (websiteSyncInFlight) {
+    return false;
+  }
+
+  websiteSyncInFlight = true;
+
+  try {
+    const snapshot = await buildAdminHoursSnapshot(client);
+    await postJson(config.syncUrl, config.token, {
+      ok: true,
+      configured: true,
+      source: 'bot_push',
+      syncedAt: new Date().toISOString(),
+      data: snapshot
+    });
+
+    if (!silent) {
+      console.log(`[WEBSITE-SYNC] Pushed admin hours snapshot to ${config.syncUrl}`);
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[WEBSITE-SYNC] Snapshot push failed:', error.message);
+    return false;
+  } finally {
+    websiteSyncInFlight = false;
+  }
+}
+
+function startWebsiteHoursSync(client) {
+  const config = getWebsiteApiConfig();
+  if (!config.token || websiteSyncTimer) {
+    return;
+  }
+
+  if (!config.syncUrl) {
+    console.log('[WEBSITE-SYNC] Disabled because AAVGO_WEBSITE_SYNC_URL is not configured.');
+    return;
+  }
+
+  pushWebsiteHoursSnapshot(client).catch(error => {
+    console.error('[WEBSITE-SYNC] Initial push crashed:', error.message);
+  });
+
+  websiteSyncTimer = setInterval(() => {
+    pushWebsiteHoursSnapshot(client, { silent: true }).catch(error => {
+      console.error('[WEBSITE-SYNC] Interval push crashed:', error.message);
+    });
+  }, config.syncIntervalMs);
+
+  websiteSyncTimer.unref?.();
+  console.log(`[WEBSITE-SYNC] Pushing admin hours snapshots to ${config.syncUrl} every ${config.syncIntervalMs}ms.`);
+}
+
 function buildRouter(client) {
   const { token } = getWebsiteApiConfig();
 
@@ -268,10 +384,17 @@ function startWebsiteApiServer(client) {
     console.error('[WEBSITE-API] Server error:', error.message);
   });
 
+  startWebsiteHoursSync(client);
+
   return websiteApiServer;
 }
 
 function stopWebsiteApiServer() {
+  if (websiteSyncTimer) {
+    clearInterval(websiteSyncTimer);
+    websiteSyncTimer = null;
+  }
+
   if (!websiteApiServer) return;
   websiteApiServer.close(() => {
     console.log('[WEBSITE-API] Server stopped.');

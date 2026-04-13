@@ -1368,3 +1368,19 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - styles.css
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Replaced the blocked website-to-bot hours pull with a bot-to-website snapshot push.
+  - Summary: The bot can now push signed live-hours snapshots into the website over normal HTTPS, and the admin board reads a local snapshot file on the website instead of needing cPanel to reach the bot on raw port 8119.
+  - Why: Shared hosting could not reliably connect from PHP to the bot port, so the old bridge stayed stuck even though the bot health endpoint worked in a browser.
+  - Behavior impact:
+    - The website now accepts POST snapshots at /api/admin-hours-sync/ using the shared website_api_token.
+    - The admin hours board reads /home/aavgodes/admin-hours-snapshot.json first and only falls back to the old remote bridge if no pushed snapshot exists.
+    - The bot now supports AAVGO_WEBSITE_SYNC_URL so live hours can be published directly to the website without asking hosting support for a reverse proxy.
+  - Files touched:
+    - src/websiteApi.js
+    - auth/bootstrap.php
+    - admin/index.php
+    - api/admin-hours-sync/index.php
+    - .github/workflows/deploy.yml
+    - discord-auth-config.example.php
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
