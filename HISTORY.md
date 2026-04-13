@@ -1466,3 +1466,6 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 
 - **Browser-Handoff Discord Login Flow**: Reworked Discord sign-in so the original Aavgo tab stays open, launches Discord in a separate window, polls the website for approval, and then claims the approved session back into the original browser. This is meant to survive the cross-PC app/browser handoff where Discord was consuming the OAuth code before the visible browser could finish login.
 
+
+- **Discord Error Field Exposure**: The website now includes Discord's raw OAuth error field in token-exchange diagnostics instead of collapsing some 401 failures into Unknown Discord error. This makes it much easier to tell when the real issue is an invalid client secret versus a consumed code.
+
