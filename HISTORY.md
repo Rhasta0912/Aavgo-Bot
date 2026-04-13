@@ -1469,3 +1469,6 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 
 - **Discord Error Field Exposure**: The website now includes Discord's raw OAuth error field in token-exchange diagnostics instead of collapsing some 401 failures into Unknown Discord error. This makes it much easier to tell when the real issue is an invalid client secret versus a consumed code.
 
+
+- **Live Handoff Failure Reporting**: The Discord bridge page now receives and displays callback failures from the website itself, so if the popup/app side burns the OAuth flow, the original tab stops hanging on 'Waiting for approval' and shows the failing stage and Discord error directly.
+
