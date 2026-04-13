@@ -1,7 +1,15 @@
 const http = require('http');
 const https = require('https');
 const db = require('./database');
-const { calculateAgentHourTotals, buildPeriodHourHistory, parseDbTimestamp, formatHours } = require('./hours');
+const auth = require('./auth');
+const profilePanel = require('./profilePanel');
+const {
+  calculateAgentHourTotals,
+  buildPeriodHourHistory,
+  getMonthDailyHourHistory,
+  parseDbTimestamp,
+  formatHours
+} = require('./hours');
 
 const AAVGO_GUILD_ID = '1482220918355922974';
 const DEVELOPER_ROLE_ID = '1482312134875418737';
@@ -10,10 +18,14 @@ const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 const SME_ROLE_ID = '1482382342621233153';
 const AGENT_ROLE_ID = '1482227287159078964';
 const TRAINEE_ROLE_ID = '1484705126026449029';
+const TEAM_ROLE_NAMES = ['team 1', 'team 2', 'team 3'];
+const WEBSITE_COMMAND_BATCH_LIMIT = 25;
 
 let websiteApiServer = null;
 let websiteSyncTimer = null;
 let websiteSyncInFlight = false;
+let websiteCommandTimer = null;
+let websiteCommandInFlight = false;
 
 function getWebsiteApiConfig() {
   const token = String(process.env.AAVGO_WEBSITE_API_TOKEN || '').trim();
@@ -27,11 +39,23 @@ function getWebsiteApiConfig() {
     String(process.env.AAVGO_WEBSITE_SYNC_INTERVAL_MS || '30000').trim(),
     10
   );
+  let commandUrl = String(process.env.AAVGO_WEBSITE_COMMAND_URL || '').trim();
+  if (!commandUrl && syncUrl) {
+    try {
+      const derived = new URL(syncUrl);
+      derived.pathname = '/api/admin-command-sync/';
+      derived.search = '';
+      commandUrl = derived.toString();
+    } catch (_) {
+      commandUrl = '';
+    }
+  }
 
   return {
     token,
     host,
     syncUrl,
+    commandUrl,
     port: Number.isFinite(port) && port > 0 ? port : 3000,
     syncIntervalMs: Number.isFinite(syncIntervalMs) && syncIntervalMs >= 10000 ? syncIntervalMs : 30000
   };
@@ -45,40 +69,93 @@ function json(res, statusCode, payload) {
   res.end(JSON.stringify(payload, null, 2));
 }
 
-function getHotelNameMap() {
-  const hotels = db.prepare('SELECT id, name FROM hotels').all();
-  return new Map(hotels.map(hotel => [String(hotel.id), String(hotel.name)]));
+function roundHours(value) {
+  const number = Number(value || 0);
+  if (!Number.isFinite(number)) return 0;
+  return Number(number.toFixed(2));
 }
 
-function toRoleLabel(row, member) {
-  const roleIds = new Set(member?.roles?.cache?.keys?.() || []);
+function combineHotelId(hotelId) {
+  return String(hotelId || '').trim().toUpperCase() === 'SUP8' ? 'RMDA' : String(hotelId || '').trim().toUpperCase();
+}
 
-  if (roleIds.has(DEVELOPER_ROLE_ID)) return 'Developer';
-  if (roleIds.has(OPERATIONS_MANAGER_ROLE_ID)) return 'Operations Manager';
-  if (roleIds.has(TEAM_LEADER_ROLE_ID)) return 'Team Leader';
-  if (roleIds.has(SME_ROLE_ID)) return 'SME';
-  if (roleIds.has(TRAINEE_ROLE_ID)) return 'Trainee';
-  if (roleIds.has(AGENT_ROLE_ID)) return 'Agent';
+function getHotelNameMap() {
+  const hotels = db.prepare('SELECT id, name, team FROM hotels WHERE id != ?').all('TEAM_SHIFT');
+  return new Map(hotels.map(hotel => [String(hotel.id), {
+    id: String(hotel.id),
+    name: String(hotel.name),
+    team: String(hotel.team || '')
+  }]));
+}
+
+function buildHotelOptions() {
+  const hotels = db.prepare('SELECT id, name, team FROM hotels WHERE id != ? ORDER BY team ASC, name ASC').all('TEAM_SHIFT');
+  const combined = new Map();
+
+  for (const hotel of hotels) {
+    const combinedId = combineHotelId(hotel.id);
+    if (!combinedId) continue;
+    if (!combined.has(combinedId)) {
+      combined.set(combinedId, {
+        id: combinedId,
+        name: auth.getCombinedHotelLabel(combinedId),
+        team: String(hotel.team || 'Unassigned')
+      });
+    }
+  }
+
+  return [...combined.values()].sort((left, right) => {
+    const teamCompare = String(left.team).localeCompare(String(right.team));
+    if (teamCompare !== 0) return teamCompare;
+    return String(left.name).localeCompare(String(right.name));
+  });
+}
+
+function buildTeamOptions(rows) {
+  const values = new Set();
+  for (const row of rows) {
+    const team = auth.normalizeTeamInput(row?.team || '');
+    if (team) values.add(team);
+  }
+  return [...values].sort((left, right) => left.localeCompare(right));
+}
+
+function toRoleLabels(row, member) {
+  const roleIds = new Set(member?.roles?.cache?.keys?.() || []);
+  const labels = [];
+
+  if (roleIds.has(DEVELOPER_ROLE_ID)) labels.push('Developer');
+  if (roleIds.has(OPERATIONS_MANAGER_ROLE_ID)) labels.push('Operations Manager');
+  if (roleIds.has(TEAM_LEADER_ROLE_ID)) labels.push('Team Leader');
+  if (roleIds.has(SME_ROLE_ID)) labels.push('SME');
+  if (roleIds.has(TRAINEE_ROLE_ID)) labels.push('Trainee');
+  if (roleIds.has(AGENT_ROLE_ID)) labels.push('Agent');
 
   const isDeveloper = db.prepare('SELECT 1 FROM developers WHERE discord_id = ?').get(row.discord_id);
-  if (isDeveloper) return 'Developer';
+  if (isDeveloper && !labels.includes('Developer')) {
+    labels.unshift('Developer');
+  }
+
+  if (labels.length > 0) {
+    return labels;
+  }
 
   switch (String(row.role || '').toLowerCase()) {
     case 'developer':
-      return 'Developer';
+      return ['Developer'];
     case 'operations_manager':
-      return 'Operations Manager';
+      return ['Operations Manager'];
     case 'team_leader':
-      return 'Team Leader';
+      return ['Team Leader'];
     case 'sme':
-      return 'SME';
+      return ['SME'];
     case 'trainee':
-      return 'Trainee';
+      return ['Trainee'];
     case 'applicant':
-      return 'Applicant';
+      return ['Applicant'];
     case 'agent':
     default:
-      return 'Agent';
+      return ['Agent'];
   }
 }
 
@@ -97,6 +174,36 @@ function toSessionDurationHours(loginTime, nowMs) {
   const loginMs = parseDbTimestamp(loginTime, NaN);
   if (!Number.isFinite(loginMs)) return 0;
   return Math.max(0, (nowMs - loginMs) / (60 * 60 * 1000));
+}
+
+function buildPayPeriodSegment(monthHistory, startDay, endDay, label) {
+  const rows = (monthHistory?.days || [])
+    .filter(day => Number(day.day) >= startDay && Number(day.day) <= endDay)
+    .map(day => ({
+      day: Number(day.day),
+      totalHours: roundHours(day.totalHours),
+      shiftHours: roundHours(day.shiftHours),
+      trainingHours: roundHours(day.trainingHours)
+    }));
+
+  const activeDays = rows.filter(day => day.totalHours > 0);
+  return {
+    label,
+    totalHours: roundHours(activeDays.reduce((sum, day) => sum + day.totalHours, 0)),
+    days: activeDays
+  };
+}
+
+function buildRecentMonthSummaries(agentId, now) {
+  return [0, -1, -2].map(offset => {
+    const history = getMonthDailyHourHistory(db, agentId, offset, now);
+    return {
+      label: history.label,
+      totalHours: roundHours(history.monthTotalHours),
+      shiftHours: roundHours(history.monthShiftHours),
+      trainingHours: roundHours(history.monthTrainingHours)
+    };
+  });
 }
 
 async function buildAdminHoursSnapshot(client) {
@@ -132,18 +239,29 @@ async function buildAdminHoursSnapshot(client) {
   for (const row of rows) {
     const member = memberCache?.get?.(row.discord_id) || null;
     const displayName = member?.displayName || row.username || 'Unknown';
-    const roleLabel = toRoleLabel(row, member);
+    const roleLabels = toRoleLabels(row, member);
+    const roleLabel = roleLabels[0] || 'Agent';
+    const roleSummary = roleLabels.join(' / ') || roleLabel;
     const totals = calculateAgentHourTotals(db, row.id, now);
     const dayHistory = buildPeriodHourHistory(db, row.id, 'day', now);
-    const linkedHotel = row.hotel_id ? (hotelNames.get(String(row.hotel_id)) || String(row.hotel_id)) : 'Unassigned';
+    const monthHistory = getMonthDailyHourHistory(db, row.id, 0, now);
+    const linkedHotelId = combineHotelId(row.hotel_id);
+    const linkedHotel = linkedHotelId
+      ? (hotelNames.get(String(row.hotel_id))?.name || auth.getCombinedHotelLabel(linkedHotelId))
+      : 'Unassigned';
     const activeNow = Boolean(row.active_session_id);
     const activeSession = activeNow
       ? {
           kind: toSessionLabel(row.session_kind),
           loginTime: row.login_time,
-          elapsedHours: Number(toSessionDurationHours(row.login_time, nowMs).toFixed(2))
+          elapsedHours: roundHours(toSessionDurationHours(row.login_time, nowMs))
         }
       : null;
+
+    const payPeriods = {
+      firstHalf: buildPayPeriodSegment(monthHistory, 1, 15, '1-15'),
+      secondHalf: buildPayPeriodSegment(monthHistory, 16, monthHistory.days.length, '16-end')
+    };
 
     people.push({
       agentId: row.id,
@@ -151,16 +269,31 @@ async function buildAdminHoursSnapshot(client) {
       username: row.username,
       displayName,
       role: roleLabel,
+      roleLabels,
+      roleSummary,
       route: toRouteLabel(roleLabel),
-      team: row.team || 'Unassigned',
+      team: auth.normalizeTeamInput(row.team) || row.team || 'Unassigned',
       agentStatus: row.agent_status || 'standby',
+      linkedHotelId: linkedHotelId || '',
       linkedHotel,
       activeNow,
       activeSession,
-      todayHours: Number(dayHistory.totalHours.toFixed(2)),
-      weeklyHours: Number(totals.weeklyHours.toFixed(2)),
-      monthlyHours: Number(totals.monthlyHours.toFixed(2)),
-      allHours: Number(totals.allHours.toFixed(2))
+      todayHours: roundHours(dayHistory.totalHours),
+      weeklyHours: roundHours(totals.weeklyHours),
+      monthlyHours: roundHours(totals.monthlyHours),
+      allHours: roundHours(totals.allHours),
+      payPeriods,
+      currentMonth: {
+        label: monthHistory.label,
+        totalHours: roundHours(monthHistory.monthTotalHours),
+        days: monthHistory.days.map(day => ({
+          day: Number(day.day),
+          totalHours: roundHours(day.totalHours),
+          shiftHours: roundHours(day.shiftHours),
+          trainingHours: roundHours(day.trainingHours)
+        }))
+      },
+      recentMonths: buildRecentMonthSummaries(row.id, now)
     });
   }
 
@@ -186,9 +319,9 @@ async function buildAdminHoursSnapshot(client) {
   const teamSummaries = [...teams.values()]
     .map(team => ({
       ...team,
-      todayHours: Number(team.todayHours.toFixed(2)),
-      weeklyHours: Number(team.weeklyHours.toFixed(2)),
-      monthlyHours: Number(team.monthlyHours.toFixed(2))
+      todayHours: roundHours(team.todayHours),
+      weeklyHours: roundHours(team.weeklyHours),
+      monthlyHours: roundHours(team.monthlyHours)
     }))
     .sort((a, b) => {
       if (a.name === 'Unassigned') return 1;
@@ -219,40 +352,45 @@ async function buildAdminHoursSnapshot(client) {
       totalPeople: summary.totalPeople,
       activeNow: summary.activeNow,
       readyNow: summary.readyNow,
-      todayHours: Number(summary.todayHours.toFixed(2)),
-      weeklyHours: Number(summary.weeklyHours.toFixed(2)),
-      monthlyHours: Number(summary.monthlyHours.toFixed(2)),
+      todayHours: roundHours(summary.todayHours),
+      weeklyHours: roundHours(summary.weeklyHours),
+      monthlyHours: roundHours(summary.monthlyHours),
       weeklyHoursLabel: formatHours(summary.weeklyHours),
       monthlyHoursLabel: formatHours(summary.monthlyHours)
+    },
+    meta: {
+      hotels: buildHotelOptions(),
+      teams: buildTeamOptions(rows)
     },
     teams: teamSummaries,
     people
   };
 }
 
-function postJson(urlString, token, payload) {
+function requestJson(urlString, token, { method = 'GET', body = null } = {}) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({
-      ...payload,
-      token
-    });
     const url = new URL(urlString);
     const transport = url.protocol === 'https:' ? https : http;
+    const payload = body == null ? null : JSON.stringify(body);
+    const headers = {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+      'X-Aavgo-Token': token,
+      'X-Aavgo-Website-Token': token
+    };
+
+    if (payload !== null) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(payload);
+    }
 
     const request = transport.request({
       protocol: url.protocol,
       hostname: url.hostname,
       port: url.port || (url.protocol === 'https:' ? 443 : 80),
       path: `${url.pathname}${url.search}`,
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${token}`,
-        'X-Aavgo-Token': token,
-        'X-Aavgo-Website-Token': token,
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body)
-      },
+      method,
+      headers,
       timeout: 20000
     }, response => {
       let responseBody = '';
@@ -262,21 +400,31 @@ function postJson(urlString, token, payload) {
       });
       response.on('end', () => {
         const statusCode = Number(response.statusCode || 0);
+        let decoded = null;
+        try {
+          decoded = responseBody ? JSON.parse(responseBody) : null;
+        } catch (_) {
+          decoded = null;
+        }
+
         if (statusCode >= 200 && statusCode < 300) {
-          resolve({ statusCode, body: responseBody });
+          resolve({ statusCode, body: responseBody, data: decoded });
           return;
         }
 
-        reject(new Error(`Snapshot push failed (${statusCode}): ${responseBody || 'No response body.'}`));
+        const errorMessage = decoded?.error || responseBody || 'Request failed.';
+        reject(new Error(`${method} ${urlString} failed (${statusCode}): ${errorMessage}`));
       });
     });
 
     request.on('error', reject);
     request.on('timeout', () => {
-      request.destroy(new Error('Snapshot push timed out.'));
+      request.destroy(new Error(`${method} ${urlString} timed out.`));
     });
 
-    request.write(body);
+    if (payload !== null) {
+      request.write(payload);
+    }
     request.end();
   });
 }
@@ -295,12 +443,15 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
 
   try {
     const snapshot = await buildAdminHoursSnapshot(client);
-    await postJson(config.syncUrl, config.token, {
-      ok: true,
-      configured: true,
-      source: 'bot_push',
-      syncedAt: new Date().toISOString(),
-      data: snapshot
+    await requestJson(config.syncUrl, config.token, {
+      method: 'POST',
+      body: {
+        ok: true,
+        configured: true,
+        source: 'bot_push',
+        syncedAt: new Date().toISOString(),
+        data: snapshot
+      }
     });
 
     if (!silent) {
@@ -313,6 +464,349 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
     return false;
   } finally {
     websiteSyncInFlight = false;
+  }
+}
+
+async function fetchWebsiteCommands(config) {
+  if (!config.commandUrl) return [];
+  const response = await requestJson(config.commandUrl, config.token, { method: 'GET' });
+  const commands = response?.data?.commands;
+  if (!Array.isArray(commands)) {
+    return [];
+  }
+
+  return commands.slice(0, WEBSITE_COMMAND_BATCH_LIMIT);
+}
+
+async function postWebsiteCommandResults(config, results) {
+  if (!config.commandUrl || !Array.isArray(results) || results.length === 0) {
+    return;
+  }
+
+  await requestJson(config.commandUrl, config.token, {
+    method: 'POST',
+    body: { results }
+  });
+}
+
+function normalizeDiscordRoleName(roleName) {
+  return String(roleName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+async function syncMemberTeamRoles(member, teamName) {
+  if (!member) return;
+  const normalizedTeam = auth.normalizeTeamInput(teamName);
+  if (!normalizedTeam) return;
+
+  const teamRolesToRemove = member.roles.cache.filter(role => TEAM_ROLE_NAMES.includes(normalizeDiscordRoleName(role?.name)));
+  if (teamRolesToRemove.size > 0) {
+    await member.roles.remove(teamRolesToRemove).catch(() => {});
+  }
+
+  const targetTeamRole = member.guild.roles.cache.find(
+    role => normalizeDiscordRoleName(role?.name) === normalizeDiscordRoleName(normalizedTeam)
+  );
+  if (targetTeamRole && !member.roles.cache.has(targetTeamRole.id)) {
+    await member.roles.add(targetTeamRole).catch(() => {});
+  }
+}
+
+function getCombinedHotelTargets(hotelId) {
+  const normalized = combineHotelId(hotelId);
+  if (!normalized) return [];
+  if (normalized === 'RMDA') {
+    return ['RMDA', 'SUP8'];
+  }
+  return [normalized];
+}
+
+async function fetchGuildMember(guild, discordId) {
+  return guild.members.fetch(discordId).catch(() => guild.members.cache.get(discordId) || null);
+}
+
+function buildActionActor(command) {
+  return {
+    discordId: String(command?.actor?.discordId || ''),
+    name: String(command?.actor?.name || 'Aavgo Leadership')
+  };
+}
+
+async function applyTeamAssignmentCommand(client, guild, command) {
+  const discordId = String(command?.payload?.discordId || '').trim();
+  const nextTeam = auth.normalizeTeamInput(command?.payload?.team || '');
+  if (!discordId || !nextTeam) {
+    throw new Error('Team update is missing a valid staff member or target team.');
+  }
+
+  const agent = db.prepare('SELECT id, username, team FROM agents WHERE discord_id = ?').get(discordId);
+  if (!agent) {
+    throw new Error('The selected staff member does not exist in the live database.');
+  }
+
+  const member = await fetchGuildMember(guild, discordId);
+  if (!member) {
+    throw new Error('The selected Discord member could not be found in the server.');
+  }
+
+  db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(nextTeam, discordId);
+  await syncMemberTeamRoles(member, nextTeam);
+
+  const actor = buildActionActor(command);
+  await auth.sendAuditLog(client, {
+    title: '🌐 Website Team Reassignment',
+    description:
+      `**User:** ${agent.username} (<@${discordId}>)\n` +
+      `**Previous Team:** ${agent.team || 'None'}\n` +
+      `**New Team:** ${nextTeam}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0x57F287,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: `${agent.username} moved to ${nextTeam}.`
+  };
+}
+
+async function applyHotelAssignmentCommand(client, guild, command) {
+  const discordId = String(command?.payload?.discordId || '').trim();
+  const requestedHotelId = auth.normalizeHotelInput(String(command?.payload?.hotelId || '').trim());
+  if (!discordId || !requestedHotelId) {
+    throw new Error('Hotel update is missing a valid staff member or hotel.');
+  }
+
+  const hotelTeamRow = db.prepare("SELECT id, team FROM hotels WHERE id = ? AND id != 'TEAM_SHIFT'").get(requestedHotelId);
+  if (!hotelTeamRow) {
+    throw new Error('The selected hotel does not exist in the live database.');
+  }
+
+  const agent = db.prepare('SELECT id, username, team, hotel_id FROM agents WHERE discord_id = ?').get(discordId);
+  if (!agent) {
+    throw new Error('The selected staff member does not exist in the live database.');
+  }
+
+  const member = await fetchGuildMember(guild, discordId);
+  if (!member) {
+    throw new Error('The selected Discord member could not be found in the server.');
+  }
+
+  const nextTeam = auth.normalizeTeamInput(hotelTeamRow.team || '') || auth.normalizeTeamInput(agent.team || '') || null;
+
+  db.prepare('UPDATE agents SET hotel_id = ?, hotel_compatibility = ?, team = COALESCE(?, team) WHERE discord_id = ?')
+    .run(requestedHotelId, JSON.stringify([combineHotelId(requestedHotelId)]), nextTeam, discordId);
+
+  if (nextTeam) {
+    await syncMemberTeamRoles(member, nextTeam);
+  }
+  await profilePanel.syncHotelDiscordRoles(member, [combineHotelId(requestedHotelId)]);
+
+  const actor = buildActionActor(command);
+  await auth.sendAuditLog(client, {
+    title: '🏨 Website Hotel Reassignment',
+    description:
+      `**User:** ${agent.username} (<@${discordId}>)\n` +
+      `**Previous Hotel:** ${auth.getCombinedHotelLabel(agent.hotel_id || 'Unassigned')}\n` +
+      `**New Hotel:** ${auth.getCombinedHotelLabel(requestedHotelId)}\n` +
+      `**Team Sync:** ${nextTeam || 'Unchanged'}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0x3498DB,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: `${agent.username} linked to ${auth.getCombinedHotelLabel(requestedHotelId)}.`
+  };
+}
+
+async function forceLogoutAgentByRecord(client, guild, agentRecord) {
+  const sessionRefs = await auth.closeAllActiveSessionsForAgent(agentRecord.id, client);
+  const member = await fetchGuildMember(guild, agentRecord.discord_id);
+  if (member) {
+    await auth.applyLoggedOutRolesForMember(guild, member, sessionRefs);
+  }
+  return sessionRefs.length;
+}
+
+async function applyForceLogoutAgentCommand(client, guild, command) {
+  const discordId = String(command?.payload?.discordId || '').trim();
+  if (!discordId) {
+    throw new Error('Force logout needs a target staff member.');
+  }
+
+  const agent = db.prepare('SELECT id, discord_id, username FROM agents WHERE discord_id = ?').get(discordId);
+  if (!agent) {
+    throw new Error('The selected staff member does not exist in the live database.');
+  }
+
+  const closedCount = await forceLogoutAgentByRecord(client, guild, agent);
+  const actor = buildActionActor(command);
+
+  await auth.sendAuditLog(client, {
+    title: '🛑 Website Force Logout',
+    description:
+      `**User:** ${agent.username} (<@${discordId}>)\n` +
+      `**Closed Sessions:** ${closedCount}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0xED4245,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: closedCount > 0
+      ? `${agent.username} was logged out from ${closedCount} active session(s).`
+      : `${agent.username} had no active sessions to close.`
+  };
+}
+
+async function applyForceLogoutHotelCommand(client, guild, command) {
+  const hotelId = auth.normalizeHotelInput(String(command?.payload?.hotelId || '').trim());
+  if (!hotelId) {
+    throw new Error('Force logout by hotel needs a valid hotel.');
+  }
+
+  const targetHotelIds = getCombinedHotelTargets(hotelId);
+  const placeholders = targetHotelIds.map(() => '?').join(', ');
+  const activeAgents = db.prepare(`
+    SELECT DISTINCT a.id, a.discord_id, a.username
+    FROM sessions s
+    INNER JOIN agents a ON a.id = s.agent_id
+    WHERE s.status = 'active'
+      AND s.hotel_id IN (${placeholders})
+  `).all(...targetHotelIds);
+
+  let closedTotal = 0;
+  for (const agent of activeAgents) {
+    closedTotal += await forceLogoutAgentByRecord(client, guild, agent);
+  }
+
+  const actor = buildActionActor(command);
+  await auth.sendAuditLog(client, {
+    title: '🏨 Hotel Force Logout',
+    description:
+      `**Hotel:** ${auth.getCombinedHotelLabel(hotelId)}\n` +
+      `**Closed Sessions:** ${closedTotal}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0xED4245,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: closedTotal > 0
+      ? `${closedTotal} active session(s) were closed for ${auth.getCombinedHotelLabel(hotelId)}.`
+      : `No active sessions were open for ${auth.getCombinedHotelLabel(hotelId)}.`
+  };
+}
+
+async function applySyncAllRolesCommand(client, guild, command) {
+  await auth.syncGuildAgentRecordsFromRoles(guild, 'WEBSITE TOOL');
+  const actor = buildActionActor(command);
+
+  await auth.sendAuditLog(client, {
+    title: '🧰 Developer Role Resync',
+    description:
+      `**Action:** Discord-to-database role sync for the full guild\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0x5865F2,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: 'Triggered a full Discord role resync for the guild.'
+  };
+}
+
+async function applyPushSnapshotCommand() {
+  return {
+    message: 'Queued an immediate snapshot refresh.'
+  };
+}
+
+async function applyWebsiteCommand(client, guild, command) {
+  switch (String(command?.action || '')) {
+    case 'update_team':
+      return applyTeamAssignmentCommand(client, guild, command);
+    case 'update_hotel':
+      return applyHotelAssignmentCommand(client, guild, command);
+    case 'force_logout_agent':
+      return applyForceLogoutAgentCommand(client, guild, command);
+    case 'force_logout_hotel':
+      return applyForceLogoutHotelCommand(client, guild, command);
+    case 'sync_all_roles':
+      return applySyncAllRolesCommand(client, guild, command);
+    case 'push_snapshot':
+      return applyPushSnapshotCommand();
+    default:
+      throw new Error(`Unsupported website command: ${String(command?.action || 'unknown')}`);
+  }
+}
+
+async function processWebsiteCommands(client) {
+  const config = getWebsiteApiConfig();
+  if (!config.token || !config.commandUrl) {
+    return false;
+  }
+
+  if (websiteCommandInFlight) {
+    return false;
+  }
+
+  websiteCommandInFlight = true;
+
+  try {
+    const commands = await fetchWebsiteCommands(config);
+    if (commands.length === 0) {
+      return false;
+    }
+
+    const guild = client?.guilds?.cache?.get(AAVGO_GUILD_ID) || null;
+    if (!guild) {
+      console.warn('[WEBSITE-COMMANDS] Skipping queue processing because the guild is not cached.');
+      return false;
+    }
+
+    const results = [];
+    let shouldRefreshSnapshot = false;
+
+    for (const command of commands) {
+      try {
+        const outcome = await applyWebsiteCommand(client, guild, command);
+        results.push({
+          id: command.id,
+          status: 'completed',
+          message: outcome?.message || 'Completed.',
+          completedAt: new Date().toISOString()
+        });
+
+        if (String(command?.action || '') !== 'push_snapshot') {
+          shouldRefreshSnapshot = true;
+        }
+      } catch (error) {
+        results.push({
+          id: command.id,
+          status: 'failed',
+          message: error.message,
+          completedAt: new Date().toISOString()
+        });
+      }
+    }
+
+    await postWebsiteCommandResults(config, results);
+
+    if (results.length > 0 || shouldRefreshSnapshot) {
+      await pushWebsiteHoursSnapshot(client, { silent: true });
+    }
+
+    return true;
+  } catch (error) {
+    console.error('[WEBSITE-COMMANDS] Command sync failed:', error.message);
+    return false;
+  } finally {
+    websiteCommandInFlight = false;
   }
 }
 
@@ -339,6 +833,31 @@ function startWebsiteHoursSync(client) {
 
   websiteSyncTimer.unref?.();
   console.log(`[WEBSITE-SYNC] Pushing admin hours snapshots to ${config.syncUrl} every ${config.syncIntervalMs}ms.`);
+}
+
+function startWebsiteCommandSync(client) {
+  const config = getWebsiteApiConfig();
+  if (!config.token || websiteCommandTimer) {
+    return;
+  }
+
+  if (!config.commandUrl) {
+    console.log('[WEBSITE-COMMANDS] Disabled because AAVGO_WEBSITE_COMMAND_URL is not configured.');
+    return;
+  }
+
+  processWebsiteCommands(client).catch(error => {
+    console.error('[WEBSITE-COMMANDS] Initial poll crashed:', error.message);
+  });
+
+  websiteCommandTimer = setInterval(() => {
+    processWebsiteCommands(client).catch(error => {
+      console.error('[WEBSITE-COMMANDS] Interval poll crashed:', error.message);
+    });
+  }, Math.max(10000, Math.floor(config.syncIntervalMs / 2)));
+
+  websiteCommandTimer.unref?.();
+  console.log(`[WEBSITE-COMMANDS] Polling ${config.commandUrl} for admin commands.`);
 }
 
 function buildRouter(client) {
@@ -390,6 +909,7 @@ function startWebsiteApiServer(client) {
   });
 
   startWebsiteHoursSync(client);
+  startWebsiteCommandSync(client);
 
   return websiteApiServer;
 }
@@ -398,6 +918,11 @@ function stopWebsiteApiServer() {
   if (websiteSyncTimer) {
     clearInterval(websiteSyncTimer);
     websiteSyncTimer = null;
+  }
+
+  if (websiteCommandTimer) {
+    clearInterval(websiteCommandTimer);
+    websiteCommandTimer = null;
   }
 
   if (!websiteApiServer) return;

@@ -2578,5 +2578,9 @@ module.exports = {
   ensureProfilesDashboard,
   handleSetupProfiles,
   handleButton,
-  handleSelectMenu
+  handleSelectMenu,
+  syncBaseRoleDiscordRoles,
+  syncHotelDiscordRoles,
+  syncLeadershipDiscordRoles,
+  hotelName
 };

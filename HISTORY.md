@@ -1414,3 +1414,20 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - styles.css
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Finished the leadership workspace pass so filters, reassignment controls, audit/history panels, and the left rail all feel like one organized system.
+  - Summary: The admin board now filters correctly by hotel, team, role, and status, selected staff now show payroll-cut and month-history context, the side rail hugs the far left with stronger visual structure, denied/error pages now use the same premium centered language, and the bot snapshot now carries multi-role summaries like Developer / SME / Team Leader for cleaner leadership context.
+  - Why: The live data path was working, but the browser layer still felt half-finished: hotel filtering was broken, the search/filter bar looked browser-default, the sidebar felt bland and floated too far inward, and the old denied/login-failure surface still broke the private-site design language.
+  - Behavior impact:
+    - Admin filters now actually narrow the live board by the selected hotel instead of silently comparing hotel IDs against hotel names.
+    - Leadership can see selected staff pay-period totals and recent month history before reassigning teams, moving hotels, or forcing logouts.
+    - The user and admin sidebars now stay visually anchored on the far left with cleaner spacing, medium corner radius, and stronger navigation hierarchy.
+    - Discord sign-in now avoids forcing the consent prompt every time, which should reduce cross-PC/browser handoff failures when authorization starts in the Discord app.
+    - Denied and retry pages now match the same premium private-site styling instead of dropping back into the older split-sidebar message layout.
+  - Files touched:
+    - src/websiteApi.js
+    - auth/bootstrap.php
+    - admin/index.php
+    - script.js
+    - styles.css
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md

@@ -10773,5 +10773,12 @@ module.exports = {
   handleSameHotelConfirm,
   handleDbRemoveAll,
   handlePurgeConfirm,
-  handlePurgeDeny
+  handlePurgeDeny,
+  closeAllActiveSessionsForAgent,
+  applyLoggedOutRolesForMember,
+  normalizeTeamInput,
+  normalizeHotelInput,
+  getCombinedHotelLabel,
+  getOperationalHotelIdsForTeam,
+  syncGuildAgentRecordsFromRoles
 };
