@@ -312,6 +312,365 @@ function buildRecentMonthSummaries(agentId, now) {
   });
 }
 
+function buildRecentAdjustmentEntries(agentId, hotelNames) {
+  const rows = db.prepare(`
+    SELECT id, hotel_id, shift_date, login_time, logout_time, hours, mode, reason, created_at, effective_at
+    FROM hour_adjustments
+    WHERE agent_id = ?
+    ORDER BY COALESCE(effective_at, created_at) DESC, id DESC
+    LIMIT 12
+  `).all(agentId);
+
+  return rows.map(row => {
+    const normalizedHotelId = combineHotelId(row.hotel_id);
+    const hotelLabel = normalizedHotelId
+      ? (hotelNames.get(String(row.hotel_id))?.name || auth.getCombinedHotelLabel(normalizedHotelId))
+      : 'N/A';
+
+    return {
+      id: Number(row.id),
+      shiftDate: String(row.shift_date || ''),
+      loginTime: String(row.login_time || ''),
+      logoutTime: String(row.logout_time || ''),
+      hours: roundHours(row.hours),
+      mode: String(row.mode || 'shift').toLowerCase() === 'training' ? 'training' : 'shift',
+      reason: String(row.reason || ''),
+      hotelId: normalizedHotelId || '',
+      hotelLabel,
+      effectiveAt: String(row.effective_at || row.created_at || ''),
+      createdAt: String(row.created_at || '')
+    };
+  });
+}
+
+function buildHotelLaneSummaries(people) {
+  const lanes = new Map();
+
+  for (const person of people) {
+    const hotelId = String(person?.linkedHotelId || '').trim() || 'UNASSIGNED';
+    const hotelLabel = String(person?.linkedHotel || '').trim() || 'Unassigned';
+    const current = lanes.get(hotelId) || {
+      id: hotelId,
+      label: hotelLabel,
+      people: 0,
+      activeNow: 0,
+      todayHours: 0,
+      weeklyHours: 0,
+      monthlyHours: 0,
+      staff: []
+    };
+
+    current.people += 1;
+    current.activeNow += person?.activeNow ? 1 : 0;
+    current.todayHours += Number(person?.todayHours || 0);
+    current.weeklyHours += Number(person?.weeklyHours || 0);
+    current.monthlyHours += Number(person?.monthlyHours || 0);
+    current.staff.push({
+      discordId: String(person?.discordId || ''),
+      displayName: String(person?.displayName || person?.username || 'Unknown'),
+      roleSummary: String(person?.roleSummary || person?.role || 'Agent'),
+      activeNow: Boolean(person?.activeNow),
+      status: String(person?.agentStatus || 'standby'),
+      todayHours: roundHours(person?.todayHours || 0)
+    });
+    lanes.set(hotelId, current);
+  }
+
+  return [...lanes.values()]
+    .map(lane => ({
+      ...lane,
+      todayHours: roundHours(lane.todayHours),
+      weeklyHours: roundHours(lane.weeklyHours),
+      monthlyHours: roundHours(lane.monthlyHours),
+      staff: lane.staff.sort((left, right) => String(left.displayName).localeCompare(String(right.displayName)))
+    }))
+    .sort((left, right) => String(left.label).localeCompare(String(right.label)));
+}
+
+function buildHoursExceptionSummary(person) {
+  const issues = [];
+  if (!String(person?.team || '').trim() || String(person?.team || '').trim() === 'Unassigned') {
+    issues.push('Team missing');
+  }
+  if (!String(person?.linkedHotelId || '').trim()) {
+    issues.push('Hotel missing');
+  }
+  if (person?.activeNow && String(person?.agentStatus || '').toLowerCase() !== 'ready') {
+    issues.push('Live but not ready');
+  }
+  return issues;
+}
+
+function normalizeWebsiteHoursMode(mode) {
+  return String(mode || '').trim().toLowerCase() === 'training' ? 'training' : 'shift';
+}
+
+function normalizeWebsiteShiftDate(value) {
+  const text = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return '';
+  }
+
+  const date = new Date(`${text}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? '' : text;
+}
+
+function normalizeWebsiteClockTime(value) {
+  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return '';
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return '';
+  if (hours < 0 || hours > 23 || minutes < 0 || minutes > 59) return '';
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function buildWebsiteManualTiming(shiftDate, loginTime, logoutTime) {
+  const normalizedDate = normalizeWebsiteShiftDate(shiftDate);
+  const normalizedLogin = normalizeWebsiteClockTime(loginTime);
+  const normalizedLogout = normalizeWebsiteClockTime(logoutTime);
+  if (!normalizedDate || !normalizedLogin || !normalizedLogout) {
+    return null;
+  }
+
+  const [loginHour, loginMinute] = normalizedLogin.split(':').map(value => Number.parseInt(value, 10));
+  const [logoutHour, logoutMinute] = normalizedLogout.split(':').map(value => Number.parseInt(value, 10));
+  const loginTotalMinutes = (loginHour * 60) + loginMinute;
+  const logoutTotalMinutes = (logoutHour * 60) + logoutMinute;
+  const adjustedLogoutMinutes = logoutTotalMinutes <= loginTotalMinutes ? logoutTotalMinutes + (24 * 60) : logoutTotalMinutes;
+  const durationHours = (adjustedLogoutMinutes - loginTotalMinutes) / 60;
+
+  if (!Number.isFinite(durationHours) || durationHours <= 0) {
+    return null;
+  }
+
+  return {
+    shiftDate: normalizedDate,
+    loginTime: normalizedLogin,
+    logoutTime: normalizedLogout,
+    durationHours: roundHours(durationHours)
+  };
+}
+
+function resolveWebsiteManualHotel(agent, explicitHotelInput) {
+  const explicitHotelId = auth.normalizeHotelInput(String(explicitHotelInput || '').trim());
+  if (explicitHotelId) {
+    const hotel = db.prepare("SELECT id, name FROM hotels WHERE id = ? AND id != 'TEAM_SHIFT'").get(explicitHotelId);
+    if (hotel) {
+      return {
+        hotelId: String(hotel.id),
+        hotelLabel: String(hotel.name || auth.getCombinedHotelLabel(hotel.id))
+      };
+    }
+  }
+
+  const linkedHotelId = auth.normalizeHotelInput(String(agent?.hotel_id || '').trim());
+  if (linkedHotelId) {
+    const hotel = db.prepare("SELECT id, name FROM hotels WHERE id = ? AND id != 'TEAM_SHIFT'").get(linkedHotelId);
+    if (hotel) {
+      return {
+        hotelId: String(hotel.id),
+        hotelLabel: String(hotel.name || auth.getCombinedHotelLabel(hotel.id))
+      };
+    }
+  }
+
+  const latestSession = db.prepare(`
+    SELECT hotel_id
+    FROM sessions
+    WHERE agent_id = ?
+      AND hotel_id IS NOT NULL
+      AND TRIM(hotel_id) != ''
+      AND hotel_id != 'TEAM_SHIFT'
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(agent?.id);
+
+  const sessionHotelId = auth.normalizeHotelInput(String(latestSession?.hotel_id || '').trim());
+  if (sessionHotelId) {
+    const hotel = db.prepare("SELECT id, name FROM hotels WHERE id = ? AND id != 'TEAM_SHIFT'").get(sessionHotelId);
+    if (hotel) {
+      return {
+        hotelId: String(hotel.id),
+        hotelLabel: String(hotel.name || auth.getCombinedHotelLabel(hotel.id))
+      };
+    }
+  }
+
+  return {
+    hotelId: '',
+    hotelLabel: 'Unassigned'
+  };
+}
+
+function normalizeWebsiteNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : NaN;
+}
+
+function normalizeWebsiteDiscordIds(values) {
+  const list = Array.isArray(values) ? values : [values];
+  return [...new Set(
+    list
+      .map(value => String(value || '').trim())
+      .filter(Boolean)
+  )];
+}
+
+function getWebsiteAgentsByDiscordIds(discordIds) {
+  const normalizedIds = normalizeWebsiteDiscordIds(discordIds);
+  if (normalizedIds.length === 0) {
+    return [];
+  }
+
+  const placeholders = normalizedIds.map(() => '?').join(', ');
+  return db.prepare(`
+    SELECT id, discord_id, username, team, hotel_id
+    FROM agents
+    WHERE discord_id IN (${placeholders})
+    ORDER BY username COLLATE NOCASE ASC
+  `).all(...normalizedIds);
+}
+
+async function createWebsiteHoursAdjustment(client, guild, command, mode = 'add') {
+  const discordId = String(command?.payload?.discordId || '').trim();
+  if (!discordId) {
+    throw new Error('Manual hours update needs a target staff member.');
+  }
+
+  const agent = db.prepare('SELECT id, username, hotel_id FROM agents WHERE discord_id = ?').get(discordId);
+  if (!agent) {
+    throw new Error('The selected staff member does not exist in the live database.');
+  }
+
+  const actor = buildActionActor(command);
+  const adjustmentMode = normalizeWebsiteHoursMode(command?.payload?.mode || 'shift');
+  const reason = String(command?.payload?.reason || '').trim();
+  if (!reason) {
+    throw new Error('Manual hours updates need a reason.');
+  }
+
+  if (mode === 'remove') {
+    const shiftDate = normalizeWebsiteShiftDate(command?.payload?.shiftDate || '');
+    const hoursToRemove = Math.abs(normalizeWebsiteNumber(command?.payload?.hours));
+    if (!shiftDate) {
+      throw new Error('Manual hour removal needs a valid shift date.');
+    }
+    if (!Number.isFinite(hoursToRemove) || hoursToRemove <= 0) {
+      throw new Error('Manual hour removal needs a valid hour amount.');
+    }
+
+    const effectiveAt = `${shiftDate} 00:00:00`;
+    const signedHours = -Math.abs(hoursToRemove);
+    db.prepare(`
+      INSERT INTO hour_adjustments (
+        agent_id, hotel_id, shift_date, login_time, logout_time, hours, mode, reason, note, effective_at, created_by
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      agent.id,
+      null,
+      shiftDate,
+      null,
+      null,
+      signedHours,
+      adjustmentMode,
+      reason,
+      `Website manual removal (${adjustmentMode}) | Date: ${shiftDate} | Hours: -${formatHours(Math.abs(hoursToRemove))} | Reason: ${reason}`,
+      effectiveAt,
+      actor.discordId || 'website'
+    );
+
+    await auth.sendAuditLog(client, {
+      title: '🌐 Website Manual Hours Removed',
+      description:
+        `**User:** ${agent.username} (<@${discordId}>)\n` +
+        `**Mode:** ${adjustmentMode === 'training' ? 'Training' : 'Live Shift'}\n` +
+        `**Date:** ${shiftDate}\n` +
+        `**Hours:** -${formatHours(Math.abs(hoursToRemove))}\n` +
+        `**Reason:** ${reason}\n` +
+        '**Requested By:** {{AGENT_NAME}}',
+      color: 0xE67E22,
+      userId: actor.discordId,
+      guild
+    });
+
+    return {
+      message: `${agent.username} had ${formatHours(hoursToRemove)} removed for ${shiftDate}.`
+    };
+  }
+
+  const timing = buildWebsiteManualTiming(
+    command?.payload?.shiftDate || '',
+    command?.payload?.loginTime || '',
+    command?.payload?.logoutTime || ''
+  );
+  if (!timing) {
+    throw new Error('Manual hour additions need a valid date, login time, and logout time.');
+  }
+
+  const hotelInfo = adjustmentMode === 'shift'
+    ? resolveWebsiteManualHotel(agent, command?.payload?.hotelId || '')
+    : { hotelId: '', hotelLabel: 'Training mode' };
+
+  if (adjustmentMode === 'shift' && !hotelInfo.hotelId) {
+    throw new Error('Manual live-shift hours need a valid hotel or a linked hotel on the agent record.');
+  }
+
+  const requestedHours = normalizeWebsiteNumber(command?.payload?.hours);
+  const hours = Number.isFinite(requestedHours) && requestedHours > 0
+    ? roundHours(requestedHours)
+    : roundHours(timing.durationHours);
+
+  if (!Number.isFinite(hours) || hours <= 0) {
+    throw new Error('Manual hour additions need a valid positive hour amount.');
+  }
+
+  if (hours > timing.durationHours + 0.01) {
+    throw new Error(`Manual hours cannot exceed the login/logout span of ${formatHours(timing.durationHours)}.`);
+  }
+
+  const effectiveAt = `${timing.shiftDate} 00:00:00`;
+  db.prepare(`
+    INSERT INTO hour_adjustments (
+      agent_id, hotel_id, shift_date, login_time, logout_time, hours, mode, reason, note, effective_at, created_by
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    agent.id,
+    hotelInfo.hotelId || null,
+    timing.shiftDate,
+    timing.loginTime,
+    timing.logoutTime,
+    hours,
+    adjustmentMode,
+    reason,
+    `Website manual correction (${adjustmentMode}) | Hotel: ${hotelInfo.hotelLabel} | Date: ${timing.shiftDate} | Login: ${timing.loginTime} | Logout: ${timing.logoutTime} | Hours: ${formatHours(hours)} | Reason: ${reason}`,
+    effectiveAt,
+    actor.discordId || 'website'
+  );
+
+  await auth.sendAuditLog(client, {
+    title: '🌐 Website Manual Hours Added',
+    description:
+      `**User:** ${agent.username} (<@${discordId}>)\n` +
+      `**Mode:** ${adjustmentMode === 'training' ? 'Training' : 'Live Shift'}\n` +
+      `**Hotel:** ${hotelInfo.hotelLabel}\n` +
+      `**Date:** ${timing.shiftDate}\n` +
+      `**Login / Logout:** ${timing.loginTime} - ${timing.logoutTime}\n` +
+      `**Hours:** ${formatHours(hours)}\n` +
+      `**Reason:** ${reason}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0x3498DB,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: `${agent.username} received ${formatHours(hours)} for ${timing.shiftDate}.`
+  };
+}
+
 async function buildAdminHoursSnapshot(client) {
   const now = new Date();
   const nowMs = now.getTime();
@@ -365,11 +724,11 @@ async function buildAdminHoursSnapshot(client) {
       : null;
 
     const payPeriods = {
-      firstHalf: buildPayPeriodSegment(monthHistory, 1, 15, '1-15'),
-      secondHalf: buildPayPeriodSegment(monthHistory, 16, monthHistory.days.length, '16-end')
+      firstHalf: buildPayPeriodSegment(monthHistory, 1, 15, '1st - 15th'),
+      secondHalf: buildPayPeriodSegment(monthHistory, 16, monthHistory.days.length, '16th - end')
     };
 
-    people.push({
+    const person = {
       agentId: row.id,
       discordId: row.discord_id,
       username: row.username,
@@ -399,8 +758,12 @@ async function buildAdminHoursSnapshot(client) {
           trainingHours: roundHours(day.trainingHours)
         }))
       },
-      recentMonths: buildRecentMonthSummaries(row.id, now)
-    });
+      recentMonths: buildRecentMonthSummaries(row.id, now),
+      recentAdjustments: buildRecentAdjustmentEntries(row.id, hotelNames)
+    };
+
+    person.exceptions = buildHoursExceptionSummary(person);
+    people.push(person);
   }
 
   const teams = new Map();
@@ -453,6 +816,13 @@ async function buildAdminHoursSnapshot(client) {
   });
 
   const authRoster = buildAuthRoster(guild, people);
+  const hotelLanes = buildHotelLaneSummaries(people);
+  const roleOptions = [...new Set(
+    people
+      .flatMap(person => Array.isArray(person?.roleLabels) ? person.roleLabels : [person?.role])
+      .map(role => String(role || '').trim())
+      .filter(Boolean)
+  )].sort((left, right) => left.localeCompare(right));
 
   return {
     generatedAt: now.toISOString(),
@@ -468,9 +838,11 @@ async function buildAdminHoursSnapshot(client) {
     },
     meta: {
       hotels: buildHotelOptions(),
-      teams: buildTeamOptions(rows)
+      teams: buildTeamOptions(rows),
+      roles: roleOptions,
     },
     teams: teamSummaries,
+    hotelLanes,
     people,
     authRoster
   };
@@ -729,6 +1101,93 @@ async function applyHotelAssignmentCommand(client, guild, command) {
   };
 }
 
+async function applyBulkTeamAssignmentCommand(client, guild, command) {
+  const discordIds = normalizeWebsiteDiscordIds(command?.payload?.discordIds || []);
+  const nextTeam = auth.normalizeTeamInput(command?.payload?.team || '');
+  if (discordIds.length === 0 || !nextTeam) {
+    throw new Error('Bulk team reassignment needs at least one staff member and a target team.');
+  }
+
+  const agents = getWebsiteAgentsByDiscordIds(discordIds);
+  if (agents.length === 0) {
+    throw new Error('No selected staff members were found in the live database.');
+  }
+
+  for (const agent of agents) {
+    db.prepare('UPDATE agents SET team = ? WHERE discord_id = ?').run(nextTeam, agent.discord_id);
+    const member = await fetchGuildMember(guild, agent.discord_id);
+    if (member) {
+      await syncMemberTeamRoles(member, nextTeam);
+    }
+  }
+
+  const actor = buildActionActor(command);
+  await auth.sendAuditLog(client, {
+    title: '🌐 Website Bulk Team Reassignment',
+    description:
+      `**Team:** ${nextTeam}\n` +
+      `**Staff Count:** ${agents.length}\n` +
+      `**People:** ${agents.map(agent => `${agent.username} (<@${agent.discord_id}>)`).join(', ')}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0x57F287,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: `${agents.length} staff member(s) moved to ${nextTeam}.`
+  };
+}
+
+async function applyBulkHotelAssignmentCommand(client, guild, command) {
+  const discordIds = normalizeWebsiteDiscordIds(command?.payload?.discordIds || []);
+  const requestedHotelId = auth.normalizeHotelInput(String(command?.payload?.hotelId || '').trim());
+  if (discordIds.length === 0 || !requestedHotelId) {
+    throw new Error('Bulk hotel reassignment needs at least one staff member and a target hotel.');
+  }
+
+  const hotelTeamRow = db.prepare("SELECT id, name, team FROM hotels WHERE id = ? AND id != 'TEAM_SHIFT'").get(requestedHotelId);
+  if (!hotelTeamRow) {
+    throw new Error('The selected hotel does not exist in the live database.');
+  }
+
+  const agents = getWebsiteAgentsByDiscordIds(discordIds);
+  if (agents.length === 0) {
+    throw new Error('No selected staff members were found in the live database.');
+  }
+
+  for (const agent of agents) {
+    const nextTeam = auth.normalizeTeamInput(hotelTeamRow.team || '') || auth.normalizeTeamInput(agent.team || '') || null;
+    db.prepare('UPDATE agents SET hotel_id = ?, hotel_compatibility = ?, team = COALESCE(?, team) WHERE discord_id = ?')
+      .run(requestedHotelId, JSON.stringify([combineHotelId(requestedHotelId)]), nextTeam, agent.discord_id);
+
+    const member = await fetchGuildMember(guild, agent.discord_id);
+    if (member) {
+      if (nextTeam) {
+        await syncMemberTeamRoles(member, nextTeam);
+      }
+      await profilePanel.syncHotelDiscordRoles(member, [combineHotelId(requestedHotelId)]);
+    }
+  }
+
+  const actor = buildActionActor(command);
+  await auth.sendAuditLog(client, {
+    title: '🌐 Website Bulk Hotel Reassignment',
+    description:
+      `**Hotel:** ${hotelTeamRow.name || auth.getCombinedHotelLabel(requestedHotelId)}\n` +
+      `**Staff Count:** ${agents.length}\n` +
+      `**People:** ${agents.map(agent => `${agent.username} (<@${agent.discord_id}>)`).join(', ')}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0x3498DB,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: `${agents.length} staff member(s) linked to ${hotelTeamRow.name || auth.getCombinedHotelLabel(requestedHotelId)}.`
+  };
+}
+
 async function forceLogoutAgentByRecord(client, guild, agentRecord) {
   const sessionRefs = await auth.closeAllActiveSessionsForAgent(agentRecord.id, client);
   const member = await fetchGuildMember(guild, agentRecord.discord_id);
@@ -810,6 +1269,40 @@ async function applyForceLogoutHotelCommand(client, guild, command) {
   };
 }
 
+async function applyBulkForceLogoutAgentsCommand(client, guild, command) {
+  const discordIds = normalizeWebsiteDiscordIds(command?.payload?.discordIds || []);
+  if (discordIds.length === 0) {
+    throw new Error('Bulk force logout needs at least one selected staff member.');
+  }
+
+  const agents = getWebsiteAgentsByDiscordIds(discordIds);
+  if (agents.length === 0) {
+    throw new Error('No selected staff members were found in the live database.');
+  }
+
+  let closedCount = 0;
+  for (const agent of agents) {
+    closedCount += await forceLogoutAgentByRecord(client, guild, agent);
+  }
+
+  const actor = buildActionActor(command);
+  await auth.sendAuditLog(client, {
+    title: '🌐 Website Bulk Force Logout',
+    description:
+      `**Staff Count:** ${agents.length}\n` +
+      `**Closed Sessions:** ${closedCount}\n` +
+      `**People:** ${agents.map(agent => `${agent.username} (<@${agent.discord_id}>)`).join(', ')}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0xED4245,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: `${closedCount} active session(s) closed across ${agents.length} selected staff member(s).`
+  };
+}
+
 async function applySyncAllRolesCommand(client, guild, command) {
   await auth.syncGuildAgentRecordsFromRoles(guild, 'WEBSITE TOOL');
   const actor = buildActionActor(command);
@@ -841,10 +1334,20 @@ async function applyWebsiteCommand(client, guild, command) {
       return applyTeamAssignmentCommand(client, guild, command);
     case 'update_hotel':
       return applyHotelAssignmentCommand(client, guild, command);
+    case 'bulk_update_team':
+      return applyBulkTeamAssignmentCommand(client, guild, command);
+    case 'bulk_update_hotel':
+      return applyBulkHotelAssignmentCommand(client, guild, command);
     case 'force_logout_agent':
       return applyForceLogoutAgentCommand(client, guild, command);
     case 'force_logout_hotel':
       return applyForceLogoutHotelCommand(client, guild, command);
+    case 'bulk_force_logout_agents':
+      return applyBulkForceLogoutAgentsCommand(client, guild, command);
+    case 'add_manual_hours':
+      return createWebsiteHoursAdjustment(client, guild, command, 'add');
+    case 'remove_manual_hours':
+      return createWebsiteHoursAdjustment(client, guild, command, 'remove');
     case 'sync_all_roles':
       return applySyncAllRolesCommand(client, guild, command);
     case 'push_snapshot':

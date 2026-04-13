@@ -1479,3 +1479,6 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 
 - **SME Leadership Routing**: Updated the bot-to-website roster sync so SME staff are routed into /admin the same way leadership roles already are, keeping the website access lanes aligned with the real Discord/Aavgo role model.
 
+
+
+- **Leadership Full-Hours Control Room**: Expanded the leadership board with a clearer full-hours tab, bulk hotel/team actions, bulk force logout, spreadsheet-style monthly hours rows, manual hour add/remove tools, hotel lane cards, and cleaner filter controls so leadership can manage real staff data from one calmer control surface.
