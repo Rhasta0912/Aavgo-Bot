@@ -1356,3 +1356,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - styles.css
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Tightened the private website dashboard layout and clarified how to reconnect live hours.
+  - Summary: The admin and user dashboards now pin the left rail flush to the left side on desktop, and the admin hours board now shows a clear reconnect checklist when the live bridge is missing.
+  - Why: The sidebar was landing too far inside the page, and the old bridge warning did not clearly say which bot env values and website config values had to match.
+  - Behavior impact:
+    - The private dashboard rail now hugs the left edge on desktop instead of floating in the middle-left.
+    - Mobile and tablet layouts still fall back to the stacked card layout.
+    - The admin board now tells you to configure AAVGO_WEBSITE_API_TOKEN on the bot host and website_api_url plus website_api_token in /home/aavgodes/discord-auth-config.php.
+  - Files touched:
+    - admin/index.php
+    - styles.css
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
