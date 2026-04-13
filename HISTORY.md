@@ -1460,3 +1460,6 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 
 - **Discord Login Debug Surface**: The website login failure screen now shows a safe debug trace with the failing auth stage, Discord status/message, request host, and callback URL, plus a direct OAuth retry button. This makes other-PC sign-in failures diagnosable from a screenshot instead of a generic error card.
 
+
+- **Discord Handoff Cache Recovery**: Added a short-lived website auth handoff cache so if Discord's app or a hidden window burns the OAuth code before the visible browser finishes, the second callback can still recover the approved session instead of failing with a token-exchange error on other PCs.
+
