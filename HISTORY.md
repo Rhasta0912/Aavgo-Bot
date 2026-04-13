@@ -1463,3 +1463,6 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 
 - **Discord Handoff Cache Recovery**: Added a short-lived website auth handoff cache so if Discord's app or a hidden window burns the OAuth code before the visible browser finishes, the second callback can still recover the approved session instead of failing with a token-exchange error on other PCs.
 
+
+- **Browser-Handoff Discord Login Flow**: Reworked Discord sign-in so the original Aavgo tab stays open, launches Discord in a separate window, polls the website for approval, and then claims the approved session back into the original browser. This is meant to survive the cross-PC app/browser handoff where Discord was consuming the OAuth code before the visible browser could finish login.
+
