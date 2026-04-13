@@ -1431,3 +1431,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - styles.css
     - HISTORY.md
     - C:\Users\chugc\Desktop\Aavgo Bot\History.md
+- Hardened the Discord front door fallback and calmed the private workspace rail so fresh-device sign-ins and daily navigation both feel smoother.
+  - Summary: The website can now recover from Discord member-lookup failures by falling back to the trusted pushed staff snapshot when the user is already known to Aavgo, the retry/error surface keeps the same premium private style, the sidebar lost the extra far-left accent strip, and the workspace glow/background treatment is calmer while the profile accent line stays in place.
+  - Why: Staff on other PCs were still hitting "Discord login failed" even after authorization, and the left rail still felt louder and more vibrant than the rest of the interface.
+  - Behavior impact:
+    - Approved staff already present in the pushed hours snapshot can still complete sign-in even if Discord's role/member lookup flakes during the callback.
+    - The callback no longer forces the same blunt failure path before trying the safer internal snapshot fallback.
+    - The admin and user rails keep their strong profile accent but drop the extra edge strip and reduce the overall visual intensity.
+  - Files touched:
+    - auth/bootstrap.php
+    - auth/discord/callback/index.php
+    - styles.css
+    - HISTORY.md
+    - C:\Users\chugc\Desktop\Aavgo Bot\History.md
