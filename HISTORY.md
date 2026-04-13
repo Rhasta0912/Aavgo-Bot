@@ -1454,3 +1454,6 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - **Roster-First Discord Login**: Changed website login so once Discord identity and guild membership are confirmed, known Aavgo staff are admitted from the bot-pushed auth roster before the live member-role endpoint is consulted. This removes a major failure point for other-PC sign-ins.
 
 - **Discord Login Simplification**: Removed the live Discord member-role lookup from the website front door. Login now only requires Discord identity plus guild membership, then routes access from the bot-pushed private auth roster. This strips out the flaky extra Discord step that was still breaking some other-PC sign-ins.
+
+- **Exact Callback-Bound Discord Login**: Changed the website OAuth flow so each login now signs and remembers the exact callback URL used when the user starts sign-in. The callback then exchanges the Discord code against that same callback URL instead of guessing across apex/www variants, which should stop single-use OAuth codes from failing on other PCs during the app/browser handoff.
+
