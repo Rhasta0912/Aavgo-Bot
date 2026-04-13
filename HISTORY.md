@@ -1448,3 +1448,5 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - **Discord Login Fallback Expansion**: Broadened website login recovery so if Discord identity succeeds but the live guild-member lookup glitches, the site can now trust the bot-pushed auth roster instead of only hours rows. Added quiet auth failure logging for safer debugging without exposing anything to users.
 
 - **Discord Host-Aware Callback Retry**: Hardened the website OAuth handoff so login now prefers the exact host the user started from and safely retries Discord token exchange against the registered apex/www callback URLs. This is aimed at the app-to-browser sign-in failures that only happened on some PCs.
+
+- **Discord Guild-List Fallback**: Added a simpler membership verification lane using the user's Discord guild list, so the website no longer treats the live guild-member role endpoint as the only path during login handoff. This should help the app/browser authorization issue on other PCs.
