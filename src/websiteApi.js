@@ -266,7 +266,7 @@ function buildAuthRoster(guild, people) {
 }
 
 function toRouteLabel(roleLabel) {
-  if (['Developer', 'Operations Manager', 'Team Leader'].includes(roleLabel)) {
+  if (['Developer', 'Operations Manager', 'Team Leader', 'SME'].includes(roleLabel)) {
     return '/admin';
   }
   return '/user';

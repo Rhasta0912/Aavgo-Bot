@@ -1472,3 +1472,10 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 
 - **Live Handoff Failure Reporting**: The Discord bridge page now receives and displays callback failures from the website itself, so if the popup/app side burns the OAuth flow, the original tab stops hanging on 'Waiting for approval' and shows the failing stage and Discord error directly.
 
+
+- **Leadership Command Center Alerts**: Added a real website-wide leadership announcement system so SME, Team Leaders, Operations Managers, and Developers can publish one active alert from /admin, show it across signed-in pages, and trigger the built-in website beep when a new alert goes live.
+
+- **Admin Control Room Expansion**: The leadership board now includes a command-center panel for broadcasts while keeping live reassignment, forced logout, hotel-wide logout, developer tools, and the audit trail together in one cleaner control surface.
+
+- **SME Leadership Routing**: Updated the bot-to-website roster sync so SME staff are routed into /admin the same way leadership roles already are, keeping the website access lanes aligned with the real Discord/Aavgo role model.
+
