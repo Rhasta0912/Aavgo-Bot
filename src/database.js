@@ -218,6 +218,8 @@ db.exec(`
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'Quality Russelville', 'Team 3')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
+  INSERT INTO hotels (id, name, team) VALUES ('THOK', 'Thousand Oaks', 'Team 3')
+    ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('TEAM_SHIFT', 'Team Operations', 'Global')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
 
@@ -237,6 +239,7 @@ db.exec(`
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('ANPI');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('ECON');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('BUEN');
+  INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('THOK');
   INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('TEAM_SHIFT');
 
   -- Seed team_status
@@ -367,6 +370,7 @@ db.pragma('foreign_keys = ON');
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('ECON', 'Econolodge', 'Team 3') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('BUEN', 'Buenavista', 'Team 3') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('QI_RV', 'Quality Russelville', 'Team 3') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
+      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('THOK', 'Thousand Oaks', 'Team 3') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
       db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('QI_RV')").run();
       db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('GLDL')").run();
       db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('INFL')").run();
@@ -375,6 +379,7 @@ db.pragma('foreign_keys = ON');
       db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('ANPI')").run();
       db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('ECON')").run();
       db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('BUEN')").run();
+      db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('THOK')").run();
     })();
     db.transaction(() => {
       const retiredHotelIds = [];

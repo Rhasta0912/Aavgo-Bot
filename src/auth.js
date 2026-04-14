@@ -270,7 +270,8 @@ const ROLE_NAMES = {
     'ANPI': '1491280889026449589',
     'ECON': '1491280957859434576',
     'BUEN': '1491281133323681792',
-    'QI_RV': '1491281264647344268'
+    'QI_RV': '1491281264647344268',
+    'THOK': '1493532824362418186'
   },
   // Grey (Permanent / Assignment) Roles
   GREY: {
@@ -289,7 +290,8 @@ const ROLE_NAMES = {
     'ANPI': '1491280889026449589',
     'ECON': '1491280957859434576',
     'BUEN': '1491281133323681792',
-    'QI_RV': '1491281264647344268'
+    'QI_RV': '1491281264647344268',
+    'THOK': '1493532824362418186'
   }
 };
 
@@ -310,7 +312,8 @@ const HOTEL_NAMES = {
   'ANPI': 'Anchor Beach / Pacific Inn',
   'ECON': 'Econolodge',
   'BUEN': 'Buenavista',
-  'QI_RV': 'Quality Russelville'
+  'QI_RV': 'Quality Russelville',
+  'THOK': 'Thousand Oaks'
 };
 const HOTEL_SELECT_EMOJIS = {
   BW_TO: '🏙️',
@@ -401,7 +404,7 @@ const EXCLUSIVE_RANK_ROLE_PRIORITY = [
 
 const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
 const TEAM_2_HOTELS = ['PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI'];
-const TEAM_3_HOTELS = ['ECON', 'BUEN', 'QI_RV'];
+const TEAM_3_HOTELS = ['ECON', 'BUEN', 'QI_RV', 'THOK'];
 const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3'];
 const TRAINING_HOTEL_GROUPS = [
   { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
@@ -418,7 +421,8 @@ const TRAINING_HOTEL_GROUPS = [
   { label: 'Anchor Beach / Pacific Inn', hotelIds: ['ANPI'] },
   { label: 'Econolodge', hotelIds: ['ECON'] },
   { label: 'Buenavista', hotelIds: ['BUEN'] },
-  { label: 'Quality Russelville', hotelIds: ['QI_RV'] }
+  { label: 'Quality Russelville', hotelIds: ['QI_RV'] },
+  { label: 'Thousand Oaks', hotelIds: ['THOK'] }
 ];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -1389,8 +1393,9 @@ function normalizeHotelInput(input) {
   const cleaned = (input || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
   const aliases = {
     BWTO: 'BW_TO',
-    THOUSANDOAKS: 'BW_TO',
-    BWPLUSTHOUSANDOAKSCA: 'BW_TO',
+    THOUSANDOAKS: 'THOK',
+    THOUSANDOAKSCA: 'THOK',
+    BWPLUSTHOUSANDOAKSCA: 'THOK',
     INDIANHEAD: 'BW_TO',
     INDIANHEADIRONWOOD: 'BW_TO',
     BRNT: 'BRNT',
@@ -1440,6 +1445,7 @@ function normalizeHotelInput(input) {
     ECONOLODGE: 'ECON',
     BUEN: 'BUEN',
     BUENAVISTA: 'BUEN',
+    THOK: 'THOK',
     QUALITYRUSSELVILLE: 'QI_RV',
     QUALITYRUSSELLVILLE: 'QI_RV'
   };
@@ -1779,7 +1785,7 @@ async function showShiftInitModal(interaction, agent) {
     .setLabel('Hotel Assignment')
     .setStyle(TextInputStyle.Short)
     .setRequired(true)
-    .setPlaceholder('Type hotel name (e.g., Indianhead, Prospero, Econolodge, Quality Russelville)');
+    .setPlaceholder('Type hotel name (e.g., Indianhead, Prospero, Econolodge, Thousand Oaks)');
 
   const pinInput = new TextInputBuilder()
     .setCustomId('shift_pin')
@@ -2386,7 +2392,7 @@ function handleMissingHotelStatusChannel(client, {
 function getHotelStatusGroupsForTeam(teamName) {
   const teamHotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT' AND team = ?").all(teamName);
   const normalizedIds = [...new Set(teamHotels.map(row => normalizeCombinedHotelId(row.id)).filter(Boolean))];
-  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI', 'ECON', 'BUEN', 'QI_RV'];
+  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI', 'ECON', 'BUEN', 'QI_RV', 'THOK'];
 
   const groups = normalizedIds
     .map(hotelId => getHotelStatusGroup(hotelId))
@@ -2647,7 +2653,7 @@ function buildAgentKioskPayload() {
       '### 🏨 Service Locations\n' +
       '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`\n' +
       '**Team 2:** `Prospero Flagship`, `Glendale / The Leef Hotel`, `Inn at the Fingerlakes`, `Value Suites`, `Bayside / Townhouse`, `Anchor Beach / Pacific Inn`\n' +
-      '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`'
+      '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`, `Thousand Oaks`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -2734,7 +2740,7 @@ async function handleSetupLogin(interaction) {
         '### 🏨 Service Locations\n' +
         '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`\n' +
         '**Team 2:** `Prospero Flagship`, `Glendale / The Leef Hotel`, `Inn at the Fingerlakes`, `Value Suites`, `Bayside / Townhouse`, `Anchor Beach / Pacific Inn`\n' +
-        '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`'
+        '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`, `Thousand Oaks`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })

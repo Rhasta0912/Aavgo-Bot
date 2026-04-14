@@ -16,7 +16,8 @@ const HOTEL_CHOICES = [
   { name: 'Anchor Beach / Pacific Inn', value: 'ANPI' },
   { name: 'Econolodge', value: 'ECON' },
   { name: 'Buenavista', value: 'BUEN' },
-  { name: 'Quality Russelville', value: 'QI_RV' }
+  { name: 'Quality Russelville', value: 'QI_RV' },
+  { name: 'Thousand Oaks', value: 'THOK' }
 ];
 
 const commandData = [
