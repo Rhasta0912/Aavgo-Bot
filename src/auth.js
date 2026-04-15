@@ -4575,12 +4575,14 @@ async function handleStartShiftClick(interaction) {
 
     // TL/SME manual TL button click (Management Portal)
     if (isTLButton) {
-       if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
-          return sendPrivateFlowPayload(interaction, {
-            content: '⚠️ **Team Assignment Missing.** Please contact a developer to assign your team (Team 1, Team 2, or Team 3) before logging into management.',
-          });
-       }
-       return await showPinModal(interaction, 'TEAM_SHIFT', false, allowMultiHotel);
+       const assignedTeam =
+         normalizeTeamInput(resolveTeamFromMemberRoles(interaction.member)) ||
+         normalizeTeamInput(agent.team) ||
+         null;
+       const managementTarget = assignedTeam
+         ? `TEAM_SHIFT_team_${assignedTeam.replace(' ', '_')}`
+         : 'TEAM_SHIFT';
+       return await showPinModal(interaction, managementTarget, false, allowMultiHotel);
     }
 
     if (await guardShiftPinFirst(interaction, agent, 'shift')) {
@@ -5425,27 +5427,17 @@ async function handleManagementLiveStart(interaction) {
       return;
     }
 
-    if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
-      return sendPrivateFlowPayload(interaction, {
-        embeds: [buildAgentTeamRequiredEmbed()],
-        components: []
-      });
-    }
-
     const assignedTeam =
       normalizeTeamInput(resolveTeamFromMemberRoles(interaction.member)) ||
-      normalizeTeamInput(agent.team);
-
-    if (!assignedTeam) {
-      return sendPrivateFlowPayload(interaction, {
-        embeds: [buildAgentTeamRequiredEmbed()],
-        components: []
-      });
-    }
+      normalizeTeamInput(agent.team) ||
+      null;
+    const managementTarget = assignedTeam
+      ? `TEAM_SHIFT_team_${assignedTeam.replace(' ', '_')}`
+      : 'TEAM_SHIFT';
 
     return await showPinModal(
       interaction,
-      'TEAM_SHIFT_team_' + assignedTeam.replace(' ', '_'),
+      managementTarget,
       false,
       false,
       'shift'
@@ -5470,13 +5462,6 @@ async function handleManagementTeamStart(interaction, teamName) {
       return sendPrivateFlowPayload(interaction, {
         content: 'Access denied. Team Leader or SME role required.',
         embeds: [],
-        components: []
-      });
-    }
-
-    if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
-      return sendPrivateFlowPayload(interaction, {
-        embeds: [buildAgentTeamRequiredEmbed()],
         components: []
       });
     }

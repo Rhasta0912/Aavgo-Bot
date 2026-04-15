@@ -15,6 +15,7 @@ const AAVGO_GUILD_ID = '1482220918355922974';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
 const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
 const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
+const ATTENDANCE_REMINDER_BUTTON_PREFIX = 'attendance_reminder';
 const DEFAULT_TEMP_MESSAGE_TTL_MS = 10 * 60 * 1000;
 const SHORT_TEMP_MESSAGE_TTL_MS = 60 * 1000;
 const pendingAttendanceLoginReminders = new Map();
@@ -31,6 +32,7 @@ function scheduleAttendanceLoginReminder(message) {
   const userId = message?.author?.id;
   if (!userId) return;
 
+  const reminderToken = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const existing = pendingAttendanceLoginReminders.get(userId);
   if (existing?.timer) {
     clearTimeout(existing.timer);
@@ -63,7 +65,75 @@ function scheduleAttendanceLoginReminder(message) {
   }, ATTENDANCE_LOGIN_REMINDER_DELAY_MS);
 
   timer.unref?.();
-  pendingAttendanceLoginReminders.set(userId, { timer, messageId: message.id, createdAt: Date.now() });
+  pendingAttendanceLoginReminders.set(userId, { timer, messageId: message.id, createdAt: Date.now(), reminderToken });
+
+  const preferenceEmbed = new EmbedBuilder()
+    .setTitle('Attendance Reminder Preference')
+    .setDescription(
+      'You posted `log in` in the attendance channel.\n' +
+      'Do you want to keep a reminder DM for 30 minutes later?\n\n' +
+      'If you ignore this, the reminder will still be sent.'
+    )
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Aavgo Operations • Attendance Reminder' })
+    .setTimestamp();
+
+  const yesButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_REMINDER_BUTTON_PREFIX}:yes:${reminderToken}`)
+    .setLabel('Yes, Remind Me')
+    .setStyle(ButtonStyle.Success);
+
+  const noButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_REMINDER_BUTTON_PREFIX}:no:${reminderToken}`)
+    .setLabel("Don't Remind Me")
+    .setStyle(ButtonStyle.Secondary);
+
+  const row = new ActionRowBuilder().addComponents(yesButton, noButton);
+  message.author.send({ embeds: [preferenceEmbed], components: [row] }).catch(error => {
+    console.warn(`[ATTENDANCE] Failed to send reminder preference DM to ${userId}:`, error.message);
+  });
+}
+
+async function handleAttendanceReminderButton(interaction) {
+  const parts = String(interaction.customId || '').split(':');
+  if (parts.length < 3) {
+    return interaction.reply({ content: '❌ Invalid reminder action.', ephemeral: true }).catch(() => {});
+  }
+
+  const action = parts[1];
+  const reminderToken = parts[2];
+  const userId = interaction.user.id;
+  const pending = pendingAttendanceLoginReminders.get(userId) || null;
+
+  if (action === 'no') {
+    if (pending?.timer) {
+      clearTimeout(pending.timer);
+    }
+    pendingAttendanceLoginReminders.delete(userId);
+  }
+
+  const yesButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_REMINDER_BUTTON_PREFIX}:yes:${reminderToken}`)
+    .setLabel('Yes, Remind Me')
+    .setStyle(action === 'yes' ? ButtonStyle.Success : ButtonStyle.Secondary)
+    .setDisabled(true);
+  const noButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_REMINDER_BUTTON_PREFIX}:no:${reminderToken}`)
+    .setLabel("Don't Remind Me")
+    .setStyle(action === 'no' ? ButtonStyle.Danger : ButtonStyle.Secondary)
+    .setDisabled(true);
+
+  await interaction.update({
+    components: [new ActionRowBuilder().addComponents(yesButton, noButton)]
+  }).catch(() => {});
+
+  const statusText = action === 'no'
+    ? '✅ Reminder canceled. You will not get the 30-minute login reminder from this attendance check-in.'
+    : (pending
+      ? '✅ Reminder kept. You will receive the 30-minute login reminder.'
+      : 'ℹ️ No active reminder timer was found, but your preference was noted.');
+
+  await interaction.followUp({ content: statusText }).catch(() => {});
 }
 
 function isLoginSystemInteraction(interaction) {
@@ -723,7 +793,9 @@ client.on('interactionCreate', async interaction => {
       await devTodo.handleModalSubmit(interaction);
     }
   } else if (interaction.isButton()) {
-    if (interaction.customId.startsWith('devtodo_')) {
+    if (interaction.customId.startsWith(`${ATTENDANCE_REMINDER_BUTTON_PREFIX}:`)) {
+      await handleAttendanceReminderButton(interaction);
+    } else if (interaction.customId.startsWith('devtodo_')) {
       await devTodo.handleButton(interaction);
     } else if (interaction.customId.startsWith('profiles_')) {
       await profilePanel.handleButton(interaction);
