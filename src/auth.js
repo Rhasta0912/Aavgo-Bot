@@ -861,15 +861,8 @@ async function sendAuditLog(
     } else if (forceTrainingLog) {
       targetChannelId = TRAINING_LOG_CHANNEL_ID;
     } else if (hotelId === 'TEAM_SHIFT') {
+      // Management logins/logouts must stay in TL logs only (no team status/ops channel rerouting).
       targetChannelId = TL_PORTAL_CHANNEL_ID;
-      if (userId) {
-        const team = db.prepare("SELECT team FROM agents WHERE discord_id = ?").get(userId)?.team;
-        if (team === 'Team 2') {
-          targetChannelId = TEAM_2_OPERATIONS_CHANNEL_ID;
-        } else if (team === 'Team 3') {
-          targetChannelId = TEAM_3_OPERATIONS_CHANNEL_ID;
-        }
-      }
     } else if (forceManagerLog) {
       targetChannelId = AUDIT_LOG_CHANNEL_ID; // Ensure manager audit
     } else if (teamLogRouting && userId) {
