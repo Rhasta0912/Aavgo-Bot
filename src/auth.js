@@ -1894,6 +1894,10 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   let noteAlert = '';
   const isTrainingSession = sessionMode === 'training';
+  let effectiveLoginTeam =
+    normalizeTeamInput(agent?.team) ||
+    normalizeTeamInput(resolveTeamFromMemberRoles(interaction.member)) ||
+    null;
 
   try {
     const member = interaction.member;
@@ -1903,7 +1907,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const trainingSessionRole = guild.roles.cache.get(TRAINING_SESSION_ROLE_ID);
     const loginTeamFromAgent = normalizeTeamInput(agent?.team);
     const loginTeamFromRoles = normalizeTeamInput(resolveTeamFromMemberRoles(member));
-    const effectiveLoginTeam = loginTeamFromAgent || loginTeamFromRoles || null;
+    effectiveLoginTeam = loginTeamFromAgent || loginTeamFromRoles || effectiveLoginTeam;
     const team2PermissionRole = guild.roles.cache.get(TEAM_2_PERMISSION_ROLE_ID);
     const team2GhostRole = guild.roles.cache.get(TEAM_2_GHOST_ROLE_ID);
     const team3PermissionRole = guild.roles.cache.get(TEAM_3_PERMISSION_ROLE_ID);
