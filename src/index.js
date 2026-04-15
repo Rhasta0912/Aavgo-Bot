@@ -14,7 +14,7 @@ const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 const AAVGO_GUILD_ID = '1482220918355922974';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
 const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
-const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
+const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 25 * 60 * 1000;
 const DEFAULT_TEMP_MESSAGE_TTL_MS = 10 * 60 * 1000;
 const SHORT_TEMP_MESSAGE_TTL_MS = 60 * 1000;
 const pendingAttendanceLoginReminders = new Map();
@@ -43,7 +43,7 @@ function scheduleAttendanceLoginReminder(message) {
       const reminderEmbed = new EmbedBuilder()
         .setTitle('⏰ Login Reminder')
         .setDescription(
-          'It has been 30 minutes since your attendance message.\n' +
+          'It has been 25 minutes since your attendance message.\n' +
           `Please go to <#${LOGIN_CHANNEL_ID}> and initialize your shift.`
         )
         .setColor(0xFEE75C)
