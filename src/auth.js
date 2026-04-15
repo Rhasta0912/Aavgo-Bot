@@ -4883,7 +4883,7 @@ async function handleShiftCallJoin(interaction) {
       });
     }
 
-    const member = interaction.member || await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
     if (!member || !member.voice) {
       return sendComponentReply(interaction, {
         content: '❌ Could not access your voice state.',
@@ -4891,7 +4891,38 @@ async function handleShiftCallJoin(interaction) {
       });
     }
 
-    await member.voice.setChannel(channel, 'Active shift call join');
+    let moveError = null;
+    try {
+      await member.voice.setChannel(channel, 'Active shift call join');
+    } catch (error) {
+      moveError = error;
+      try {
+        await interaction.guild.members.edit(member.id, { channel: channel.id }, { reason: 'Active shift call join' });
+        moveError = null;
+      } catch (fallbackError) {
+        moveError = fallbackError;
+      }
+    }
+
+    if (moveError) {
+      const errorText = String(moveError?.message || '').toLowerCase();
+      const jumpLink = `https://discord.com/channels/${interaction.guild.id}/${channel.id}`;
+      if (errorText.includes('not connected')) {
+        return sendComponentReply(interaction, {
+          content: `⚠️ Discord only allows bot-move if you are already in voice.\nJoin <#${channel.id}> directly: ${jumpLink}`,
+          ephemeral: true
+        });
+      }
+      if (errorText.includes('missing permissions') || errorText.includes('missing access')) {
+        return sendComponentReply(interaction, {
+          content: `❌ I don't have permission to move members into <#${channel.id}>.`,
+          ephemeral: true
+        });
+      }
+
+      throw moveError;
+    }
+
     return sendComponentReply(interaction, {
       content: `✅ You were moved to **${channel.name}**.`,
       ephemeral: true
@@ -10389,62 +10420,51 @@ async function broadcastUpdateLog(client) {
     const lastPosted = db.prepare("SELECT value FROM config WHERE key = ?").get('update_log_last_commit')?.value || null;
     if (lastPosted === currentCommitFull) return;
 
-    let commitSubjects = [];
+    let commitEntries = [];
     try {
       if (lastPosted) {
-        const raw = execSync(`git log --pretty=format:%s ${lastPosted}..HEAD`, { encoding: 'utf8' }).trim();
-        commitSubjects = raw ? raw.split('\n').filter(Boolean) : [];
+        const raw = execSync(`git log --pretty=format:%h|%s ${lastPosted}..HEAD`, { encoding: 'utf8' }).trim();
+        commitEntries = raw ? raw.split('\n').filter(Boolean) : [];
       } else {
-        const raw = execSync('git log -1 --pretty=format:%s', { encoding: 'utf8' }).trim();
-        commitSubjects = raw ? [raw] : [];
+        const raw = execSync('git log -1 --pretty=format:%h|%s', { encoding: 'utf8' }).trim();
+        commitEntries = raw ? [raw] : [];
       }
     } catch (rangeErr) {
       console.warn('[UPDATE-LOG] Commit range lookup failed:', rangeErr.message);
-      const fallback = execSync('git log -1 --pretty=format:%s', { encoding: 'utf8' }).trim();
-      commitSubjects = fallback ? [fallback] : [];
+      const fallback = execSync('git log -1 --pretty=format:%h|%s', { encoding: 'utf8' }).trim();
+      commitEntries = fallback ? [fallback] : [];
     }
 
-    const historyEntry = readLatestHistoryEntryForUpdateLog();
-    const detailed = buildDetailedHistoryUpdateData(historyEntry);
+    const parsedCommits = commitEntries.map(entry => {
+      const separatorIndex = entry.indexOf('|');
+      if (separatorIndex === -1) {
+        return { shortHash: currentCommitShort, subject: entry };
+      }
+      return {
+        shortHash: entry.slice(0, separatorIndex).trim(),
+        subject: entry.slice(separatorIndex + 1).trim()
+      };
+    });
 
-    let embed;
-    if (detailed) {
-      const fields = [
-        { name: 'Features / Functions', value: toUpdateLogField(detailed.features, detailed.summary) },
-        { name: 'Commands', value: toUpdateLogField(detailed.commands, 'No command surface changes detected') },
-        { name: 'Channels', value: toUpdateLogField(detailed.channels, 'No specific channels detected') },
-        { name: 'Roles', value: toUpdateLogField(detailed.roles, 'No specific role IDs detected') },
-        { name: 'Permissions & Logic', value: toUpdateLogField(detailed.permissionLogic, 'No explicit permission/logic changes noted') },
-        { name: 'Files Touched', value: toUpdateLogField(detailed.files, 'Not specified') },
-        { name: 'Notes', value: toUpdateLogField(detailed.notes, 'None') },
-        { name: 'Build', value: `\`${currentCommitShort || 'unknown'}\``, inline: true }
-      ];
+    const plainEnglishLines = parsedCommits
+      .slice(0, 5)
+      .map(item => `- \`${item.shortHash || currentCommitShort}\` ${simplifyCommitSubjectForUpdateLog(item.subject)}`);
+    const commitCount = parsedCommits.length > 0 ? parsedCommits.length : 1;
 
-      embed = new EmbedBuilder()
-        .setTitle('Aavgo Bot Update Log')
-        .setDescription(
-          'A new update is now live.\n\n' +
-          `**Change:** ${trimUpdateLogLine(detailed.title, 180)}\n` +
-          `**Summary:** ${trimUpdateLogLine(detailed.summary, 280)}`
-        )
-        .addFields(fields)
-        .setColor(0xF1C40F)
-        .setFooter({ text: 'Aavgo Operations - Detailed Update Log' })
-        .setTimestamp();
-    } else {
-      const plainEnglishLines = commitSubjects.slice(0, 3).map(subject => `- ${simplifyCommitSubjectForUpdateLog(subject)}`);
-      embed = new EmbedBuilder()
-        .setTitle('Aavgo Bot Update Log')
-        .setDescription(
-          'A new update is now live.\n\n' +
-          'What changed:\n' +
-          (plainEnglishLines.length ? plainEnglishLines.join('\n') : '- General stability updates were applied.')
-        )
-        .addFields({ name: 'Build', value: `\`${currentCommitShort || 'unknown'}\``, inline: true })
-        .setColor(0xF1C40F)
-        .setFooter({ text: 'Aavgo Operations - Update Log' })
-        .setTimestamp();
-    }
+    const embed = new EmbedBuilder()
+      .setTitle('Aavgo Bot Update Log')
+      .setDescription(
+        'A new update is now live.\n\n' +
+        'What changed:\n' +
+        (plainEnglishLines.length ? plainEnglishLines.join('\n') : '- General stability updates were applied.')
+      )
+      .addFields(
+        { name: 'Build', value: `\`${currentCommitShort || 'unknown'}\``, inline: true },
+        { name: 'Commits', value: String(commitCount), inline: true }
+      )
+      .setColor(0xF1C40F)
+      .setFooter({ text: 'Aavgo Operations - Update Log' })
+      .setTimestamp();
 
     await channel.send({ embeds: [embed] });
     db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run('update_log_last_commit', currentCommitFull);
