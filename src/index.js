@@ -12,8 +12,59 @@ const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutoria
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
 const AAVGO_GUILD_ID = '1482220918355922974';
+const LOGIN_CHANNEL_ID = '1482228169485582446';
+const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
+const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
 const DEFAULT_TEMP_MESSAGE_TTL_MS = 10 * 60 * 1000;
 const SHORT_TEMP_MESSAGE_TTL_MS = 60 * 1000;
+const pendingAttendanceLoginReminders = new Map();
+
+function shouldScheduleAttendanceLoginReminder(message) {
+  if (!message?.guild || message?.author?.bot) return false;
+  if (String(message.channelId) !== ATTENDANCE_CHANNEL_ID) return false;
+  const content = String(message.content || '');
+  if (!content.trim()) return false;
+  return /\blog\s*in\b/i.test(content) || /\blogin\b/i.test(content);
+}
+
+function scheduleAttendanceLoginReminder(message) {
+  const userId = message?.author?.id;
+  if (!userId) return;
+
+  const existing = pendingAttendanceLoginReminders.get(userId);
+  if (existing?.timer) {
+    clearTimeout(existing.timer);
+  }
+
+  const timer = setTimeout(async () => {
+    pendingAttendanceLoginReminders.delete(userId);
+    try {
+      const loginChannelUrl = `https://discord.com/channels/${message.guild?.id || AAVGO_GUILD_ID}/${LOGIN_CHANNEL_ID}`;
+      const reminderEmbed = new EmbedBuilder()
+        .setTitle('⏰ Login Reminder')
+        .setDescription(
+          'It has been 30 minutes since your attendance message.\n' +
+          `Please go to <#${LOGIN_CHANNEL_ID}> and initialize your shift.`
+        )
+        .setColor(0xFEE75C)
+        .setFooter({ text: 'Aavgo Operations • Attendance Reminder' })
+        .setTimestamp();
+
+      const openLoginChannelButton = new ButtonBuilder()
+        .setStyle(ButtonStyle.Link)
+        .setLabel('Open Login Channel')
+        .setURL(loginChannelUrl);
+
+      const row = new ActionRowBuilder().addComponents(openLoginChannelButton);
+      await message.author.send({ embeds: [reminderEmbed], components: [row] });
+    } catch (error) {
+      console.warn(`[ATTENDANCE] Failed to send login reminder DM to ${userId}:`, error.message);
+    }
+  }, ATTENDANCE_LOGIN_REMINDER_DELAY_MS);
+
+  timer.unref?.();
+  pendingAttendanceLoginReminders.set(userId, { timer, messageId: message.id, createdAt: Date.now() });
+}
 
 function isLoginSystemInteraction(interaction) {
   const commandName = String(interaction?.commandName || '').toLowerCase();
@@ -456,6 +507,15 @@ client.on('guildMemberUpdate', async (oldMember, newMember) => {
 
 client.on('guildMemberRemove', async member => {
   await auth.handleMemberLeave(member);
+});
+
+client.on('messageCreate', async message => {
+  try {
+    if (!shouldScheduleAttendanceLoginReminder(message)) return;
+    scheduleAttendanceLoginReminder(message);
+  } catch (error) {
+    console.warn('[ATTENDANCE] Failed to schedule login reminder:', error.message);
+  }
 });
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
