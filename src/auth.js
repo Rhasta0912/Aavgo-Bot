@@ -412,6 +412,13 @@ const ON_SHIFT_CALL_CHANNEL_IDS = {
   'Team 2': ['1482249225398915102', '1493674469980377088', '1493890419543638107'],
   'Team 3': ['1482225519977041981', '1493763350448963615', '1493890481363484755']
 };
+const TRAINING_CALL_CHANNEL_IDS = [
+  '1484706127685091415',
+  '1484854340249190422',
+  '1484854380254466058',
+  '1484854396717236244',
+  '1484854418078961825'
+];
 const TL_SME_CALL_CHANNEL_ID = '1493764447309795368';
 const TRAINING_HOTEL_GROUPS = [
   { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
@@ -1351,9 +1358,19 @@ function buildReadyToStartShiftPayload(hotelId, isTakeover = false, allowMultiHo
 }
 
 function buildPostLoginVoiceRows({ sessionMode, hotelId, teamName, normalizedRole }) {
-  if (sessionMode === 'training') return [];
-
   const buttons = [];
+  if (sessionMode === 'training') {
+    TRAINING_CALL_CHANNEL_IDS.forEach((channelId, index) => {
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId(`shift_call_join:${channelId}`)
+          .setLabel(`Training VC ${index + 1}`)
+          .setStyle(ButtonStyle.Secondary)
+      );
+    });
+  }
+
+  if (sessionMode !== 'training') {
   const canUseTlCall =
     hotelId === 'TEAM_SHIFT' ||
     normalizedRole === 'sme' ||
@@ -1378,6 +1395,7 @@ function buildPostLoginVoiceRows({ sessionMode, hotelId, teamName, normalizedRol
         .setStyle(ButtonStyle.Secondary)
     );
   });
+  }
 
   if (buttons.length === 0) return [];
 
@@ -1853,7 +1871,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     }
   }
 
-  if (hotelId !== 'TEAM_SHIFT') {
+  if (hotelId !== 'TEAM_SHIFT' && sessionMode !== 'training') {
     const conflictingSession = db.prepare(
       "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1"
     ).get(hotelId, agent.id);
@@ -1912,8 +1930,9 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     if (isTrainingSession) {
       const sessionHotelRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]) || guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const otherHotelRoles = allHotelRoles.filter(role => role.id !== sessionHotelRole?.id);
-      const rolesToAdd = [onShift, sessionHotelRole, trainingSessionRole].filter(Boolean);
+      const rolesToAdd = [sessionHotelRole, trainingSessionRole].filter(Boolean);
       const rolesToRemove = [
+        onShift,
         loggedOut,
         ...otherHotelRoles,
         team2GhostRole,
@@ -1927,7 +1946,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       if (rolesToRemove.length > 0) {
         await member.roles.remove([...new Map(rolesToRemove.map(role => [role.id, role])).values()]);
       }
-      console.log(`[ROLES] Training roles swapped for ${interaction.user.username}: +On-Shift/+Hotel/+Training, -Logged Out/-Ghost`);
+      console.log(`[ROLES] Training roles swapped for ${interaction.user.username}: +Hotel/+Training, -On-Shift/-Logged Out/-Ghost`);
     } else if (hotelId === 'TEAM_SHIFT') {
       if (
         (normalizedRole === 'sme' || normalizedRole === 'team_leader') &&
@@ -2035,8 +2054,13 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     teamName: voiceTeam,
     normalizedRole
   });
+  const voicePromptLine = voiceRows.length > 0
+    ? (sessionMode === 'training'
+      ? '\n\nPlease join one of the training voice channels below.'
+      : '\n\nPlease join one of the on-shift calls below.')
+    : '';
   const successMessage = await respond({
-    content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}${voiceRows.length > 0 ? '\n\nPlease join one of the on-shift calls below.' : ''}`,
+    content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}${voicePromptLine}`,
     embeds: [],
     components: voiceRows
   });
@@ -3845,11 +3869,13 @@ function getTeamOnShiftCallIds(teamName) {
 }
 
 function getTrainingVoiceChannelIds(guild) {
-  if (!guild?.channels?.cache) return [];
-  return [...guild.channels.cache.values()]
+  const configuredIds = [...new Set(TRAINING_CALL_CHANNEL_IDS.filter(Boolean))];
+  if (!guild?.channels?.cache) return configuredIds;
+  const detectedIds = [...guild.channels.cache.values()]
     .filter(channel => typeof channel.isVoiceBased === 'function' && channel.isVoiceBased())
     .filter(channel => /\b(training|practice|trainee)\b/i.test(String(channel.name || '')))
     .map(channel => channel.id);
+  return [...new Set([...configuredIds, ...detectedIds])];
 }
 
 function getAllowedShiftVoiceChannelIds(guild, member, activeSessions = [], agentRecord = null) {
