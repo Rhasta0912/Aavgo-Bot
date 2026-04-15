@@ -357,6 +357,7 @@ const TL_PORTAL_CHANNEL_ID = '1484878480046031099';
 const TL_STATUS_CHANNEL_ID = '1486347360417349682';
 const TRAINING_STATUS_CHANNEL_ID = '1486623221225750660';
 const TRAINING_LOG_CHANNEL_ID = '1488041967769358369';
+const TRAINING_SESSION_ROLE_ID = '1493765270928621648';
 const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
@@ -1107,44 +1108,10 @@ async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
   try {
     if (!guild || !member) return;
 
-    const roleNames = [...(member.roles?.cache?.values?.() || [])]
-      .map(role => normalizeDiscordRoleName(role?.name))
-      .filter(Boolean);
-    const hasAgentRole =
-      member.roles?.cache?.has(AGENT_ROLE_ID) ||
-      roleNames.includes('agent') ||
-      roleNames.includes('agents');
-    const hasTraineeRole =
-      member.roles?.cache?.has(TRAINEE_ROLE_ID) ||
-      roleNames.includes('trainee') ||
-      roleNames.includes('trainees');
-    const isAgentOrTrainee = hasAgentRole || hasTraineeRole;
-    const allTrainingRefs = (hotelRefs || []).length > 0 && (hotelRefs || []).every(ref => {
-      const kind = String(
-        typeof ref === 'string' ? 'shift' : (ref?.session_kind || ref?.sessionKind || 'shift')
-      ).toLowerCase();
-      return kind === 'training';
-    });
-    if (isAgentOrTrainee && allTrainingRefs) {
-      // Agent/Trainee training sessions should not alter shift-role presentation.
-      // Cleanup only stale green roles from older behavior, without adding any other roles.
-      const staleTrainingGreens = [...new Map(
-        (hotelRefs || [])
-          .map(ref => (typeof ref === 'string' ? ref : (ref?.hotel_id || ref?.hotelId || null)))
-          .filter(Boolean)
-          .map(hId => guild.roles.cache.get(ROLE_NAMES.GREEN[hId]))
-          .filter(Boolean)
-          .map(role => [role.id, role])
-      ).values()];
-      if (staleTrainingGreens.length > 0) {
-        await member.roles.remove(staleTrainingGreens).catch(() => {});
-      }
-      return;
-    }
-
     const onShiftRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
     const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
-    const rolesToRemove = [onShiftRole].filter(Boolean);
+    const trainingSessionRole = guild.roles.cache.get(TRAINING_SESSION_ROLE_ID);
+    const rolesToRemove = [onShiftRole, trainingSessionRole].filter(Boolean);
     const rolesToAdd = [loggedOutRole].filter(Boolean);
     const memberTeamFromDb = normalizeTeamInput(
       db.prepare("SELECT team FROM agents WHERE discord_id = ?").get(member.id)?.team
@@ -1207,9 +1174,10 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
       const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
       const greenRole = interaction.guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const greyRole = interaction.guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
+      const trainingSessionRole = interaction.guild.roles.cache.get(TRAINING_SESSION_ROLE_ID);
 
       if (onShiftRole && loggedOutRole && greenRole) {
-        const rolesToRemove = [onShiftRole, greenRole];
+        const rolesToRemove = [onShiftRole, greenRole, trainingSessionRole].filter(Boolean);
         const rolesToAdd = [loggedOutRole];
         if (greyRole) rolesToAdd.push(greyRole);
 
@@ -1882,6 +1850,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const guild = interaction.guild;
     const onShift = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
     const loggedOut = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+    const trainingSessionRole = guild.roles.cache.get(TRAINING_SESSION_ROLE_ID);
     const loginTeamFromAgent = normalizeTeamInput(agent?.team);
     const loginTeamFromRoles = normalizeTeamInput(resolveTeamFromMemberRoles(member));
     const effectiveLoginTeam = loginTeamFromAgent || loginTeamFromRoles || null;
@@ -1891,15 +1860,36 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const team3GhostRole = guild.roles.cache.get(TEAM_3_GHOST_ROLE_ID);
 
     if (isTrainingSession) {
-      // Training / practice sessions are role-neutral for Agents and Trainees.
+      const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
+      const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
+      const rolesToAdd = [onShift, greenRole, trainingSessionRole].filter(Boolean);
+      const rolesToRemove = [
+        loggedOut,
+        greyRole,
+        team2GhostRole,
+        team3GhostRole,
+        team2PermissionRole,
+        team3PermissionRole
+      ].filter(Boolean);
+      if (rolesToAdd.length > 0) {
+        await member.roles.add([...new Map(rolesToAdd.map(role => [role.id, role])).values()]);
+      }
+      if (rolesToRemove.length > 0) {
+        await member.roles.remove([...new Map(rolesToRemove.map(role => [role.id, role])).values()]);
+      }
+      console.log(`[ROLES] Training roles swapped for ${interaction.user.username}: +On-Shift/+Hotel/+Training, -Logged Out/-Ghost`);
     } else if (hotelId === 'TEAM_SHIFT') {
       if (
         (normalizedRole === 'sme' || normalizedRole === 'team_leader') &&
         onShift &&
         loggedOut
       ) {
-        await member.roles.add([onShift]);
-        await member.roles.remove([loggedOut]);
+        const rolesToAdd = [onShift];
+        const rolesToRemove = [loggedOut, trainingSessionRole].filter(Boolean);
+        await member.roles.add(rolesToAdd);
+        if (rolesToRemove.length > 0) {
+          await member.roles.remove(rolesToRemove);
+        }
         console.log(`[ROLES] Management shift roles swapped for ${interaction.user.username}: +On-Shift, -Logged Out`);
       }
 
@@ -1922,7 +1912,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
       if (onShift && loggedOut && greenRole) {
         const rolesToAdd = [onShift, greenRole];
-        const rolesToRemove = [loggedOut];
+        const rolesToRemove = [loggedOut, trainingSessionRole].filter(Boolean);
         if (greyRole) rolesToRemove.push(greyRole);
 
         await member.roles.add(rolesToAdd);
@@ -4206,7 +4196,7 @@ async function handleRegisterSubmit(interaction) {
     if (!phonePattern.test(phone)) {
       db.prepare("DELETE FROM pending_registrations WHERE discord_id = ?").run(user.id);
       return interaction.reply({ 
-        content: '❌ **Invalid Phone Number.** Please use a valid Philippines number starting with `63` or `09`.', 
+        content: '❌ **Invalid registration details.** Please review your inputs and try again.',
         ephemeral: true 
       });
     }
@@ -4484,43 +4474,28 @@ async function handleStartShiftClick(interaction) {
       return;
     }
 
-    if (!hasEffectiveTeamAssignment(agent, interaction.member)) {
-      return sendPrivateFlowPayload(interaction, {
-        embeds: [buildAgentTeamRequiredEmbed()],
-        components: []
-      });
-    }
-
-    const effectiveTeam = resolveEffectiveTeamForAgent(agent, interaction.member);
-    if (!effectiveTeam) {
-      return sendPrivateFlowPayload(interaction, {
-        embeds: [buildAgentTeamRequiredEmbed()],
-        components: []
-      });
-    }
-
-    // If the agent has multiple assigned grey hotel roles, let them pick the hotel for this shift.
-    const assignedHotelIds = filterHotelIdsByTeam(
-      getAssignedHotelIdsFromMemberRoles(interaction.member),
-      effectiveTeam
-    );
-    const permanentAssignedHotelIds = filterHotelIdsByTeam(
-      getAssignedGreyHotelIdsFromMemberRoles(interaction.member),
-      effectiveTeam
-    );
-    const compatibilityHotelIds = (() => {
-      try {
-        const compatibility = JSON.parse(agent.hotel_compatibility || '[]')
-          .map(normalizeCombinedHotelId)
-          .filter(Boolean);
-        return filterHotelIdsByTeam(compatibility, effectiveTeam);
-      } catch {
-        return [];
-      }
-    })();
-    // Prioritize live Discord roles over stale DB compatibility.
-    const preferredHotelIds = assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds;
-    const uniqueAssignedHotelIds = [...new Set(preferredHotelIds)];
+    // Live hotel shifts now support selecting from every operational hotel
+    // without requiring team or permanent hotel assignment.
+    const operationalHotelRows = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT'").all();
+    const operationalHotelIdsRaw = operationalHotelRows
+      .map(row => normalizeCombinedHotelId(row.id))
+      .filter(Boolean);
+    const operationalHotelSet = new Set(operationalHotelIdsRaw);
+    const preferredHotelOrder = [...TEAM_1_HOTELS, ...TEAM_2_HOTELS, ...TEAM_3_HOTELS]
+      .map(normalizeCombinedHotelId);
+    const orderedOperationalHotelIds = [
+      ...preferredHotelOrder.filter((hotelId, index, arr) => (
+        hotelId &&
+        operationalHotelSet.has(hotelId) &&
+        arr.indexOf(hotelId) === index
+      )),
+      ...operationalHotelIdsRaw.filter((hotelId, index, arr) => (
+        hotelId &&
+        arr.indexOf(hotelId) === index &&
+        !preferredHotelOrder.includes(hotelId)
+      ))
+    ];
+    const effectiveTeam = null;
 
     if (activeShiftSession && !forceSingleHotel) {
       const activeHotelLabel = getCombinedHotelLabel(normalizeCombinedHotelId(activeShiftSession.hotel_id));
@@ -4557,21 +4532,7 @@ async function handleStartShiftClick(interaction) {
       }
     }
 
-    if (permanentAssignedHotelIds.length === 1) {
-      const roleAssignedHotelId = permanentAssignedHotelIds[0];
-      if (normalizeCombinedHotelId(agent.hotel_id) !== roleAssignedHotelId) {
-        db.prepare("UPDATE agents SET hotel_id = ? WHERE discord_id = ?").run(roleAssignedHotelId, discordId);
-        agent.hotel_id = roleAssignedHotelId;
-      }
-    }
-
-    if (uniqueAssignedHotelIds.length > 1) {
-      return await showAssignedHotelShiftPicker(interaction, uniqueAssignedHotelIds, false);
-    }
-
-
-    // Standard Agent route:
-    if (agent.hotel_id) {
+    if (false && agent.hotel_id) {
        const normalizedHotelId = normalizeCombinedHotelId(agent.hotel_id);
        if (normalizedHotelId !== agent.hotel_id) {
           db.prepare("UPDATE agents SET hotel_id = ? WHERE discord_id = ?").run(normalizedHotelId, interaction.user.id);
@@ -4626,7 +4587,15 @@ async function handleStartShiftClick(interaction) {
        }
     }
     
-    await showHotelSelection(interaction, effectiveTeam, isEphemeralSourceInteraction(interaction));
+    if (orderedOperationalHotelIds.length === 0) {
+      return sendPrivateFlowPayload(interaction, {
+        content: '⚠️ No live hotels are configured yet. Please contact a developer.',
+        embeds: [],
+        components: []
+      });
+    }
+
+    return await showAssignedHotelShiftPicker(interaction, orderedOperationalHotelIds, false);
 
   } catch (error) {
     console.error('Error in handleStartShiftClick:', error);
@@ -4682,14 +4651,24 @@ async function handleShiftHotelPickMenu(interaction) {
       return sendComponentReply(interaction, { content: 'You are not registered as an agent.', ephemeral: true });
     }
 
-    const effectiveTeam = resolveEffectiveTeamForAgent(agent, interaction.member);
-    if (!effectiveTeam) {
+    const hotelExists = !!db.prepare(
+      "SELECT 1 AS ok FROM hotels WHERE id = ? AND id != 'TEAM_SHIFT'"
+    ).get(hotelId)?.ok;
+    if (!hotelExists) {
+      return sendComponentReply(interaction, {
+        content: '❌ Selected hotel is no longer available.',
+        ephemeral: true
+      });
+    }
+
+    const effectiveTeam = null;
+    if (false && !effectiveTeam) {
       return sendComponentReply(interaction, { content: '⚠️ Team assignment missing. Please contact management.', ephemeral: true });
     }
     const selectedHotelTeam = normalizeTeamInput(
       db.prepare("SELECT team FROM hotels WHERE id = ?").get(hotelId)?.team
     );
-    if (selectedHotelTeam && selectedHotelTeam !== effectiveTeam) {
+    if (false && selectedHotelTeam && selectedHotelTeam !== effectiveTeam) {
       return sendComponentReply(interaction, {
         content: `❌ ${getCombinedHotelLabel(hotelId)} is not in your assigned team (${effectiveTeam}).`,
         ephemeral: true
@@ -4721,53 +4700,8 @@ async function handleShiftHotelPickMenu(interaction) {
       });
     }
 
-    const assignedHotelIds = filterHotelIdsByTeam(
-      getAssignedHotelIdsFromMemberRoles(interaction.member),
-      effectiveTeam
-    );
-    const compatibilityHotelIds = (() => {
-      try {
-        const compatibility = JSON.parse(agent.hotel_compatibility || '[]')
-          .map(normalizeCombinedHotelId)
-          .filter(Boolean);
-        return filterHotelIdsByTeam(compatibility, effectiveTeam);
-      } catch {
-        return [];
-      }
-    })();
-    const uniqueAssignedHotelIds = [...new Set(assignedHotelIds.length > 0 ? assignedHotelIds : compatibilityHotelIds)];
-    const lastSession = db.prepare(
-      "SELECT hotel_id, session_kind FROM sessions WHERE agent_id = ? ORDER BY id DESC LIMIT 1"
-    ).get(agent.id);
-    const lastSessionHotelId = normalizeCombinedHotelId(lastSession?.hotel_id);
-
-    if (uniqueAssignedHotelIds.length > 1 && lastSessionHotelId && lastSessionHotelId === hotelId) {
-      const confirmEmbed = new EmbedBuilder()
-        .setTitle('Same Hotel Confirm')
-        .setDescription(
-          `You selected **${getCombinedHotelLabel(hotelId)}** again.\n\n` +
-          `Your previous session also used this hotel.\n\n` +
-          `Do you want to continue with the **same hotel** from your last session?`
-        )
-        .setColor(0xFEE75C);
-
-      const yesBtn = new ButtonBuilder()
-        .setCustomId(`same_hotel_confirm_yes:${hotelId}:${allowMultiHotel ? '1' : '0'}`)
-        .setLabel('Yes, Continue')
-        .setStyle(ButtonStyle.Success);
-
-      const noBtn = new ButtonBuilder()
-        .setCustomId(`same_hotel_confirm_no:${allowMultiHotel ? '1' : '0'}`)
-        .setLabel('Choose Another Hotel')
-        .setStyle(ButtonStyle.Secondary);
-
-      return sendPrivateFlowPayload(interaction, {
-        embeds: [confirmEmbed],
-        components: [new ActionRowBuilder().addComponents(yesBtn, noBtn)]
-      });
-    }
-
     return sendComponentUpdate(interaction, buildReadyToStartShiftPayload(hotelId, false, allowMultiHotel));
+
   } catch (error) {
     console.error('Error in handleShiftHotelPickMenu:', error);
     if (error?.code === 10062) {
@@ -5850,13 +5784,6 @@ async function handleModalSubmit(interaction) {
     if (normalizedRole === 'agent' && sessionMode === 'shift') {
       allowMultiHotel = false;
     }
-    if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && normalizedRole === 'agent' && !agent.team) {
-      return interaction.editReply({
-        embeds: [buildAgentTeamRequiredEmbed()],
-        components: []
-      });
-    }
-
     if (sessionMode === 'shift' && hotelId !== 'TEAM_SHIFT' && !autoStartAfterPin) {
       return interaction.editReply(buildReadyToStartShiftPayload(hotelId, isTakeover, allowMultiHotel));
     }
