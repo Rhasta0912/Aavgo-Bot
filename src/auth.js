@@ -407,6 +407,12 @@ const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
 const TEAM_2_HOTELS = ['PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI'];
 const TEAM_3_HOTELS = ['ECON', 'BUEN', 'QI_RV', 'THOK'];
 const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3'];
+const ON_SHIFT_CALL_CHANNEL_IDS = {
+  'Team 1': ['1482225371398017044', '1493674598233804842', '1493890379857133628'],
+  'Team 2': ['1482249225398915102', '1493674469980377088', '1493890419543638107'],
+  'Team 3': ['1482225519977041981', '1493763350448963615', '1493890481363484755']
+};
+const TL_SME_CALL_CHANNEL_ID = '1493764447309795368';
 const TRAINING_HOTEL_GROUPS = [
   { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
   { label: 'Ramada / Super 8', hotelIds: ['RMDA', 'SUP8'] },
@@ -1141,8 +1147,12 @@ async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
       const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hId]);
       const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hId]);
       if (greenRole) rolesToRemove.push(greenRole);
-      // Training sessions should never grant permanent ghost/grey assignment roles.
-      if (greyRole && sessionKind !== 'training') rolesToAdd.push(greyRole);
+      if (greyRole) rolesToRemove.push(greyRole);
+    }
+
+    for (const hotelRoleId of new Set([...Object.values(ROLE_NAMES.GREEN), ...Object.values(ROLE_NAMES.GREY)])) {
+      const hotelRole = guild.roles.cache.get(hotelRoleId);
+      if (hotelRole) rolesToRemove.push(hotelRole);
     }
 
     const uniqueRemove = [...new Map(rolesToRemove.filter(Boolean).map(role => [role.id, role])).values()];
@@ -1176,10 +1186,12 @@ async function closeOtherActiveHotelSessions(interaction, hotelId, currentAgentI
       const greyRole = interaction.guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
       const trainingSessionRole = interaction.guild.roles.cache.get(TRAINING_SESSION_ROLE_ID);
 
-      if (onShiftRole && loggedOutRole && greenRole) {
-        const rolesToRemove = [onShiftRole, greenRole, trainingSessionRole].filter(Boolean);
+      if (loggedOutRole) {
+        const allHotelRoles = [...new Set([...Object.values(ROLE_NAMES.GREEN), ...Object.values(ROLE_NAMES.GREY)])]
+          .map(roleId => interaction.guild.roles.cache.get(roleId))
+          .filter(Boolean);
+        const rolesToRemove = [onShiftRole, greenRole, greyRole, trainingSessionRole, ...allHotelRoles].filter(Boolean);
         const rolesToAdd = [loggedOutRole];
-        if (greyRole) rolesToAdd.push(greyRole);
 
         await oldMember.roles.remove(rolesToRemove);
         await oldMember.roles.add(rolesToAdd);
@@ -1343,6 +1355,44 @@ function buildReadyToStartShiftPayload(hotelId, isTakeover = false, allowMultiHo
     embeds: [confirmEmbed],
     components: [new ActionRowBuilder().addComponents(yesButton, noButton)]
   };
+}
+
+function buildPostLoginVoiceRows({ sessionMode, hotelId, teamName, normalizedRole }) {
+  if (sessionMode === 'training') return [];
+
+  const buttons = [];
+  const canUseTlCall =
+    hotelId === 'TEAM_SHIFT' ||
+    normalizedRole === 'sme' ||
+    normalizedRole === 'team_leader' ||
+    normalizedRole === 'operations_manager';
+
+  if (canUseTlCall) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`shift_call_join:${TL_SME_CALL_CHANNEL_ID}`)
+        .setLabel('Join TL/SME Call')
+        .setStyle(ButtonStyle.Primary)
+    );
+  }
+
+  const teamCallIds = getTeamOnShiftCallIds(teamName);
+  teamCallIds.forEach((channelId, index) => {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`shift_call_join:${channelId}`)
+        .setLabel(`On-Shift Call ${index + 1}`)
+        .setStyle(ButtonStyle.Secondary)
+    );
+  });
+
+  if (buttons.length === 0) return [];
+
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 5) {
+    rows.push(new ActionRowBuilder().addComponents(buttons.slice(i, i + 5)));
+  }
+  return rows;
 }
 
 function normalizeTeamInput(input) {
@@ -1858,14 +1908,17 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const team2GhostRole = guild.roles.cache.get(TEAM_2_GHOST_ROLE_ID);
     const team3PermissionRole = guild.roles.cache.get(TEAM_3_PERMISSION_ROLE_ID);
     const team3GhostRole = guild.roles.cache.get(TEAM_3_GHOST_ROLE_ID);
+    const allHotelRoles = [...new Set([...Object.values(ROLE_NAMES.GREEN), ...Object.values(ROLE_NAMES.GREY)])]
+      .map(roleId => guild.roles.cache.get(roleId))
+      .filter(Boolean);
 
     if (isTrainingSession) {
-      const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
-      const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
-      const rolesToAdd = [onShift, greenRole, trainingSessionRole].filter(Boolean);
+      const sessionHotelRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]) || guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
+      const otherHotelRoles = allHotelRoles.filter(role => role.id !== sessionHotelRole?.id);
+      const rolesToAdd = [onShift, sessionHotelRole, trainingSessionRole].filter(Boolean);
       const rolesToRemove = [
         loggedOut,
-        greyRole,
+        ...otherHotelRoles,
         team2GhostRole,
         team3GhostRole,
         team2PermissionRole,
@@ -1885,7 +1938,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
         loggedOut
       ) {
         const rolesToAdd = [onShift];
-        const rolesToRemove = [loggedOut, trainingSessionRole].filter(Boolean);
+        const rolesToRemove = [loggedOut, trainingSessionRole, ...allHotelRoles].filter(Boolean);
         await member.roles.add(rolesToAdd);
         if (rolesToRemove.length > 0) {
           await member.roles.remove(rolesToRemove);
@@ -1907,18 +1960,17 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
         console.log(`[ROLES] Team 3 operations roles swapped for ${interaction.user.username}: +Permission, -Ghost`);
       }
     } else if (hotelId !== 'TEAM_SHIFT') {
-      const greenRole = guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
-      const greyRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
-
-      if (onShift && loggedOut && greenRole) {
-        const rolesToAdd = [onShift, greenRole];
-        const rolesToRemove = [loggedOut, trainingSessionRole].filter(Boolean);
-        if (greyRole) rolesToRemove.push(greyRole);
-
-        await member.roles.add(rolesToAdd);
-        await member.roles.remove(rolesToRemove);
-        console.log(`[ROLES] Shift roles swapped for ${interaction.user.username}: +On-Shift/+Green, -Logged Out/-Grey`);
+      const sessionHotelRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]) || guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
+      const otherHotelRoles = allHotelRoles.filter(role => role.id !== sessionHotelRole?.id);
+      const rolesToAdd = [onShift, sessionHotelRole].filter(Boolean);
+      const rolesToRemove = [loggedOut, trainingSessionRole, ...otherHotelRoles].filter(Boolean);
+      if (rolesToAdd.length > 0) {
+        await member.roles.add([...new Map(rolesToAdd.map(role => [role.id, role])).values()]);
       }
+      if (rolesToRemove.length > 0) {
+        await member.roles.remove([...new Map(rolesToRemove.map(role => [role.id, role])).values()]);
+      }
+      console.log(`[ROLES] Shift roles swapped for ${interaction.user.username}: +On-Shift/+Hotel, -Logged Out/-Hotel Stack`);
     }
   } catch (roleErr) {
     console.warn('[ROLES] Could not update roles:', roleErr.message);
@@ -1977,10 +2029,19 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   const hotelName = getCombinedHotelLabel(hotelId);
   const sessionLabel = sessionMode === 'training' ? 'training session' : 'shift';
+  const voiceTeam = effectiveLoginTeam || normalizeTeamInput(
+    db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(hotelId))?.team
+  );
+  const voiceRows = buildPostLoginVoiceRows({
+    sessionMode,
+    hotelId,
+    teamName: voiceTeam,
+    normalizedRole
+  });
   const successMessage = await respond({
-    content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}`,
+    content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}${voiceRows.length > 0 ? '\n\nPlease join one of the on-shift calls below.' : ''}`,
     embeds: [],
-    components: []
+    components: voiceRows
   });
   clearTrackedLoginFlowEphemeral(interaction, [successMessage?.id]);
 
@@ -1994,17 +2055,17 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
         if (oldMember) {
           const onShiftRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
           const loggedOutRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
-          const greenRole = interaction.guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
-          const greyRole = interaction.guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]);
+          const trainingSessionRole = interaction.guild.roles.cache.get(TRAINING_SESSION_ROLE_ID);
+          const allHotelRoles = [...new Set([...Object.values(ROLE_NAMES.GREEN), ...Object.values(ROLE_NAMES.GREY)])]
+            .map(roleId => interaction.guild.roles.cache.get(roleId))
+            .filter(Boolean);
 
-          if (onShiftRole && loggedOutRole && greenRole) {
-            const rolesToRemove = [onShiftRole, greenRole];
+          if (loggedOutRole) {
+            const rolesToRemove = [onShiftRole, trainingSessionRole, ...allHotelRoles].filter(Boolean);
             const rolesToAdd = [loggedOutRole];
-            if (greyRole) rolesToAdd.push(greyRole);
-
             await oldMember.roles.remove(rolesToRemove);
             await oldMember.roles.add(rolesToAdd);
-            console.log(`[TAKEOVER] Roles reverted for ${priorAgent.username}: -Green, +Grey`);
+            console.log(`[TAKEOVER] Roles reverted for ${priorAgent.username}: -On-Shift/-Hotel, +Logged Out`);
           }
         }
       } catch (e) {
@@ -3780,6 +3841,61 @@ function getOperationalHotelIdsForTeam(teamName) {
   return [...new Set(normalizedIds)];
 }
 
+function getTeamOnShiftCallIds(teamName) {
+  const normalizedTeam = normalizeTeamInput(teamName);
+  if (!normalizedTeam) return [];
+  return [...new Set((ON_SHIFT_CALL_CHANNEL_IDS[normalizedTeam] || []).filter(Boolean))];
+}
+
+function getTrainingVoiceChannelIds(guild) {
+  if (!guild?.channels?.cache) return [];
+  return [...guild.channels.cache.values()]
+    .filter(channel => typeof channel.isVoiceBased === 'function' && channel.isVoiceBased())
+    .filter(channel => /\b(training|practice|trainee)\b/i.test(String(channel.name || '')))
+    .map(channel => channel.id);
+}
+
+function getAllowedShiftVoiceChannelIds(guild, member, activeSessions = [], agentRecord = null) {
+  const allowed = new Set();
+  const liveSession = (activeSessions || []).find(session => {
+    const hotelId = normalizeCombinedHotelId(session?.hotel_id || session?.hotelId);
+    return session?.status !== 'closed' && hotelId && hotelId !== 'TEAM_SHIFT';
+  });
+  const teamFromHotel = normalizeTeamInput(
+    liveSession
+      ? db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(liveSession.hotel_id))?.team
+      : null
+  );
+  const roleTeam = normalizeTeamInput(resolveTeamFromMemberRoles(member));
+  const dbTeam = normalizeTeamInput(agentRecord?.team);
+  const effectiveTeam = roleTeam || dbTeam || teamFromHotel || null;
+
+  for (const channelId of getTeamOnShiftCallIds(effectiveTeam)) {
+    allowed.add(channelId);
+  }
+
+  const hasManagementSession = (activeSessions || []).some(session => {
+    const hotelId = normalizeCombinedHotelId(session?.hotel_id || session?.hotelId);
+    return hotelId === 'TEAM_SHIFT';
+  });
+  const normalizedRole = normalizeAgentRole(agentRecord?.role);
+  if (
+    hasManagementSession ||
+    normalizedRole === 'sme' ||
+    normalizedRole === 'team_leader' ||
+    normalizedRole === 'operations_manager'
+  ) {
+    allowed.add(TL_SME_CALL_CHANNEL_ID);
+  }
+
+  // Allow switching to training/practice voice channels while an active session is running.
+  for (const trainingChannelId of getTrainingVoiceChannelIds(guild)) {
+    allowed.add(trainingChannelId);
+  }
+
+  return [...allowed].filter(Boolean);
+}
+
 function filterHotelIdsByTeam(hotelIds, teamName) {
   const uniqueHotelIds = [...new Set((hotelIds || [])
     .map(normalizeCombinedHotelId)
@@ -4711,6 +4827,80 @@ async function handleShiftHotelPickMenu(interaction) {
     await sendComponentReply(interaction, { content: 'Failed to select hotel for shift.', ephemeral: true }).catch(() => {});
   }
 }
+
+async function handleShiftCallJoin(interaction) {
+  try {
+    await safeDeferComponentUpdate(interaction);
+
+    const channelId = String(interaction.customId || '').split(':')[1] || '';
+    if (!channelId) {
+      return sendComponentReply(interaction, {
+        content: '❌ Call channel is missing from this button.',
+        ephemeral: true
+      });
+    }
+
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
+    if (!agent) {
+      return sendComponentReply(interaction, {
+        content: '❌ You are not registered as an agent.',
+        ephemeral: true
+      });
+    }
+
+    const activeSessions = db.prepare(
+      "SELECT id, hotel_id, session_kind, status FROM sessions WHERE agent_id = ? AND status = 'active'"
+    ).all(agent.id);
+    if (activeSessions.length === 0) {
+      return sendComponentReply(interaction, {
+        content: '⚠️ You are not currently on an active shift.',
+        ephemeral: true
+      });
+    }
+
+    const allowedChannelIds = getAllowedShiftVoiceChannelIds(
+      interaction.guild,
+      interaction.member,
+      activeSessions,
+      agent
+    );
+    if (!allowedChannelIds.includes(channelId)) {
+      return sendComponentReply(interaction, {
+        content: '❌ This call is not available for your active shift.',
+        ephemeral: true
+      });
+    }
+
+    const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+    if (!channel || typeof channel.isVoiceBased !== 'function' || !channel.isVoiceBased()) {
+      return sendComponentReply(interaction, {
+        content: '❌ The selected call channel is not available right now.',
+        ephemeral: true
+      });
+    }
+
+    const member = interaction.member || await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
+    if (!member || !member.voice) {
+      return sendComponentReply(interaction, {
+        content: '❌ Could not access your voice state.',
+        ephemeral: true
+      });
+    }
+
+    await member.voice.setChannel(channel, 'Active shift call join');
+    return sendComponentReply(interaction, {
+      content: `✅ You were moved to **${channel.name}**.`,
+      ephemeral: true
+    });
+  } catch (error) {
+    console.error('Error in handleShiftCallJoin:', error);
+    return sendComponentReply(interaction, {
+      content: '❌ Failed to move you to the selected call.',
+      ephemeral: true
+    }).catch(() => {});
+  }
+}
+
 async function handleSameHotelConfirm(interaction) {
   try {
     const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(interaction.user.id);
@@ -4864,7 +5054,7 @@ async function showHotelSelection(interaction, teamName, isUpdate = false) {
   const embed = new EmbedBuilder()
     .setTitle('🏨 Choose Your Hotel Location')
     .setDescription(
-      `### 📍 ASSIGNMENT SELECTION — ${teamName}\n` +
+      `### 📍 ASSIGNMENT SELECTION\n` +
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `> Use the **dropdown** below to select your hotel.\n\n` +
       `> ⚠️ **Permanent choice.** You cannot switch hotels\n` +
@@ -10289,13 +10479,6 @@ async function handleSetupLoginTeam(interaction) {
 }
 
 function buildAssignedHotelShiftPickerPayload(hotelIds, allowMultiHotel = false) {
-  const teamLabel = (() => {
-    const firstHotelId = normalizeCombinedHotelId(hotelIds?.[0]);
-    if (!firstHotelId) return 'Assigned Team';
-    const row = db.prepare('SELECT team FROM hotels WHERE id = ?').get(firstHotelId);
-    return row?.team || 'Assigned Team';
-  })();
-
   const hotelOptions = buildAssignedHotelSelectionOptions(hotelIds);
   const pickMenu = new StringSelectMenuBuilder()
     .setCustomId(allowMultiHotel ? 'shift_hotel_pick_menu_multi' : 'shift_hotel_pick_menu')
@@ -10312,7 +10495,7 @@ function buildAssignedHotelShiftPickerPayload(hotelIds, allowMultiHotel = false)
   const embed = new EmbedBuilder()
     .setTitle('🏨 Choose Your Hotel Location')
     .setDescription(
-      `### 📍 ASSIGNMENT SELECTION — ${teamLabel}\n` +
+      '### 📍 ASSIGNMENT SELECTION\n' +
       '────────────────────────\n' +
       '> Use the dropdown below to select your hotel.\n\n' +
       '> ⚠ **Permanent choice.** You cannot switch hotels\n' +
@@ -10704,11 +10887,13 @@ module.exports = {
   handleTrainingStartClick,
   handleTrainingHotelSelectMenu,
   handleSameHotelConfirm,
+  handleShiftCallJoin,
   handleDbRemoveAll,
   handlePurgeConfirm,
   handlePurgeDeny,
   closeAllActiveSessionsForAgent,
   applyLoggedOutRolesForMember,
+  getAllowedShiftVoiceChannelIds,
   normalizeTeamInput,
   normalizeHotelInput,
   getCombinedHotelLabel,

@@ -458,6 +458,50 @@ client.on('guildMemberRemove', async member => {
   await auth.handleMemberLeave(member);
 });
 
+client.on('voiceStateUpdate', async (oldState, newState) => {
+  try {
+    if (oldState.channelId === newState.channelId) return;
+
+    const member = newState.member || oldState.member;
+    const guild = newState.guild || oldState.guild;
+    if (!member || !guild || member.user?.bot) return;
+
+    const agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(member.id);
+    if (!agent) return;
+
+    const activeSessions = db.prepare(
+      "SELECT id, hotel_id, session_kind, status FROM sessions WHERE agent_id = ? AND status = 'active'"
+    ).all(agent.id);
+    if (activeSessions.length === 0) return;
+
+    const allowedChannelIds = auth.getAllowedShiftVoiceChannelIds(guild, member, activeSessions, agent);
+    if (!Array.isArray(allowedChannelIds) || allowedChannelIds.length === 0) return;
+
+    const destinationChannelId = newState.channelId;
+    const isAllowedDestination = Boolean(destinationChannelId && allowedChannelIds.includes(destinationChannelId));
+    if (isAllowedDestination) return;
+
+    const fallbackChannelId = (
+      oldState.channelId && allowedChannelIds.includes(oldState.channelId)
+    )
+      ? oldState.channelId
+      : allowedChannelIds.find(channelId => {
+        const channel = guild.channels.cache.get(channelId);
+        return channel && typeof channel.isVoiceBased === 'function' && channel.isVoiceBased();
+      });
+
+    if (!fallbackChannelId || fallbackChannelId === destinationChannelId) return;
+
+    await member.voice.setChannel(fallbackChannelId, 'Active shift voice lock');
+
+    if (!destinationChannelId) {
+      await member.send('⚠️ You must end your shift before leaving voice chat.').catch(() => {});
+    }
+  } catch (error) {
+    console.warn('[VOICE LOCK] Failed to enforce active shift voice channel lock:', error.message);
+  }
+});
+
 process.on('SIGINT', () => {
   handleBotShutdown('SIGINT');
 });
@@ -651,6 +695,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleHotelLinkStartChoice(interaction);
     } else if (interaction.customId.startsWith('agent_shift_confirm_yes:') || interaction.customId === 'agent_shift_confirm_no') {
       await auth.handleAgentShiftStartConfirm(interaction);
+    } else if (interaction.customId.startsWith('shift_call_join:')) {
+      await auth.handleShiftCallJoin(interaction);
     } else if (interaction.customId === 'training_end_btn') {
       await auth.handleLogout(interaction);
     } else if (interaction.customId === 'kiosk_end_shift_btn') {
