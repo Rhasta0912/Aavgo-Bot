@@ -12,7 +12,7 @@ const {
 } = require('discord.js');
 const db = require('./database');
 const { calculateAgentHourTotals, buildPeriodHourHistory, formatHoursClock } = require('./hours');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { createTestUiHandlers } = require('./testui');
@@ -992,7 +992,7 @@ async function broadcastUpdateLogLegacy(client) {
     const channel = await client.channels.fetch(UPDATE_LOG_CHANNEL_ID).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
 
-    const currentCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    const currentCommit = runGitForUpdateLog(['rev-parse', '--short', 'HEAD']);
     if (!currentCommit) return;
 
     const lastPosted = db.prepare("SELECT value FROM config WHERE key = ?").get('update_log_last_commit')?.value || null;
@@ -1001,21 +1001,21 @@ async function broadcastUpdateLogLegacy(client) {
     let commitLines = [];
     try {
       if (lastPosted) {
-        const raw = execSync(`git log --pretty=format:%h|%s ${lastPosted}..HEAD`, { encoding: 'utf8' }).trim();
+        const raw = runGitForUpdateLog(['log', '--pretty=format:%h%x09%s', `${lastPosted}..HEAD`]);
         commitLines = raw ? raw.split('\n').filter(Boolean) : [];
       } else {
-        const raw = execSync('git log -1 --pretty=format:%h|%s', { encoding: 'utf8' }).trim();
+        const raw = runGitForUpdateLog(['log', '-1', '--pretty=format:%h%x09%s']);
         commitLines = raw ? [raw] : [];
       }
     } catch (rangeErr) {
       console.warn('[UPDATE-LOG] Commit range lookup failed:', rangeErr.message);
-      const fallback = execSync('git log -1 --pretty=format:%h|%s', { encoding: 'utf8' }).trim();
+      const fallback = runGitForUpdateLog(['log', '-1', '--pretty=format:%h%x09%s']);
       commitLines = fallback ? [fallback] : [];
     }
 
     const lines = commitLines.slice(0, 10).map(line => {
-      const [hash, ...subjectParts] = line.split('|');
-      const subject = subjectParts.join('|').trim() || 'Updated bot behavior';
+      const [hash, ...subjectParts] = line.split('\t');
+      const subject = subjectParts.join('\t').trim() || 'Updated bot behavior';
       return `- \`${hash}\` ${subject}`;
     });
 
@@ -10400,14 +10400,19 @@ function simplifyCommitSubjectForUpdateLog(subject) {
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
+function runGitForUpdateLog(args = []) {
+  const repoRoot = path.resolve(__dirname, '..');
+  return execFileSync('git', args, { encoding: 'utf8', cwd: repoRoot }).trim();
+}
+
 async function broadcastUpdateLog(client) {
   const UPDATE_LOG_CHANNEL_ID = '1485584578927132863';
   try {
     const channel = await client.channels.fetch(UPDATE_LOG_CHANNEL_ID).catch(() => null);
     if (!channel || !channel.isTextBased()) return;
 
-    const currentCommitFull = execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim();
-    const currentCommitShort = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
+    const currentCommitFull = runGitForUpdateLog(['rev-parse', 'HEAD']);
+    const currentCommitShort = runGitForUpdateLog(['rev-parse', '--short', 'HEAD']);
     if (!currentCommitFull) return;
 
     const lastPosted = db.prepare("SELECT value FROM config WHERE key = ?").get('update_log_last_commit')?.value || null;
@@ -10416,20 +10421,20 @@ async function broadcastUpdateLog(client) {
     let commitEntries = [];
     try {
       if (lastPosted) {
-        const raw = execSync(`git log --pretty=format:%h|%s ${lastPosted}..HEAD`, { encoding: 'utf8' }).trim();
+        const raw = runGitForUpdateLog(['log', '--pretty=format:%h%x09%s', `${lastPosted}..HEAD`]);
         commitEntries = raw ? raw.split('\n').filter(Boolean) : [];
       } else {
-        const raw = execSync('git log -1 --pretty=format:%h|%s', { encoding: 'utf8' }).trim();
+        const raw = runGitForUpdateLog(['log', '-1', '--pretty=format:%h%x09%s']);
         commitEntries = raw ? [raw] : [];
       }
     } catch (rangeErr) {
       console.warn('[UPDATE-LOG] Commit range lookup failed:', rangeErr.message);
-      const fallback = execSync('git log -1 --pretty=format:%h|%s', { encoding: 'utf8' }).trim();
+      const fallback = runGitForUpdateLog(['log', '-1', '--pretty=format:%h%x09%s']);
       commitEntries = fallback ? [fallback] : [];
     }
 
     const parsedCommits = commitEntries.map(entry => {
-      const separatorIndex = entry.indexOf('|');
+      const separatorIndex = entry.indexOf('\t');
       if (separatorIndex === -1) {
         return { shortHash: currentCommitShort, subject: entry };
       }
