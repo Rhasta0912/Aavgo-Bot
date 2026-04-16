@@ -10906,6 +10906,7 @@ module.exports = {
   handleStartShiftClick, 
   syncAgentRecordFromDiscordMember,
   syncGuildAgentRecordsFromRoles,
+  resolveLiveHotelIdFromMemberRoles,
   handleHotelSelect, 
   handleLogin, 
   handleRegisterSubmit, 

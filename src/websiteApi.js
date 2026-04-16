@@ -827,16 +827,24 @@ async function buildAdminHoursSnapshot(client) {
     const activeSessionHotel = activeSessionHotelId
       ? (hotelNames.get(String(row.active_session_hotel_id))?.name || auth.getCombinedHotelLabel(activeSessionHotelId))
       : '';
-    const linkedHotelId = activeSessionHotelId || assignedHotelId;
-    const linkedHotel = activeSessionHotel || assignedHotel;
+    const liveMemberHotelId = auth.resolveLiveHotelIdFromMemberRoles(member, row.active_session_id ? [{
+      hotel_id: row.active_session_hotel_id,
+      session_kind: row.session_kind,
+      status: 'active'
+    }] : []);
+    const liveMemberHotel = liveMemberHotelId
+      ? (hotelNames.get(String(liveMemberHotelId))?.name || auth.getCombinedHotelLabel(liveMemberHotelId))
+      : '';
+    const linkedHotelId = liveMemberHotelId || activeSessionHotelId || assignedHotelId;
+    const linkedHotel = liveMemberHotel || activeSessionHotel || assignedHotel;
     const activeNow = Boolean(row.active_session_id);
     const activeSession = activeNow
       ? {
           kind: toSessionLabel(row.session_kind),
           loginTime: row.login_time,
           elapsedHours: roundHours(toSessionDurationHours(row.login_time, nowMs)),
-          hotelId: activeSessionHotelId || '',
-          hotelLabel: activeSessionHotel || ''
+          hotelId: linkedHotelId || '',
+          hotelLabel: linkedHotel || ''
         }
       : null;
 
