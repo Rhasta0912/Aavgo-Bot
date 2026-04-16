@@ -3642,16 +3642,27 @@ function getAssignedHotelIdsFromMemberRoles(member) {
   return [...new Set(hotelIds)];
 }
 
+function getLiveHotelIdsFromMemberRoles(member) {
+  const hotelIds = Object.entries(ROLE_NAMES.GREEN)
+    .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && member?.roles?.cache?.has(roleId))
+    .map(([hotelId]) => normalizeCombinedHotelId(hotelId));
+  return [...new Set(hotelIds)];
+}
+
 function resolveLiveHotelIdFromMemberRoles(member, activeSessions = []) {
-  const roleHotelIds = [...new Set(
-    getAssignedHotelIdsFromMemberRoles(member)
+  const liveRoleHotelIds = [...new Set(
+    getLiveHotelIdsFromMemberRoles(member)
       .map(normalizeCombinedHotelId)
       .filter(Boolean)
       .filter(hotelId => HOTEL_NAMES[hotelId])
   )];
 
-  if (roleHotelIds.length === 1) {
-    return roleHotelIds[0];
+  if (liveRoleHotelIds.length === 1) {
+    return liveRoleHotelIds[0];
+  }
+
+  if (liveRoleHotelIds.length > 1) {
+    return liveRoleHotelIds[0];
   }
 
   const activeHotelIds = [...new Set(
@@ -3665,7 +3676,13 @@ function resolveLiveHotelIdFromMemberRoles(member, activeSessions = []) {
     return activeHotelIds[0];
   }
 
-  const overlap = activeHotelIds.find(hotelId => roleHotelIds.includes(hotelId));
+  const assignedHotelIds = [...new Set(
+    getAssignedHotelIdsFromMemberRoles(member)
+      .map(normalizeCombinedHotelId)
+      .filter(Boolean)
+      .filter(hotelId => HOTEL_NAMES[hotelId])
+  )];
+  const overlap = activeHotelIds.find(hotelId => assignedHotelIds.includes(hotelId));
   return overlap || null;
 }
 
