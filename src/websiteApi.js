@@ -1592,7 +1592,7 @@ function startWebsiteCommandSync(client) {
     processWebsiteCommands(client).catch(error => {
       console.error('[WEBSITE-COMMANDS] Interval poll crashed:', error.message);
     });
-  }, Math.max(10000, Math.floor(config.syncIntervalMs / 2)));
+  }, Math.max(5000, Math.floor(config.syncIntervalMs / 4)));
 
   websiteCommandTimer.unref?.();
   console.log(`[WEBSITE-COMMANDS] Polling ${config.commandUrl} for admin commands.`);
