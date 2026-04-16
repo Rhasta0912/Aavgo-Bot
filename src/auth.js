@@ -412,6 +412,13 @@ const ON_SHIFT_CALL_CHANNEL_IDS = {
   'Team 2': ['1482249225398915102', '1493674469980377088', '1493890419543638107'],
   'Team 3': ['1482225519977041981', '1493763350448963615', '1493890481363484755']
 };
+const CROSS_TEAM_ON_SHIFT_CALL_CHANNEL_IDS = [
+  '1494450800288596028',
+  '1494450820920643605',
+  '1494450845264248843',
+  '1494450867057725642',
+  '1494450888813580521'
+];
 const TRAINING_CALL_CHANNEL_IDS = [
   '1484706127685091415',
   '1484854340249190422',
@@ -1359,6 +1366,7 @@ function buildReadyToStartShiftPayload(hotelId, isTakeover = false, allowMultiHo
 
 function buildPostLoginVoiceRows({ sessionMode, hotelId, teamName, normalizedRole }) {
   const buttons = [];
+
   if (sessionMode === 'training') {
     TRAINING_CALL_CHANNEL_IDS.forEach((channelId, index) => {
       buttons.push(
@@ -1371,30 +1379,39 @@ function buildPostLoginVoiceRows({ sessionMode, hotelId, teamName, normalizedRol
   }
 
   if (sessionMode !== 'training') {
-  const canUseTlCall =
-    hotelId === 'TEAM_SHIFT' ||
-    normalizedRole === 'sme' ||
-    normalizedRole === 'team_leader' ||
-    normalizedRole === 'operations_manager';
+    const canUseTlCall =
+      hotelId === 'TEAM_SHIFT' ||
+      normalizedRole === 'sme' ||
+      normalizedRole === 'team_leader' ||
+      normalizedRole === 'operations_manager';
 
-  if (canUseTlCall) {
-    buttons.push(
-      new ButtonBuilder()
-        .setCustomId(`shift_call_join:${TL_SME_CALL_CHANNEL_ID}`)
-        .setLabel('Join TL/SME Call')
-        .setStyle(ButtonStyle.Primary)
-    );
-  }
+    if (canUseTlCall) {
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId(`shift_call_join:${TL_SME_CALL_CHANNEL_ID}`)
+          .setLabel('Join TL/SME Call')
+          .setStyle(ButtonStyle.Primary)
+      );
+    }
 
-  const teamCallIds = getTeamOnShiftCallIds(teamName);
-  teamCallIds.forEach((channelId, index) => {
-    buttons.push(
-      new ButtonBuilder()
-        .setCustomId(`shift_call_join:${channelId}`)
-        .setLabel(`On-Shift Call ${index + 1}`)
-        .setStyle(ButtonStyle.Secondary)
-    );
-  });
+    const teamCallIds = getTeamOnShiftCallIds(teamName);
+    teamCallIds.forEach((channelId, index) => {
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId(`shift_call_join:${channelId}`)
+          .setLabel(`On-Shift Call ${index + 1}`)
+          .setStyle(ButtonStyle.Secondary)
+      );
+    });
+
+    CROSS_TEAM_ON_SHIFT_CALL_CHANNEL_IDS.forEach((channelId, index) => {
+      buttons.push(
+        new ButtonBuilder()
+          .setCustomId(`shift_call_join:${channelId}`)
+          .setLabel(`Cross-Team ${index + 1}`)
+          .setStyle(ButtonStyle.Secondary)
+      );
+    });
   }
 
   if (buttons.length === 0) return [];
@@ -2057,7 +2074,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   const voicePromptLine = voiceRows.length > 0
     ? (sessionMode === 'training'
       ? '\n\nPlease join one of the training voice channels below.'
-      : '\n\nPlease join one of the on-shift calls below.')
+      : '\n\nPlease join one of the on-shift calls below.\nIf you want to go to cross-team on-shift, please join one of these cross-team channels below.')
     : '';
   const successMessage = await respond({
     content: `✅ **Success!** Your ${sessionLabel} is now live in **${hotelName}**. ${noteAlert}${voicePromptLine}`,
@@ -3979,6 +3996,9 @@ function getAllowedShiftVoiceChannelIds(guild, member, activeSessions = [], agen
   const effectiveTeam = roleTeam || dbTeam || teamFromHotel || null;
 
   for (const channelId of getTeamOnShiftCallIds(effectiveTeam)) {
+    allowed.add(channelId);
+  }
+  for (const channelId of CROSS_TEAM_ON_SHIFT_CALL_CHANNEL_IDS) {
     allowed.add(channelId);
   }
 
