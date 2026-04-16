@@ -1638,9 +1638,6 @@ function buildRouter(client) {
         }
 
         const guild = client?.guilds?.cache?.get(AAVGO_GUILD_ID) || null;
-        if (!guild) {
-          return json(res, 503, { ok: false, error: 'The Discord guild is not cached yet.' });
-        }
 
         const outcome = await applyWebsiteCommand(client, guild, {
           action,
