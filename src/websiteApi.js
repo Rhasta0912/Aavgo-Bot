@@ -671,6 +671,102 @@ async function createWebsiteHoursAdjustment(client, guild, command, mode = 'add'
   };
 }
 
+function buildWebsiteDayHistory(db, agentId, shiftDate) {
+  const normalizedDate = normalizeWebsiteShiftDate(shiftDate);
+  if (!normalizedDate) {
+    return null;
+  }
+
+  const [year, month, day] = normalizedDate.split('-').map(value => Number.parseInt(value, 10));
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) {
+    return null;
+  }
+
+  const referenceDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  return buildPeriodHourHistory(db, agentId, 'day', referenceDate);
+}
+
+async function setWebsiteExactDayHours(client, guild, command) {
+  const discordId = String(command?.payload?.discordId || '').trim();
+  const shiftDate = normalizeWebsiteShiftDate(command?.payload?.shiftDate || '');
+  const reason = String(command?.payload?.reason || '').trim();
+  if (!discordId) {
+    throw new Error('Exact hour updates need a target staff member.');
+  }
+  if (!shiftDate) {
+    throw new Error('Exact hour updates need a valid shift date.');
+  }
+  if (!reason) {
+    throw new Error('Exact hour updates need a reason.');
+  }
+
+  const agent = db.prepare('SELECT id, username FROM agents WHERE discord_id = ?').get(discordId);
+  if (!agent) {
+    throw new Error('The selected staff member does not exist in the live database.');
+  }
+
+  const requestedHours = normalizeWebsiteNumber(command?.payload?.hours);
+  if (!Number.isFinite(requestedHours) || requestedHours < 0 || requestedHours > 24) {
+    throw new Error('Exact hour updates need a target value between 0 and 24 hours.');
+  }
+
+  const currentHistory = buildWebsiteDayHistory(db, agent.id, shiftDate);
+  if (!currentHistory) {
+    throw new Error('The selected date could not be resolved for hour updates.');
+  }
+
+  const currentHours = roundHours(currentHistory.totalHours);
+  const targetHours = roundHours(requestedHours);
+  const deltaHours = roundHours(targetHours - currentHours);
+  if (deltaHours === 0) {
+    return {
+      message: `${agent.username} is already at ${formatHours(targetHours)} for ${shiftDate}.`
+    };
+  }
+
+  const adjustmentMode = normalizeWebsiteHoursMode(command?.payload?.mode || 'shift');
+  const actor = buildActionActor(command);
+  const effectiveAt = `${shiftDate} 00:00:00`;
+  db.prepare(`
+    INSERT INTO hour_adjustments (
+      agent_id, hotel_id, shift_date, login_time, logout_time, hours, mode, reason, note, effective_at, created_by
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    agent.id,
+    null,
+    shiftDate,
+    null,
+    null,
+    deltaHours,
+    adjustmentMode,
+    reason,
+    `Website exact day set (${adjustmentMode}) | Date: ${shiftDate} | Current: ${formatHours(currentHours)} | Target: ${formatHours(targetHours)} | Delta: ${deltaHours > 0 ? '+' : ''}${formatHours(deltaHours)} | Reason: ${reason}`,
+    effectiveAt,
+    actor.discordId || 'website'
+  );
+
+  await auth.sendAuditLog(client, {
+    title: '🌐 Website Exact Hours Set',
+    description:
+      `**User:** ${agent.username} (<@${discordId}>)\n` +
+      `**Mode:** ${adjustmentMode === 'training' ? 'Training' : 'Live Shift'}\n` +
+      `**Date:** ${shiftDate}\n` +
+      `**Current:** ${formatHours(currentHours)}\n` +
+      `**Target:** ${formatHours(targetHours)}\n` +
+      `**Delta:** ${deltaHours > 0 ? '+' : ''}${formatHours(deltaHours)}\n` +
+      `**Reason:** ${reason}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: deltaHours >= 0 ? 0x3498DB : 0xE67E22,
+    userId: actor.discordId,
+    guild
+  });
+
+  return {
+    message: `${agent.username} was set to ${formatHours(targetHours)} for ${shiftDate}.`
+  };
+}
+
 async function buildAdminHoursSnapshot(client) {
   const now = new Date();
   const nowMs = now.getTime();
@@ -907,6 +1003,34 @@ function requestJson(urlString, token, { method = 'GET', body = null } = {}) {
       request.write(payload);
     }
     request.end();
+  });
+}
+
+function readJsonRequestBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.setEncoding('utf8');
+    req.on('data', chunk => {
+      raw += chunk;
+      if (raw.length > 1_000_000) {
+        reject(new Error('Request body too large.'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (!raw.trim()) {
+        resolve({});
+        return;
+      }
+
+      try {
+        const decoded = JSON.parse(raw);
+        resolve(decoded && typeof decoded === 'object' && !Array.isArray(decoded) ? decoded : {});
+      } catch (error) {
+        reject(new Error('Invalid JSON body.'));
+      }
+    });
+    req.on('error', reject);
   });
 }
 
@@ -1348,6 +1472,8 @@ async function applyWebsiteCommand(client, guild, command) {
       return createWebsiteHoursAdjustment(client, guild, command, 'add');
     case 'remove_manual_hours':
       return createWebsiteHoursAdjustment(client, guild, command, 'remove');
+    case 'set_day_hours':
+      return setWebsiteExactDayHours(client, guild, command);
     case 'sync_all_roles':
       return applySyncAllRolesCommand(client, guild, command);
     case 'push_snapshot':
@@ -1482,16 +1608,51 @@ function buildRouter(client) {
         return json(res, 200, { ok: true, service: 'aavgo-website-api' });
       }
 
-      if (req.method === 'GET' && url.pathname === '/api/website/admin-hours') {
+      if (url.pathname === '/api/website/admin-hours') {
         const authHeader = String(req.headers.authorization || '');
         if (!token || authHeader !== `Bearer ${token}`) {
           return json(res, 401, { ok: false, error: 'Unauthorized.' });
         }
 
-        const snapshot = await buildAdminHoursSnapshot(client);
-        return json(res, 200, { ok: true, data: snapshot });
-      }
+        if (req.method === 'GET') {
+          const snapshot = await buildAdminHoursSnapshot(client);
+          return json(res, 200, { ok: true, data: snapshot });
+        }
 
+        if (req.method !== 'POST') {
+          return json(res, 405, { ok: false, error: 'Method not allowed.' });
+        }
+
+        const body = await readJsonRequestBody(req).catch(error => ({ __error: error }));
+        if (body?.__error) {
+          return json(res, 400, { ok: false, error: body.__error.message || 'Invalid request body.' });
+        }
+
+        const action = String(body?.action || '').trim();
+        if (!action) {
+          return json(res, 400, { ok: false, error: 'Missing hours action.' });
+        }
+
+        if (!['set_day_hours', 'add_manual_hours', 'remove_manual_hours'].includes(action)) {
+          return json(res, 400, { ok: false, error: 'Unsupported hours action.' });
+        }
+
+        const guild = client?.guilds?.cache?.get(AAVGO_GUILD_ID) || null;
+        if (!guild) {
+          return json(res, 503, { ok: false, error: 'The Discord guild is not cached yet.' });
+        }
+
+        const outcome = await applyWebsiteCommand(client, guild, {
+          action,
+          payload: body?.payload || {},
+          actor: body?.actor || {}
+        });
+        await pushWebsiteHoursSnapshot(client, { silent: true });
+        return json(res, 200, {
+          ok: true,
+          message: outcome?.message || 'Hours updated.'
+        });
+      }
       return json(res, 404, { ok: false, error: 'Not found.' });
     } catch (error) {
       console.error('[WEBSITE-API] Request failed:', error);
