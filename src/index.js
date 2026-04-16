@@ -604,29 +604,26 @@ client.on('voiceStateUpdate', async (oldState, newState) => {
     ).all(agent.id);
     if (activeSessions.length === 0) return;
 
-    const allowedChannelIds = auth.getAllowedShiftVoiceChannelIds(guild, member, activeSessions, agent);
-    if (!Array.isArray(allowedChannelIds) || allowedChannelIds.length === 0) return;
-
     const destinationChannelId = newState.channelId;
-    const isAllowedDestination = Boolean(destinationChannelId && allowedChannelIds.includes(destinationChannelId));
-    if (isAllowedDestination) return;
+    // Soft-lock behavior: while on an active shift, users can move to ANY voice channel,
+    // but they cannot fully disconnect from voice until they end shift.
+    if (destinationChannelId) return;
 
-    const fallbackChannelId = (
-      oldState.channelId && allowedChannelIds.includes(oldState.channelId)
-    )
-      ? oldState.channelId
-      : allowedChannelIds.find(channelId => {
+    let fallbackChannelId = oldState.channelId || null;
+    if (!fallbackChannelId) {
+      const allowedChannelIds = auth.getAllowedShiftVoiceChannelIds(guild, member, activeSessions, agent);
+      if (!Array.isArray(allowedChannelIds) || allowedChannelIds.length === 0) return;
+      fallbackChannelId = allowedChannelIds.find(channelId => {
         const channel = guild.channels.cache.get(channelId);
         return channel && typeof channel.isVoiceBased === 'function' && channel.isVoiceBased();
-      });
+      }) || null;
+    }
 
     if (!fallbackChannelId || fallbackChannelId === destinationChannelId) return;
 
     await member.voice.setChannel(fallbackChannelId, 'Active shift voice lock');
 
-    if (!destinationChannelId) {
-      await member.send('⚠️ You must end your shift before leaving voice chat.').catch(() => {});
-    }
+    await member.send('⚠️ You must end your shift before disconnecting from voice chat.').catch(() => {});
   } catch (error) {
     console.warn('[VOICE LOCK] Failed to enforce active shift voice channel lock:', error.message);
   }
