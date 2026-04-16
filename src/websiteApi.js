@@ -790,12 +790,19 @@ async function buildAdminHoursSnapshot(client) {
       a.agent_status,
       a.hotel_id,
       s.id AS active_session_id,
+      s.hotel_id AS active_session_hotel_id,
       s.session_kind,
       s.login_time
     FROM agents a
     LEFT JOIN sessions s
-      ON s.agent_id = a.id
-     AND s.status = 'active'
+      ON s.id = (
+        SELECT s2.id
+        FROM sessions s2
+        WHERE s2.agent_id = a.id
+          AND s2.status = 'active'
+        ORDER BY datetime(s2.login_time) DESC, s2.id DESC
+        LIMIT 1
+      )
     WHERE lower(COALESCE(a.role, 'agent')) != 'applicant'
     ORDER BY
       CASE WHEN s.id IS NULL THEN 1 ELSE 0 END,
@@ -812,16 +819,24 @@ async function buildAdminHoursSnapshot(client) {
     const totals = calculateAgentHourTotals(db, row.id, now);
     const dayHistory = buildPeriodHourHistory(db, row.id, 'day', now);
     const monthHistory = getMonthDailyHourHistory(db, row.id, 0, now);
-    const linkedHotelId = combineHotelId(row.hotel_id);
-    const linkedHotel = linkedHotelId
-      ? (hotelNames.get(String(row.hotel_id))?.name || auth.getCombinedHotelLabel(linkedHotelId))
+    const assignedHotelId = combineHotelId(row.hotel_id);
+    const assignedHotel = assignedHotelId
+      ? (hotelNames.get(String(row.hotel_id))?.name || auth.getCombinedHotelLabel(assignedHotelId))
       : 'Unassigned';
+    const activeSessionHotelId = combineHotelId(row.active_session_hotel_id);
+    const activeSessionHotel = activeSessionHotelId
+      ? (hotelNames.get(String(row.active_session_hotel_id))?.name || auth.getCombinedHotelLabel(activeSessionHotelId))
+      : '';
+    const linkedHotelId = activeSessionHotelId || assignedHotelId;
+    const linkedHotel = activeSessionHotel || assignedHotel;
     const activeNow = Boolean(row.active_session_id);
     const activeSession = activeNow
       ? {
           kind: toSessionLabel(row.session_kind),
           loginTime: row.login_time,
-          elapsedHours: roundHours(toSessionDurationHours(row.login_time, nowMs))
+          elapsedHours: roundHours(toSessionDurationHours(row.login_time, nowMs)),
+          hotelId: activeSessionHotelId || '',
+          hotelLabel: activeSessionHotel || ''
         }
       : null;
 
@@ -840,6 +855,8 @@ async function buildAdminHoursSnapshot(client) {
       roleSummary,
       route: toRouteLabel(roleLabel),
       team: auth.normalizeTeamInput(row.team) || row.team || 'Unassigned',
+      assignedHotelId: assignedHotelId || '',
+      assignedHotel,
       agentStatus: row.agent_status || 'standby',
       linkedHotelId: linkedHotelId || '',
       linkedHotel,
