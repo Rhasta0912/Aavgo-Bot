@@ -3642,6 +3642,33 @@ function getAssignedHotelIdsFromMemberRoles(member) {
   return [...new Set(hotelIds)];
 }
 
+function resolveLiveHotelIdFromMemberRoles(member, activeSessions = []) {
+  const roleHotelIds = [...new Set(
+    getAssignedHotelIdsFromMemberRoles(member)
+      .map(normalizeCombinedHotelId)
+      .filter(Boolean)
+      .filter(hotelId => HOTEL_NAMES[hotelId])
+  )];
+
+  if (roleHotelIds.length === 1) {
+    return roleHotelIds[0];
+  }
+
+  const activeHotelIds = [...new Set(
+    (Array.isArray(activeSessions) ? activeSessions : [])
+      .map(session => normalizeCombinedHotelId(session?.hotel_id || session?.hotelId))
+      .filter(Boolean)
+      .filter(hotelId => hotelId !== 'TEAM_SHIFT' && HOTEL_NAMES[hotelId])
+  )];
+
+  if (activeHotelIds.length === 1) {
+    return activeHotelIds[0];
+  }
+
+  const overlap = activeHotelIds.find(hotelId => roleHotelIds.includes(hotelId));
+  return overlap || null;
+}
+
 function getAssignedGreyHotelIdsFromMemberRoles(member) {
   const hotelIds = Object.entries(ROLE_NAMES.GREY)
     .filter(([hotelId, roleId]) => HOTEL_NAMES[hotelId] && member?.roles?.cache?.has(roleId))
@@ -3736,6 +3763,14 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
     const displayName = member.displayName || member.user?.username || member.user?.tag || 'Unknown';
     const existing = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
     let snapshot = getDiscordRoleSyncSnapshot(member);
+    const activeSessions = existing
+      ? db.prepare(`
+        SELECT id, hotel_id, session_kind
+        FROM sessions
+        WHERE agent_id = ? AND status = 'active'
+      `).all(existing.id)
+      : [];
+    const liveHotelId = resolveLiveHotelIdFromMemberRoles(member, activeSessions);
 
     const preferredSnapshotRole = rankRoleValueById[preferredRankRoleId] || null;
     if (preferredSnapshotRole && enforcedRankRoleId === preferredRankRoleId && snapshot.role !== preferredSnapshotRole) {
@@ -3784,12 +3819,45 @@ async function syncAgentRecordFromDiscordMember(member, guild = member?.guild, c
         params.push(hotelCompatibilityValue);
       }
 
+      if (liveHotelId && normalizeCombinedHotelId(existing.hotel_id) !== liveHotelId) {
+        updates.push('hotel_id = ?');
+        params.push(liveHotelId);
+      }
+
       if (updates.length > 0) {
         params.push(member.id);
         db.prepare(`UPDATE agents SET ${updates.join(', ')} WHERE discord_id = ?`).run(...params);
         const resolvedRole = allowDiscordRoleSync ? (snapshotRole || existingRole) : existingRole;
         const resolvedTeam = snapshot.team || existing.team || 'none';
         console.log(`[${contextLabel}] Updated ${displayName}: role=${resolvedRole} team=${resolvedTeam} hotels=${formatHotelCompatibilityLabel(hotelCompatibility)}`);
+      }
+
+      if (liveHotelId) {
+        const activeShiftSessions = activeSessions.filter(session => String(session?.session_kind || 'shift').toLowerCase() !== 'training');
+        const activeHotelIdsBefore = [...new Set(activeShiftSessions
+          .map(session => normalizeCombinedHotelId(session?.hotel_id))
+          .filter(Boolean))];
+
+        if (activeShiftSessions.some(session => normalizeCombinedHotelId(session?.hotel_id) !== liveHotelId)) {
+          db.prepare(`
+            UPDATE sessions
+            SET hotel_id = ?
+            WHERE agent_id = ?
+              AND status = 'active'
+              AND COALESCE(session_kind, 'shift') != 'training'
+          `).run(liveHotelId, existing.id);
+
+          const impactedHotelIds = [...new Set([...activeHotelIdsBefore, liveHotelId].filter(Boolean))];
+          const client = guild?.client || member?.client || null;
+          if (client) {
+            for (const hotelId of impactedHotelIds) {
+              updateHotelStatusEmbed(client, hotelId).catch(error => {
+                console.warn(`[${contextLabel}] Failed to refresh hotel ${hotelId}:`, error.message);
+              });
+            }
+          }
+          console.log(`[${contextLabel}] Reconciled live hotel for ${displayName}: ${liveHotelId}`);
+        }
       }
 
       const syncedExisting = db.prepare("SELECT * FROM agents WHERE discord_id = ?").get(member.id);
