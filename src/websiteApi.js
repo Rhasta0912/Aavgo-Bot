@@ -581,8 +581,8 @@ async function createWebsiteHoursAdjustment(client, guild, command, mode = 'add'
       actor.discordId || 'website'
     );
 
-    await auth.sendAuditLog(client, {
-      title: '🌐 Website Manual Hours Removed',
+  void Promise.resolve().then(() => auth.sendAuditLog(client, {
+      title: 'Website Manual Hours Removed',
       description:
         `**User:** ${agent.username} (<@${discordId}>)\n` +
         `**Mode:** ${adjustmentMode === 'training' ? 'Training' : 'Live Shift'}\n` +
@@ -593,6 +593,8 @@ async function createWebsiteHoursAdjustment(client, guild, command, mode = 'add'
       color: 0xE67E22,
       userId: actor.discordId,
       guild
+    })).catch(error => {
+      console.warn('[WEBSITE-API] Manual removal audit log failed:', error.message);
     });
 
     return {
@@ -650,8 +652,8 @@ async function createWebsiteHoursAdjustment(client, guild, command, mode = 'add'
     actor.discordId || 'website'
   );
 
-  await auth.sendAuditLog(client, {
-    title: '🌐 Website Manual Hours Added',
+  void Promise.resolve().then(() => auth.sendAuditLog(client, {
+    title: 'Website Manual Hours Added',
     description:
       `**User:** ${agent.username} (<@${discordId}>)\n` +
       `**Mode:** ${adjustmentMode === 'training' ? 'Training' : 'Live Shift'}\n` +
@@ -664,6 +666,8 @@ async function createWebsiteHoursAdjustment(client, guild, command, mode = 'add'
     color: 0x3498DB,
     userId: actor.discordId,
     guild
+  })).catch(error => {
+    console.warn('[WEBSITE-API] Manual addition audit log failed:', error.message);
   });
 
   return {
@@ -746,8 +750,8 @@ async function setWebsiteExactDayHours(client, guild, command) {
     actor.discordId || 'website'
   );
 
-  await auth.sendAuditLog(client, {
-    title: '🌐 Website Exact Hours Set',
+  void Promise.resolve().then(() => auth.sendAuditLog(client, {
+    title: 'Website Exact Hours Set',
     description:
       `**User:** ${agent.username} (<@${discordId}>)\n` +
       `**Mode:** ${adjustmentMode === 'training' ? 'Training' : 'Live Shift'}\n` +
@@ -760,6 +764,8 @@ async function setWebsiteExactDayHours(client, guild, command) {
     color: deltaHours >= 0 ? 0x3498DB : 0xE67E22,
     userId: actor.discordId,
     guild
+  })).catch(error => {
+    console.warn('[WEBSITE-API] Exact hours audit log failed:', error.message);
   });
 
   return {
@@ -1644,7 +1650,9 @@ function buildRouter(client) {
           payload: body?.payload || {},
           actor: body?.actor || {}
         });
-        await pushWebsiteHoursSnapshot(client, { silent: true });
+        void pushWebsiteHoursSnapshot(client, { silent: true }).catch(error => {
+          console.error('[WEBSITE-API] Snapshot refresh failed:', error.message);
+        });
         return json(res, 200, {
           ok: true,
           message: outcome?.message || 'Hours updated.'
@@ -1707,3 +1715,5 @@ module.exports = {
   startWebsiteApiServer,
   stopWebsiteApiServer
 };
+
+
