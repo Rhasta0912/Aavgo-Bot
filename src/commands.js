@@ -17,7 +17,8 @@ const HOTEL_CHOICES = [
   { name: 'Econolodge', value: 'ECON' },
   { name: 'Buenavista', value: 'BUEN' },
   { name: 'Quality Russelville', value: 'QI_RV' },
-  { name: 'Thousand Oaks', value: 'THOK' }
+  { name: 'Thousand Oaks', value: 'THOK' },
+  { name: 'Brentwood', value: 'BRNT' }
 ];
 
 const commandData = [

@@ -271,7 +271,8 @@ const ROLE_NAMES = {
     'ECON': '1491280957859434576',
     'BUEN': '1491281133323681792',
     'QI_RV': '1491281264647344268',
-    'THOK': '1493532824362418186'
+    'THOK': '1493532824362418186',
+    'BRNT': '1494529686590718072'
   },
   // Grey (Permanent / Assignment) Roles
   GREY: {
@@ -291,7 +292,8 @@ const ROLE_NAMES = {
     'ECON': '1491280957859434576',
     'BUEN': '1491281133323681792',
     'QI_RV': '1491281264647344268',
-    'THOK': '1493532824362418186'
+    'THOK': '1493532824362418186',
+    'BRNT': '1494529686590718072'
   }
 };
 
@@ -313,7 +315,8 @@ const HOTEL_NAMES = {
   'ECON': 'Econolodge',
   'BUEN': 'Buenavista',
   'QI_RV': 'Quality Russelville',
-  'THOK': 'Thousand Oaks'
+  'THOK': 'Thousand Oaks',
+  'BRNT': 'Brentwood'
 };
 const HOTEL_SELECT_EMOJIS = {
   BW_TO: '🏙️',
@@ -405,7 +408,7 @@ const EXCLUSIVE_RANK_ROLE_PRIORITY = [
 
 const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
 const TEAM_2_HOTELS = ['PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI'];
-const TEAM_3_HOTELS = ['ECON', 'BUEN', 'QI_RV', 'THOK'];
+const TEAM_3_HOTELS = ['ECON', 'BUEN', 'QI_RV', 'THOK', 'BRNT'];
 const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3'];
 const ON_SHIFT_CALL_CHANNEL_IDS = {
   'Team 1': ['1482225371398017044', '1493674598233804842', '1493890379857133628'],
@@ -443,7 +446,8 @@ const TRAINING_HOTEL_GROUPS = [
   { label: 'Econolodge', hotelIds: ['ECON'] },
   { label: 'Buenavista', hotelIds: ['BUEN'] },
   { label: 'Quality Russelville', hotelIds: ['QI_RV'] },
-  { label: 'Thousand Oaks', hotelIds: ['THOK'] }
+  { label: 'Thousand Oaks', hotelIds: ['THOK'] },
+  { label: 'Brentwood', hotelIds: ['BRNT'] }
 ];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -2481,7 +2485,7 @@ function handleMissingHotelStatusChannel(client, {
 function getHotelStatusGroupsForTeam(teamName) {
   const teamHotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT' AND team = ?").all(teamName);
   const normalizedIds = [...new Set(teamHotels.map(row => normalizeCombinedHotelId(row.id)).filter(Boolean))];
-  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI', 'ECON', 'BUEN', 'QI_RV', 'THOK'];
+  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI', 'ECON', 'BUEN', 'QI_RV', 'THOK', 'BRNT'];
 
   const groups = normalizedIds
     .map(hotelId => getHotelStatusGroup(hotelId))
@@ -3058,17 +3062,7 @@ async function updateTrainingStatusEmbed(client) {
 
     const groupRows = TRAINING_HOTEL_GROUPS.map(group => {
       const matching = trainingSessions.filter(session => group.hotelIds.includes(session.hotel_id));
-      const groupIcon = group.label === 'Indianhead/Magnuson'
-        ? '🏙️'
-        : group.label === 'Ramada / Super 8'
-          ? '🛖'
-          : group.label === 'The Garden Inn At Campsite'
-            ? '🏨'
-            : group.label === 'Travelodge'
-              ? '🏩'
-              : group.label === 'Day Inns Bishop'
-                ? '🏨'
-                : '🏨';
+      const groupIcon = '\u{1F3E8}';
       const value = matching.length > 0
         ? matching
           .map(session => `• <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`)
@@ -11039,3 +11033,4 @@ module.exports = {
   getOperationalHotelIdsForTeam,
   syncGuildAgentRecordsFromRoles
 };
+
