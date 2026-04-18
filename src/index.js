@@ -22,7 +22,7 @@ const TEST_ROLE_ID = '1487369607772766208';
 const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
 const ATTENDANCE_TEST_DELAY_MS = 10 * 1000;
 const ATTENDANCE_LOGOUT_REPLY_DELETE_MS = 40 * 1000;
-const ATTENDANCE_CONFIRM_SUCCESS_DELETE_MS = 30 * 1000;
+const ATTENDANCE_CONFIRM_SUCCESS_DELETE_MS = 20 * 1000;
 const ATTENDANCE_TIME_ZONE = 'Asia/Manila';
 const ATTENDANCE_REMINDER_BUTTON_PREFIX = 'attendance_reminder';
 const ATTENDANCE_ACTION_BUTTON_PREFIX = 'attendance_action';
@@ -1345,7 +1345,7 @@ client.on('messageCreate', async message => {
     const hotelId = detectAttendanceHotelId(message.content);
     const voiceChannelId = resolveAttendanceVoiceChannelId({ hotelId, mode, teamName, userId: message.author.id });
     const isTestRole = isTestRoleMember(member);
-    const reminderDelayMs = Math.max(0, targetMs - Date.now());
+    const reminderDelayMs = Math.max(0, targetMs - nowMs);
     const targetLabel = formatAttendanceTimeLabel(targetMs);
 
     scheduleAttendanceLoginReminder(message, {
@@ -1357,15 +1357,47 @@ client.on('messageCreate', async message => {
       reminderDelayMs: timeExplicit ? reminderDelayMs : undefined
     });
 
-    await sendAttendanceActionConfirmation(message, {
-      action,
-      mode,
+    const scheduledLoginEntry = {
+      action: 'login',
+      userId: message.author.id,
+      guildId: message.guild.id,
       hotelId,
+      mode,
       targetMs,
+      isTestRole,
       timeExplicit,
       teamName,
-      isTestRole
-    });
+      modeLabel: mode === 'training' ? 'Training' : 'Live Shift',
+      targetLabel,
+      hotelLabel: auth.getCombinedHotelLabel(hotelId),
+      detectedText: String(message.content || '').trim()
+    };
+    const delayMs = getAttendanceActionDelayMs(scheduledLoginEntry);
+    scheduleAttendanceActionExecution(client, scheduledLoginEntry, delayMs);
+
+    const confirmedEmbed = new EmbedBuilder()
+      .setTitle('Login Confirmed')
+      .setDescription(
+        delayMs > 0
+          ? `Confirmed. Login is scheduled in **${formatDurationFromMs(delayMs)}**.\n**Target:** ${targetLabel}`
+          : 'Confirmed. Login was applied now.'
+      )
+      .setColor(0x57F287)
+      .setFooter({ text: 'Aavgo Operations - Attendance Login' })
+      .setTimestamp();
+
+    const confirmedReply = await message.reply({
+      content: `<@${message.author.id}>`,
+      embeds: [confirmedEmbed],
+      allowedMentions: { users: [message.author.id], repliedUser: false }
+    }).catch(() => null);
+
+    if (confirmedReply) {
+      const timer = setTimeout(() => {
+        confirmedReply.delete().catch(() => {});
+      }, ATTENDANCE_CONFIRM_SUCCESS_DELETE_MS);
+      timer.unref?.();
+    }
   } catch (error) {
     console.warn('[ATTENDANCE] Failed to process attendance message:', error.message);
   }
