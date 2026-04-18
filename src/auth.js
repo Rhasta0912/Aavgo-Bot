@@ -7911,6 +7911,22 @@ function getPromotionRequestKey(targetRole, targetId) {
   return `${PROMOTION_REQUEST_KEY_PREFIX}:${targetRole}:${targetId}`;
 }
 
+function hasPromotionRequestMetApprovalRequirement(request) {
+  const normalizedRole = normalizePromotionTargetRole(request?.targetRole);
+  if (normalizedRole === 'operations_manager') {
+    return Boolean(request?.developerApprovedBy || request?.operationsManagerApprovedBy);
+  }
+  return Boolean(request?.developerApprovedBy && request?.operationsManagerApprovedBy);
+}
+
+function getPromotionApprovalRequirementText(targetRole) {
+  const normalizedRole = normalizePromotionTargetRole(targetRole);
+  if (normalizedRole === 'operations_manager') {
+    return '1 approval required: Developer or Operations Manager.';
+  }
+  return '2 approvals required: 1 Developer and 1 Operations Manager.';
+}
+
 function parsePromotionRequestFromRow(row) {
   if (!row?.target_id || !String(row.target_id).startsWith(`${PROMOTION_REQUEST_KEY_PREFIX}:`)) return null;
   const [, targetRole, targetId] = String(row.target_id).split(':');
@@ -7997,6 +8013,7 @@ function buildPromotionRequestEmbed(request, { requesterName = null } = {}) {
   const requestedByLabel = request.requestedBy ? `<@${request.requestedBy}>` : (requesterName || 'System');
   const devApproval = request.developerApprovedBy ? `<@${request.developerApprovedBy}>` : 'Pending';
   const omApproval = request.operationsManagerApprovedBy ? `<@${request.operationsManagerApprovedBy}>` : 'Pending';
+  const requirementText = getPromotionApprovalRequirementText(request.targetRole);
   const statusLabel = request.status === 'approved'
     ? 'Approved'
     : (request.status === 'denied' ? 'Denied' : 'Pending');
@@ -8011,7 +8028,7 @@ function buildPromotionRequestEmbed(request, { requesterName = null } = {}) {
       `**Status:** ${statusLabel}${denialLine}\n\n` +
       `**Developer Approval:** ${devApproval}\n` +
       `**Operations Manager Approval:** ${omApproval}\n\n` +
-      `Both approvals are required to finalize this promotion.`
+      `${requirementText}`
     )
     .setColor(request.status === 'approved' ? 0x57F287 : (request.status === 'denied' ? 0xED4245 : 0xF1C40F))
     .setFooter({ text: 'Aavgo Promotion Control' })
@@ -8212,11 +8229,14 @@ async function handlePromote(interaction) {
     }
 
     const roleLabel = getPromotionTargetRoleLabel(targetRole);
+    const requirementLine = targetRole === 'operations_manager'
+      ? 'Required: **1 approval (Developer or Operations Manager)**.'
+      : 'Required: **1 Developer approval + 1 Operations Manager approval**.';
     await interaction.editReply({
       content:
         `✅ Promotion request created for <@${targetUser.id}> -> **${roleLabel}**.\n` +
         `Review channel: <#${PROMOTION_REVIEW_CHANNEL_ID}>.\n` +
-        `Required: **1 Developer approval + 1 Operations Manager approval**.`
+        requirementLine
     });
   } catch (error) {
     console.error('Error in handlePromote:', error);
@@ -8248,6 +8268,26 @@ async function handlePromotionRequestApprove(interaction) {
     if (!canApproveAsDeveloper && !canApproveAsOperationsManager) {
       return sendComponentReply(interaction, { content: 'Only Developer or Operations Manager can approve this request.', ephemeral: true });
     }
+
+    if (hasPromotionRequestMetApprovalRequirement(request)) {
+      const approvedById = request.developerApprovedBy || request.operationsManagerApprovedBy || approverId;
+      const applyResult = await applyApprovedPromotion(interaction.guild, request.targetId, request.targetRole, approvedById);
+      if (!applyResult.ok) {
+        return sendComponentReply(interaction, { content: `Could not apply promotion: ${applyResult.error}`, ephemeral: true });
+      }
+      request.status = 'approved';
+      request.updatedAt = new Date().toISOString();
+      upsertPromotionRequestRow(request);
+      await sendComponentUpdate(interaction, {
+        embeds: [buildPromotionRequestEmbed(request)],
+        components: []
+      });
+      return sendComponentReply(interaction, {
+        content: 'Required approval was already present. Promotion has now been finalized.',
+        ephemeral: true
+      });
+    }
+
     if (request.developerApprovedBy === approverId || request.operationsManagerApprovedBy === approverId) {
       return sendComponentReply(interaction, { content: 'You have already approved this request.', ephemeral: true });
     }
@@ -8259,14 +8299,17 @@ async function handlePromotionRequestApprove(interaction) {
     } else if (canApproveAsOperationsManager && !request.operationsManagerApprovedBy) {
       request.operationsManagerApprovedBy = approverId;
       approvalType = 'Operations Manager';
-    } else if (!request.developerApprovedBy || !request.operationsManagerApprovedBy) {
+    } else if (!hasPromotionRequestMetApprovalRequirement(request)) {
       return sendComponentReply(interaction, { content: 'Your role is already filled for this request. A different approver role is still required.', ephemeral: true });
     }
 
     request.updatedAt = new Date().toISOString();
-    const isFullyApproved = Boolean(request.developerApprovedBy && request.operationsManagerApprovedBy);
+    const isFullyApproved = hasPromotionRequestMetApprovalRequirement(request);
     if (isFullyApproved) {
-      const applyResult = await applyApprovedPromotion(interaction.guild, request.targetId, request.targetRole, approverId);
+      const approvedById = approvalType
+        ? approverId
+        : (request.developerApprovedBy || request.operationsManagerApprovedBy || approverId);
+      const applyResult = await applyApprovedPromotion(interaction.guild, request.targetId, request.targetRole, approvedById);
       if (!applyResult.ok) {
         return sendComponentReply(interaction, { content: `Could not apply promotion: ${applyResult.error}`, ephemeral: true });
       }
@@ -8281,8 +8324,11 @@ async function handlePromotionRequestApprove(interaction) {
     });
 
     if (request.status === 'pending') {
+      const pendingApprovalMessage = request.targetRole === 'operations_manager'
+        ? `${approvalType || 'Eligible'} approval captured. Waiting for one eligible approval.`
+        : `${approvalType} approval captured. Waiting for the second required approval.`;
       await sendComponentReply(interaction, {
-        content: `${approvalType} approval captured. Waiting for the second required approval.`,
+        content: pendingApprovalMessage,
         ephemeral: true
       }).catch(() => {});
     }
@@ -8684,7 +8730,7 @@ async function handleSetOperationManager(interaction) {
       content:
         `Operations Manager promotion request created for <@${targetUser.id}>.\n` +
         `Use /promote going forward.\n` +
-        `Review channel: <#${PROMOTION_REVIEW_CHANNEL_ID}> (requires 1 Developer + 1 Operations Manager approval).`
+        `Review channel: <#${PROMOTION_REVIEW_CHANNEL_ID}> (requires 1 approval from Developer or Operations Manager).`
     });
   } catch (e) {
     console.error('Error in handleSetOperationManager:', e);
@@ -9394,7 +9440,7 @@ async function handleHelpStaff(interaction) {
         '> `/remove-agent`: Remove an agent through the managed flow.\n' +
         '> `/assign-team`: Move an agent between Team 1, Team 2, and Team 3.\n' +
         '> `/db-assign-hotel`: Permanently link an agent to a hotel (`sync`: permission/ghost/both).\n' +
-        '> `/promote user:@name role:Developer|Operations Manager`: Create a dual-approval promotion request.\n' +
+        '> `/promote user:@name role:Developer|Operations Manager`: Create a promotion request (Developer: dual approval, Operations Manager: single approval).\n' +
         '> `/db-add-developer`: Legacy alias that now routes to approval request flow.\n' +
         '> `/db-set-pin`: Reset an agent PIN in real time.\n' +
         '> `/db-set-phone`: Correct an agent phone record.\n' +
