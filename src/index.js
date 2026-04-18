@@ -31,7 +31,7 @@ const TRAINING_VOICE_CHANNEL_IDS = [
   '1484854340249190422',
   '1484854380254466058',
   '1484854396717236244',
-  '1484854418078961825'
+  '1495013995088969798'
 ];
 const HOTEL_LIVE_VOICE_CHANNEL_IDS = {
   BW_TO: '1493890379857133628',
@@ -258,9 +258,20 @@ function detectAttendanceHotelId(content) {
   return 'AD1';
 }
 
-function resolveAttendanceVoiceChannelId({ hotelId, mode, teamName }) {
+function pickTrainingVoiceChannelId(seedValue = '') {
+  const pool = TRAINING_VOICE_CHANNEL_IDS.filter(Boolean);
+  if (pool.length === 0) return null;
+  const seedText = String(seedValue || Date.now());
+  let hash = 0;
+  for (const char of seedText) {
+    hash = ((hash * 31) + char.charCodeAt(0)) >>> 0;
+  }
+  return pool[hash % pool.length] || pool[0];
+}
+
+function resolveAttendanceVoiceChannelId({ hotelId, mode, teamName, userId }) {
   if (mode === 'training') {
-    return TRAINING_VOICE_CHANNEL_IDS[0];
+    return pickTrainingVoiceChannelId(userId || `${teamName || 'team'}:${hotelId || 'hotel'}`);
   }
   if (hotelId === 'QI_RV') {
     return QI_RV_TEAM_VOICE_CHANNEL_IDS[teamName] || QI_RV_TEAM_VOICE_CHANNEL_IDS['Team 3'];
@@ -1238,7 +1249,7 @@ client.on('messageCreate', async message => {
     const mode = parseAttendanceMode(message.content);
     const teamName = resolveAttendanceTeamName(member);
     const hotelId = detectAttendanceHotelId(message.content);
-    const voiceChannelId = resolveAttendanceVoiceChannelId({ hotelId, mode, teamName });
+    const voiceChannelId = resolveAttendanceVoiceChannelId({ hotelId, mode, teamName, userId: message.author.id });
     const isTestRole = isTestRoleMember(member);
     const reminderDelayMs = Math.max(0, targetMs - Date.now());
     const targetLabel = formatAttendanceTimeLabel(targetMs);

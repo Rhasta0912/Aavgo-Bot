@@ -363,6 +363,7 @@ const TRAINING_LOG_CHANNEL_ID = '1488041967769358369';
 const TRAINING_SESSION_ROLE_ID = '1493765270928621648';
 const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
+const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const APPLICANT_ROLE_ID = '1484919969689894912';
 const AGENT_ROLE_ID = '1482227287159078964';
@@ -427,7 +428,7 @@ const TRAINING_CALL_CHANNEL_IDS = [
   '1484854340249190422',
   '1484854380254466058',
   '1484854396717236244',
-  '1484854418078961825'
+  '1495013995088969798'
 ];
 const TL_SME_CALL_CHANNEL_ID = '1493764447309795368';
 const TRAINING_HOTEL_GROUPS = [
@@ -734,17 +735,17 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO', warni
   const user = await client.users.fetch(session.discord_id).catch(() => null);
   if (user) {
     const guildId = client.guilds.cache.first()?.id || null;
-    const loginChannelUrl = guildId ? `https://discord.com/channels/${guildId}/${LOGIN_CHANNEL_ID}` : null;
+    const attendanceChannelUrl = guildId ? `https://discord.com/channels/${guildId}/${ATTENDANCE_CHANNEL_ID}` : null;
     const confirmBtn = new ButtonBuilder()
       .setCustomId(`overtime_confirm:${sessionId}:${session.discord_id}`)
       .setLabel('Confirm Overtime')
       .setStyle(ButtonStyle.Success);
-    const endShiftBtn = loginChannelUrl
+    const endShiftBtn = attendanceChannelUrl
       ? new ButtonBuilder()
         .setLabel('End Shift')
         .setEmoji('🛑')
         .setStyle(ButtonStyle.Link)
-        .setURL(loginChannelUrl)
+        .setURL(attendanceChannelUrl)
       : new ButtonBuilder()
         .setCustomId(`overtime_endshift:${sessionId}:${session.discord_id}`)
         .setLabel('End Shift')
@@ -9682,25 +9683,25 @@ async function handleOvertimeEndShift(interaction) {
     }
 
     const guildId = interaction.client.guilds.cache.first()?.id || '1482220918355922974';
-    const loginChannelUrl = `https://discord.com/channels/${guildId}/${LOGIN_CHANNEL_ID}`;
+    const attendanceChannelUrl = `https://discord.com/channels/${guildId}/${ATTENDANCE_CHANNEL_ID}`;
     const redirectRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setStyle(ButtonStyle.Link)
-        .setLabel('Open Log-in Channel')
-        .setURL(loginChannelUrl)
+        .setLabel('Open Attendance')
+        .setURL(attendanceChannelUrl)
     );
 
     return interaction.update({
-      content: '📍 Please continue in the log-in channel.',
+      content: '📍 Please continue in the attendance channel.',
       embeds: [],
       components: [redirectRow]
     });
   } catch (error) {
     console.error('Error in handleOvertimeEndShift:', error);
     if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({ content: '❌ Failed to redirect to the log-in channel.', ephemeral: true }).catch(() => {});
+      await interaction.followUp({ content: '❌ Failed to redirect to the attendance channel.', ephemeral: true }).catch(() => {});
     } else {
-      await interaction.reply({ content: '❌ Failed to redirect to the log-in channel.', ephemeral: true }).catch(() => {});
+      await interaction.reply({ content: '❌ Failed to redirect to the attendance channel.', ephemeral: true }).catch(() => {});
     }
   }
 }
