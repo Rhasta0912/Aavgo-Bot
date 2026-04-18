@@ -290,6 +290,21 @@ function formatAttendanceTimeLabel(ms) {
   return `${datePart} ${timePart} PHT`;
 }
 
+function formatDurationFromMs(ms) {
+  const totalSeconds = Math.max(0, Math.round(Number(ms || 0) / 1000));
+  if (totalSeconds <= 0) return 'right now';
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts = [];
+
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (seconds > 0 && hours === 0) parts.push(`${seconds}s`);
+  return parts.join(' ');
+}
+
 function buildAttendanceActionKey(userId, action) {
   return `${userId}:${action}`;
 }
@@ -361,7 +376,14 @@ function scheduleAttendanceLoginReminder(message, context) {
   const userId = message?.author?.id;
   if (!userId) return;
 
-  const delayMs = getAttendanceDelayMs(context.member);
+  const defaultDelayMs = getAttendanceDelayMs(context.member);
+  const requestedDelayMs = Number(context?.reminderDelayMs);
+  const delayMs = Number.isFinite(requestedDelayMs)
+    ? Math.max(0, Math.floor(requestedDelayMs))
+    : defaultDelayMs;
+  const usesScheduledDelay = context?.useScheduledDelay === true;
+  const targetLabel = context?.targetLabel || (Number.isFinite(context?.targetMs) ? formatAttendanceTimeLabel(context.targetMs) : null);
+  const estimatedDelayLabel = formatDurationFromMs(delayMs);
   const reminderToken = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const existing = pendingAttendanceLoginReminders.get(userId);
   if (existing?.timer) {
@@ -374,8 +396,9 @@ function scheduleAttendanceLoginReminder(message, context) {
       const reminderEmbed = new EmbedBuilder()
         .setTitle('Login Reminder')
         .setDescription(
-          `It has been ${delayMs === ATTENDANCE_TEST_DELAY_MS ? '10 seconds (test mode)' : '30 minutes'} since your attendance message.\n` +
-          'Please join your assigned voice channel now.'
+          usesScheduledDelay && targetLabel
+            ? `Your scheduled login time (**${targetLabel}**) is now due.\nPlease join your assigned voice channel now.`
+            : `It has been ${delayMs === ATTENDANCE_TEST_DELAY_MS ? '10 seconds (test mode)' : '30 minutes'} since your attendance message.\nPlease join your assigned voice channel now.`
         )
         .setColor(0xFEE75C)
         .setFooter({ text: 'Aavgo Operations - Attendance Reminder' })
@@ -406,9 +429,18 @@ function scheduleAttendanceLoginReminder(message, context) {
   const preferenceEmbed = new EmbedBuilder()
     .setTitle('Attendance Reminder Preference')
     .setDescription(
-      'You posted a `log in` attendance message.\n' +
-      `Do you want to keep a reminder DM for ${delayMs === ATTENDANCE_TEST_DELAY_MS ? '10 seconds (test)' : '30 minutes'} later?\n\n` +
-      'If you ignore this, the reminder will still be sent.'
+      usesScheduledDelay && targetLabel
+        ? (
+          'You posted a `log in` attendance message.\n' +
+          `Do you want to keep a reminder DM for your scheduled time (**${targetLabel}**)?\n` +
+          `Estimated reminder in: **${estimatedDelayLabel}**.\n\n` +
+          'If you ignore this, the reminder will still be sent.'
+        )
+        : (
+          'You posted a `log in` attendance message.\n' +
+          `Do you want to keep a reminder DM for ${delayMs === ATTENDANCE_TEST_DELAY_MS ? '10 seconds (test)' : '30 minutes'} later?\n\n` +
+          'If you ignore this, the reminder will still be sent.'
+        )
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations - Attendance Reminder' })
@@ -449,6 +481,7 @@ async function sendAttendanceActionConfirmation(message, context) {
     mode: context.mode,
     targetMs: context.targetMs,
     isTestRole: context.isTestRole,
+    timeExplicit: context.timeExplicit === true,
     teamName: context.teamName,
     modeLabel,
     targetLabel,
@@ -458,26 +491,40 @@ async function sendAttendanceActionConfirmation(message, context) {
   };
   pendingAttendanceActionConfirmations.set(token, pendingEntry);
 
-  const promptEmbed = new EmbedBuilder()
-    .setTitle('Attendance Confirmation Ready')
+  const confirmationEmbed = new EmbedBuilder()
+    .setTitle(isLogin ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
     .setDescription(
-      `Click **Open Private Confirmation** below.\n` +
-      `The confirmation embed will be shown as **Only you can see this**.\n\n` +
-      `**Action:** ${isLogin ? 'Login' : 'Logout'}`
+      isLogin
+        ? (
+          `Please confirm if you want to log in on this hotel and time from your attendance message.\n\n` +
+          `**Hotel:** ${hotelLabel}\n` +
+          `**Mode:** ${modeLabel}\n` +
+          `**Time:** ${targetLabel}\n` +
+          `**Estimated from now:** ${formatDurationFromMs(Math.max(0, context.targetMs - Date.now()))}`
+        )
+        : 'Please confirm logout.\n\nThis will end your shift immediately once you confirm.'
     )
-    .setColor(0x5865F2)
-    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation Launcher' })
+    .addFields(
+      { name: 'Detected Attendance Text', value: detectedText ? `\`${detectedText.slice(0, 950)}\`` : '`(empty)`' },
+      { name: 'Access', value: `Buttons are locked to <@${userId}> only.` }
+    )
+    .setColor(isLogin ? 0x57F287 : 0xED4245)
+    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)' })
     .setTimestamp();
 
-  const openButton = new ButtonBuilder()
-    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${context.action}:open:${token}`)
-    .setLabel('Open Private Confirmation')
-    .setStyle(ButtonStyle.Primary);
+  const confirmButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${context.action}:confirm:${token}`)
+    .setLabel(isLogin ? 'Confirm Login' : 'Confirm Logout')
+    .setStyle(ButtonStyle.Success);
+  const cancelButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${context.action}:cancel:${token}`)
+    .setLabel('Cancel')
+    .setStyle(ButtonStyle.Secondary);
 
   const sent = await message.reply({
-    embeds: [promptEmbed],
+    embeds: [confirmationEmbed],
     allowedMentions: { users: [userId], repliedUser: false },
-    components: [new ActionRowBuilder().addComponents(openButton)]
+    components: [new ActionRowBuilder().addComponents(confirmButton, cancelButton)]
   }).catch(error => {
     console.warn(`[ATTENDANCE] Failed to send in-channel action confirmation to ${userId}:`, error.message);
     return null;
@@ -600,12 +647,10 @@ async function handleAttendanceActionButton(interaction) {
   };
 
   if (decision === 'open') {
-    await interaction.reply({
+    await interaction.update({
       embeds: [buildPrimaryEmbed()],
-      components: [buildPrimaryButtons()],
-      ephemeral: true
+      components: [buildPrimaryButtons()]
     }).catch(() => {});
-    interaction.message?.delete().catch(() => {});
     return;
   }
 
@@ -669,16 +714,22 @@ async function handleAttendanceActionButton(interaction) {
 
   const delayMs = action === 'logout'
     ? 0
-    : (pending.isTestRole
-      ? ATTENDANCE_TEST_DELAY_MS
-      : Math.max(0, pending.targetMs - Date.now()));
+    : (
+      pending.timeExplicit
+        ? Math.max(0, pending.targetMs - Date.now())
+        : (
+          pending.isTestRole
+            ? ATTENDANCE_TEST_DELAY_MS
+            : Math.max(0, pending.targetMs - Date.now())
+        )
+    );
 
   scheduleAttendanceActionExecution(interaction.client, pending, delayMs);
   const successEmbed = new EmbedBuilder()
     .setTitle(`${action === 'login' ? 'Login' : 'Logout'} Confirmed`)
     .setDescription(
       delayMs > 0
-        ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} is scheduled in ${Math.ceil(delayMs / 1000)} second(s).\n**Target:** ${pending.targetLabel}`
+        ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} is scheduled in **${formatDurationFromMs(delayMs)}**.\n**Target:** ${pending.targetLabel}`
         : `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied now.`
     )
     .setColor(0x57F287)
@@ -1144,15 +1195,24 @@ client.on('messageCreate', async message => {
 
     const mode = parseAttendanceMode(message.content);
     const teamName = resolveAttendanceTeamName(member);
-    const { targetMs } = parseAttendanceTargetTime(message.content, Date.now());
+    const { targetMs, explicit: timeExplicit } = parseAttendanceTargetTime(message.content, Date.now());
     const hotelId = action === 'login' ? detectAttendanceHotelId(message.content) : null;
     const voiceChannelId = action === 'login'
       ? resolveAttendanceVoiceChannelId({ hotelId, mode, teamName })
       : null;
     const isTestRole = isTestRoleMember(member);
+    const reminderDelayMs = Math.max(0, targetMs - Date.now());
+    const targetLabel = formatAttendanceTimeLabel(targetMs);
 
     if (action === 'login') {
-      scheduleAttendanceLoginReminder(message, { member, voiceChannelId });
+      scheduleAttendanceLoginReminder(message, {
+        member,
+        voiceChannelId,
+        targetMs,
+        targetLabel,
+        useScheduledDelay: timeExplicit,
+        reminderDelayMs: timeExplicit ? reminderDelayMs : undefined
+      });
     }
 
     await sendAttendanceActionConfirmation(message, {
@@ -1160,6 +1220,7 @@ client.on('messageCreate', async message => {
       mode,
       hotelId,
       targetMs,
+      timeExplicit,
       teamName,
       isTestRole
     });
