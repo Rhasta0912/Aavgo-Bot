@@ -166,6 +166,20 @@ db.exec(`
     FOREIGN KEY (agent_id) REFERENCES agents(id)
   );
 
+  CREATE TABLE IF NOT EXISTS attendance_action_queue (
+    action_key TEXT PRIMARY KEY,
+    guild_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    hotel_id TEXT,
+    mode TEXT,
+    target_ms INTEGER NOT NULL,
+    is_test_role INTEGER DEFAULT 0,
+    time_explicit INTEGER DEFAULT 0,
+    team_name TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS hotel_shift_assignments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id INTEGER NOT NULL UNIQUE,

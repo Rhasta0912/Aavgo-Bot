@@ -323,6 +323,46 @@ function buildAttendanceActionKey(userId, action) {
   return `${userId}:${action}`;
 }
 
+function upsertAttendanceQueuedAction(key, entry) {
+  try {
+    db.prepare(`
+      INSERT OR REPLACE INTO attendance_action_queue (
+        action_key,
+        guild_id,
+        user_id,
+        action,
+        hotel_id,
+        mode,
+        target_ms,
+        is_test_role,
+        time_explicit,
+        team_name
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      key,
+      String(entry.guildId || ''),
+      String(entry.userId || ''),
+      String(entry.action || ''),
+      entry.hotelId || null,
+      entry.mode || null,
+      Number.isFinite(Number(entry.targetMs)) ? Math.floor(Number(entry.targetMs)) : Date.now(),
+      entry.isTestRole ? 1 : 0,
+      entry.timeExplicit ? 1 : 0,
+      entry.teamName || null
+    );
+  } catch (error) {
+    console.warn('[ATTENDANCE] Failed to persist scheduled action:', error.message);
+  }
+}
+
+function deleteAttendanceQueuedAction(key) {
+  try {
+    db.prepare('DELETE FROM attendance_action_queue WHERE action_key = ?').run(String(key || ''));
+  } catch (error) {
+    console.warn('[ATTENDANCE] Failed to clear scheduled action queue row:', error.message);
+  }
+}
+
 function getAttendanceActionDelayMs(entry) {
   if (entry?.action === 'logout') return 0;
   if (entry?.timeExplicit) return Math.max(0, Number(entry.targetMs || 0) - Date.now());
@@ -373,9 +413,11 @@ function scheduleAttendanceActionExecution(client, entry, delayMs) {
   if (existing?.timer) {
     clearTimeout(existing.timer);
   }
+  upsertAttendanceQueuedAction(key, entry);
 
   const runNow = async () => {
     scheduledAttendanceActionsByUser.delete(key);
+    deleteAttendanceQueuedAction(key);
     try {
       await executeScheduledAttendanceAction(client, entry);
     } catch (error) {
@@ -391,6 +433,48 @@ function scheduleAttendanceActionExecution(client, entry, delayMs) {
   const timer = setTimeout(runNow, delayMs);
   timer.unref?.();
   scheduledAttendanceActionsByUser.set(key, { timer, entry, createdAt: Date.now() });
+}
+
+function recoverScheduledAttendanceActions(client) {
+  let rows = [];
+  try {
+    rows = db.prepare(`
+      SELECT action_key, guild_id, user_id, action, hotel_id, mode, target_ms, is_test_role, time_explicit, team_name
+      FROM attendance_action_queue
+      ORDER BY created_at ASC
+    `).all();
+  } catch (error) {
+    console.warn('[ATTENDANCE] Failed to read queued actions during startup:', error.message);
+    return;
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0) return;
+
+  let restoredCount = 0;
+  for (const row of rows) {
+    const entry = {
+      guildId: String(row.guild_id || ''),
+      userId: String(row.user_id || ''),
+      action: String(row.action || ''),
+      hotelId: row.hotel_id || null,
+      mode: row.mode || null,
+      targetMs: Number.isFinite(Number(row.target_ms)) ? Number(row.target_ms) : Date.now(),
+      isTestRole: Number(row.is_test_role || 0) === 1,
+      timeExplicit: Number(row.time_explicit || 0) === 1,
+      teamName: row.team_name || null
+    };
+
+    if (!entry.guildId || !entry.userId || !entry.action) {
+      const fallbackKey = String(row.action_key || buildAttendanceActionKey(entry.userId, entry.action));
+      deleteAttendanceQueuedAction(fallbackKey);
+      continue;
+    }
+
+    scheduleAttendanceActionExecution(client, entry, getAttendanceActionDelayMs(entry));
+    restoredCount += 1;
+  }
+
+  console.log(`[ATTENDANCE] Restored ${restoredCount} queued attendance action(s) on startup.`);
 }
 
 function scheduleAttendanceLoginReminder(message, context) {
@@ -1105,6 +1189,7 @@ client.once('ready', async () => {
     
     // Initial check on boot
     auth.checkSchedules(client);
+    recoverScheduledAttendanceActions(client);
     auth.monitorOvertimeSessions(client).catch(error => {
       console.warn('[OVERTIME] Initial monitor pass failed:', error.message);
     });
