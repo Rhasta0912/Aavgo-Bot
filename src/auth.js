@@ -406,9 +406,9 @@ const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   APPLICANT_ROLE_ID
 ];
 
-const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS'];
+const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS', 'QI_RV'];
 const TEAM_2_HOTELS = ['PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI'];
-const TEAM_3_HOTELS = ['ECON', 'BUEN', 'QI_RV', 'THOK', 'BRNT'];
+const TEAM_3_HOTELS = ['ECON', 'BUEN', 'THOK', 'BRNT'];
 const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3'];
 const ON_SHIFT_CALL_CHANNEL_IDS = {
   'Team 1': ['1482225371398017044', '1493674598233804842', '1493890379857133628'],
@@ -856,14 +856,19 @@ async function sendAuditLog(
     const resolveOpsLogChannelByHotel = rawHotelId => {
       const normalizedHotelId = normalizeCombinedHotelId(rawHotelId);
       if (!normalizedHotelId) return null;
-      if (normalizedHotelId === 'PROS') return PROSPERO_LOG_CHANNEL_ID;
+
+      // Route by explicit hotel-team groups first so attendance/login logs always
+      // land in the expected Team 1/2/3 log channels.
+      if (TEAM_1_HOTELS.includes(normalizedHotelId)) return TEAM_LOG_CHANNEL_IDS['Team 1'] || null;
+      if (TEAM_2_HOTELS.includes(normalizedHotelId)) return TEAM_LOG_CHANNEL_IDS['Team 2'] || null;
+      if (TEAM_3_HOTELS.includes(normalizedHotelId)) return TEAM_LOG_CHANNEL_IDS['Team 3'] || null;
 
       const hotelTeam = normalizeTeamInput(
         db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotelId)?.team
       );
-      if (hotelTeam === 'Team 1') return TEAM_1_LOG_CHANNEL_ID;
-      if (hotelTeam === 'Team 2') return TEAM_2_OPERATIONS_CHANNEL_ID;
-      if (hotelTeam === 'Team 3') return TEAM_3_LOG_CHANNEL_ID;
+      if (hotelTeam === 'Team 1') return TEAM_LOG_CHANNEL_IDS['Team 1'] || null;
+      if (hotelTeam === 'Team 2') return TEAM_LOG_CHANNEL_IDS['Team 2'] || null;
+      if (hotelTeam === 'Team 3') return TEAM_LOG_CHANNEL_IDS['Team 3'] || null;
       return null;
     };
 
@@ -884,12 +889,19 @@ async function sendAuditLog(
     } else if (forceManagerLog) {
       targetChannelId = AUDIT_LOG_CHANNEL_ID; // Ensure manager audit
     } else if (teamLogRouting && userId) {
-      const routedTeamChannelId = await resolveTeamLogChannelIdForUser(client, guild, userId);
-      if (routedTeamChannelId) {
-        targetChannelId = routedTeamChannelId;
-      } else if (hotelId) {
+      if (hotelId) {
         const mappedChannelId = resolveOpsLogChannelByHotel(hotelId);
-        if (mappedChannelId) targetChannelId = mappedChannelId;
+        if (mappedChannelId) {
+          targetChannelId = mappedChannelId;
+        } else {
+          const routedTeamChannelId = await resolveTeamLogChannelIdForUser(client, guild, userId);
+          if (routedTeamChannelId) targetChannelId = routedTeamChannelId;
+        }
+      } else {
+        const routedTeamChannelId = await resolveTeamLogChannelIdForUser(client, guild, userId);
+        if (routedTeamChannelId) {
+          targetChannelId = routedTeamChannelId;
+        }
       }
     } else if (hotelId) {
       const mappedChannelId = resolveOpsLogChannelByHotel(hotelId);
