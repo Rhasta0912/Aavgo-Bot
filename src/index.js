@@ -240,11 +240,8 @@ async function executeScheduledAttendanceAction(client, entry) {
       sessionMode: entry.mode,
       loginTimeIso
     });
-    const hotelLabel = auth.getCombinedHotelLabel(entry.hotelId);
-    if (result?.ok) {
-      await member.send(`Attendance login confirmed for **${hotelLabel}** (${entry.mode === 'training' ? 'Training' : 'Live Shift'}).`).catch(() => {});
-    } else {
-      await member.send('Attendance login failed. Please check with Operations Manager or Developer.').catch(() => {});
+    if (!result?.ok) {
+      console.warn(`[ATTENDANCE] Scheduled login failed for ${entry.userId}`);
     }
     return;
   }
@@ -257,10 +254,8 @@ async function executeScheduledAttendanceAction(client, entry) {
       member,
       logoutTimeIso
     });
-    if (result?.ok) {
-      await member.send('Attendance logout confirmed.').catch(() => {});
-    } else {
-      await member.send('Attendance logout failed. Please check with Operations Manager or Developer.').catch(() => {});
+    if (!result?.ok) {
+      console.warn(`[ATTENDANCE] Scheduled logout failed for ${entry.userId}`);
     }
   }
 }
@@ -372,8 +367,9 @@ async function sendAttendanceActionConfirmation(message, context) {
   const modeLabel = context.mode === 'training' ? 'Training' : 'Live Shift';
   const targetLabel = formatAttendanceTimeLabel(context.targetMs);
   const hotelLabel = isLogin ? auth.getCombinedHotelLabel(context.hotelId) : null;
+  const detectedText = String(message.content || '').trim();
 
-  pendingAttendanceActionConfirmations.set(token, {
+  const pendingEntry = {
     token,
     action: context.action,
     userId,
@@ -382,18 +378,27 @@ async function sendAttendanceActionConfirmation(message, context) {
     mode: context.mode,
     targetMs: context.targetMs,
     isTestRole: context.isTestRole,
-    teamName: context.teamName
-  });
+    teamName: context.teamName,
+    modeLabel,
+    targetLabel,
+    hotelLabel,
+    detectedText
+  };
+  pendingAttendanceActionConfirmations.set(token, pendingEntry);
 
   const confirmationEmbed = new EmbedBuilder()
-    .setTitle(isLogin ? 'Confirm Attendance Login' : 'Confirm Attendance Logout')
+    .setTitle(isLogin ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
     .setDescription(
       isLogin
-        ? `Please confirm your attendance login.\n\n**Hotel:** ${hotelLabel}\n**Mode:** ${modeLabel}\n**Time:** ${targetLabel}`
-        : `Please confirm your attendance logout.\n\n**Time:** ${targetLabel}`
+        ? `Please confirm if you want to log in on this hotel and time from your attendance message.\n\n**Hotel:** ${hotelLabel}\n**Mode:** ${modeLabel}\n**Time:** ${targetLabel}`
+        : 'Please confirm logout.\n\nThis will end your shift immediately once you confirm.'
+    )
+    .addFields(
+      { name: 'Detected Attendance Text', value: detectedText ? `\`${detectedText.slice(0, 950)}\`` : '`(empty)`' },
+      { name: 'Access', value: `Buttons are locked to <@${userId}> only.` }
     )
     .setColor(isLogin ? 0x57F287 : 0xED4245)
-    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation' })
+    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)' })
     .setTimestamp();
 
   const confirmButton = new ButtonBuilder()
@@ -405,12 +410,21 @@ async function sendAttendanceActionConfirmation(message, context) {
     .setLabel('Cancel')
     .setStyle(ButtonStyle.Secondary);
 
-  await message.author.send({
+  const sent = await message.reply({
     embeds: [confirmationEmbed],
+    allowedMentions: { repliedUser: true },
     components: [new ActionRowBuilder().addComponents(confirmButton, cancelButton)]
   }).catch(error => {
-    console.warn(`[ATTENDANCE] Failed to send action confirmation DM to ${userId}:`, error.message);
+    console.warn(`[ATTENDANCE] Failed to send in-channel action confirmation to ${userId}:`, error.message);
+    return null;
   });
+
+  if (sent?.id) {
+    pendingEntry.confirmationMessageId = sent.id;
+    pendingEntry.confirmationChannelId = sent.channelId;
+  } else {
+    pendingAttendanceActionConfirmations.delete(token);
+  }
 }
 
 async function handleAttendanceReminderButton(interaction) {
@@ -470,37 +484,107 @@ async function handleAttendanceActionButton(interaction) {
     return interaction.reply({ content: 'This attendance confirmation is no longer active.', ephemeral: true }).catch(() => {});
   }
 
-  const confirmButton = new ButtonBuilder()
-    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${action}:confirm:${token}`)
-    .setLabel(action === 'login' ? 'Confirm Login' : 'Confirm Logout')
-    .setStyle(decision === 'confirm' ? ButtonStyle.Success : ButtonStyle.Secondary)
-    .setDisabled(true);
-  const cancelButton = new ButtonBuilder()
-    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${action}:cancel:${token}`)
-    .setLabel('Cancel')
-    .setStyle(decision === 'cancel' ? ButtonStyle.Danger : ButtonStyle.Secondary)
-    .setDisabled(true);
+  const scheduleDeleteConfirmationMessage = (delayMs = 1200) => {
+    const timer = setTimeout(() => {
+      interaction.message?.delete().catch(() => {});
+    }, delayMs);
+    timer.unref?.();
+  };
 
-  await interaction.update({
-    components: [new ActionRowBuilder().addComponents(confirmButton, cancelButton)]
-  }).catch(() => {});
+  const buildPrimaryButtons = () => {
+    const confirmButton = new ButtonBuilder()
+      .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${action}:confirm:${token}`)
+      .setLabel(action === 'login' ? 'Confirm Login' : 'Confirm Logout')
+      .setStyle(ButtonStyle.Success);
+    const cancelButton = new ButtonBuilder()
+      .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${action}:cancel:${token}`)
+      .setLabel('Cancel')
+      .setStyle(ButtonStyle.Secondary);
+    return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
+  };
 
-  pendingAttendanceActionConfirmations.delete(token);
-  if (decision !== 'confirm') {
-    await interaction.followUp({ content: `${action === 'login' ? 'Login' : 'Logout'} request canceled.` }).catch(() => {});
+  if (decision === 'cancel') {
+    const warningEmbed = new EmbedBuilder()
+      .setTitle('Cancel Confirmation')
+      .setDescription(
+        `Are you sure you want to cancel this ${action} request?\n` +
+        'If you continue, please retype your attendance message again.'
+      )
+      .setColor(0xFEE75C)
+      .setFooter({ text: 'Aavgo Operations - Second Confirmation' })
+      .setTimestamp();
+
+    const yesCancelButton = new ButtonBuilder()
+      .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${action}:cancel_yes:${token}`)
+      .setLabel('Yes, Cancel It')
+      .setStyle(ButtonStyle.Danger);
+    const goBackButton = new ButtonBuilder()
+      .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${action}:cancel_back:${token}`)
+      .setLabel('Go Back')
+      .setStyle(ButtonStyle.Secondary);
+
+    await interaction.update({
+      embeds: [warningEmbed],
+      components: [new ActionRowBuilder().addComponents(yesCancelButton, goBackButton)]
+    }).catch(() => {});
     return;
   }
 
-  const delayMs = pending.isTestRole
-    ? ATTENDANCE_TEST_DELAY_MS
-    : Math.max(0, pending.targetMs - Date.now());
+  if (decision === 'cancel_back') {
+    const restoreEmbed = new EmbedBuilder()
+      .setTitle(action === 'login' ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
+      .setDescription(
+        action === 'login'
+          ? `Please confirm if you want to log in on this hotel and time from your attendance message.\n\n**Hotel:** ${pending.hotelLabel}\n**Mode:** ${pending.modeLabel}\n**Time:** ${pending.targetLabel}`
+          : 'Please confirm logout.\n\nThis will end your shift immediately once you confirm.'
+      )
+      .addFields(
+        { name: 'Detected Attendance Text', value: pending.detectedText ? `\`${pending.detectedText.slice(0, 950)}\`` : '`(empty)`' },
+        { name: 'Access', value: `Buttons are locked to <@${pending.userId}> only.` }
+      )
+      .setColor(action === 'login' ? 0x57F287 : 0xED4245)
+      .setFooter({ text: 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)' })
+      .setTimestamp();
+
+    await interaction.update({
+      embeds: [restoreEmbed],
+      components: [buildPrimaryButtons()]
+    }).catch(() => {});
+    return;
+  }
+
+  if (decision === 'cancel_yes') {
+    pendingAttendanceActionConfirmations.delete(token);
+    await interaction.deferUpdate().catch(() => {});
+    await interaction.followUp({
+      content: `${action === 'login' ? 'Login' : 'Logout'} request canceled. Please retype your attendance message if needed.`,
+      ephemeral: true
+    }).catch(() => {});
+    scheduleDeleteConfirmationMessage();
+    return;
+  }
+
+  if (decision !== 'confirm') {
+    return interaction.reply({ content: 'Invalid attendance decision.', ephemeral: true }).catch(() => {});
+  }
+
+  pendingAttendanceActionConfirmations.delete(token);
+  await interaction.deferUpdate().catch(() => {});
+
+  const delayMs = action === 'logout'
+    ? 0
+    : (pending.isTestRole
+      ? ATTENDANCE_TEST_DELAY_MS
+      : Math.max(0, pending.targetMs - Date.now()));
 
   scheduleAttendanceActionExecution(interaction.client, pending, delayMs);
   await interaction.followUp({
     content: delayMs > 0
       ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} is scheduled in ${Math.ceil(delayMs / 1000)} second(s).`
-      : `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied now.`
+      : `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied now.`,
+    ephemeral: true
   }).catch(() => {});
+  scheduleDeleteConfirmationMessage();
 }
 function isLoginSystemInteraction(interaction) {
   const commandName = String(interaction?.commandName || '').toLowerCase();
