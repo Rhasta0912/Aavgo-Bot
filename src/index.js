@@ -16,7 +16,6 @@ const SME_ROLE_ID = '1482382342621233153';
 const AAVGO_GUILD_ID = '1482220918355922974';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
 const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
-const ATTENDANCE_PROTOTYPE_CHANNEL_ID = '1494866014461104128';
 const TL_SME_LOGIN_CHANNEL_ID = '1494867053604245554';
 const TEST_ROLE_ID = '1487369607772766208';
 const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
@@ -143,7 +142,7 @@ function buildTimeZoneTimestampMs({ year, month, day, hour, minute, second = 0 }
 
 function shouldHandleAttendancePrototypeMessage(message) {
   if (!message?.guild || message?.author?.bot) return false;
-  return String(message.channelId) === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
+  return String(message.channelId) === ATTENDANCE_CHANNEL_ID;
 }
 
 function parseAttendanceAction(content) {
