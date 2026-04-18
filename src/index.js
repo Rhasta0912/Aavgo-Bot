@@ -21,6 +21,8 @@ const TL_SME_LOGIN_CHANNEL_ID = '1494867053604245554';
 const TEST_ROLE_ID = '1487369607772766208';
 const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
 const ATTENDANCE_TEST_DELAY_MS = 10 * 1000;
+const ATTENDANCE_LOGOUT_REPLY_DELETE_MS = 40 * 1000;
+const ATTENDANCE_CONFIRM_SUCCESS_DELETE_MS = 30 * 1000;
 const ATTENDANCE_TIME_ZONE = 'Asia/Manila';
 const ATTENDANCE_REMINDER_BUTTON_PREFIX = 'attendance_reminder';
 const ATTENDANCE_ACTION_BUTTON_PREFIX = 'attendance_action';
@@ -760,7 +762,7 @@ async function handleAttendanceActionButton(interaction) {
     embeds: [successEmbed],
     components: []
   }).catch(() => {});
-  scheduleDeleteConfirmationMessage();
+  scheduleDeleteConfirmationMessage(action === 'login' ? ATTENDANCE_CONFIRM_SUCCESS_DELETE_MS : undefined);
 }
 function isLoginSystemInteraction(interaction) {
   const commandName = String(interaction?.commandName || '').toLowerCase();
@@ -1238,11 +1240,18 @@ client.on('messageCreate', async message => {
         .setFooter({ text: 'Aavgo Operations - Attendance Logout' })
         .setTimestamp();
 
-      await message.reply({
+      const logoutReply = await message.reply({
         content: `<@${message.author.id}>`,
         embeds: [logoutEmbed],
         allowedMentions: { users: [message.author.id], repliedUser: false }
-      }).catch(() => {});
+      }).catch(() => null);
+
+      if (logoutReply) {
+        const timer = setTimeout(() => {
+          logoutReply.delete().catch(() => {});
+        }, ATTENDANCE_LOGOUT_REPLY_DELETE_MS);
+        timer.unref?.();
+      }
       return;
     }
 
