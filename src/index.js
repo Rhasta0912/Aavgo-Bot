@@ -310,6 +310,13 @@ function buildAttendanceActionKey(userId, action) {
   return `${userId}:${action}`;
 }
 
+function getAttendanceActionDelayMs(entry) {
+  if (entry?.action === 'logout') return 0;
+  if (entry?.timeExplicit) return Math.max(0, Number(entry.targetMs || 0) - Date.now());
+  if (entry?.isTestRole) return ATTENDANCE_TEST_DELAY_MS;
+  return Math.max(0, Number(entry?.targetMs || 0) - Date.now());
+}
+
 async function executeScheduledAttendanceAction(client, entry) {
   const guild = client.guilds.cache.get(entry.guildId) || await client.guilds.fetch(entry.guildId).catch(() => null);
   if (!guild) return;
@@ -510,7 +517,11 @@ async function sendAttendanceActionConfirmation(message, context) {
       { name: 'Access', value: `Buttons are locked to <@${userId}> only.` }
     )
     .setColor(isLogin ? 0x57F287 : 0xED4245)
-    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)' })
+    .setFooter({
+      text: isLogin
+        ? 'Aavgo Operations - Attendance Confirmation (auto-confirms in 1 minute if ignored)'
+        : 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)'
+    })
     .setTimestamp();
 
   const confirmButton = new ButtonBuilder()
@@ -523,6 +534,7 @@ async function sendAttendanceActionConfirmation(message, context) {
     .setStyle(ButtonStyle.Secondary);
 
   const sent = await message.reply({
+    content: `<@${userId}>`,
     embeds: [confirmationEmbed],
     allowedMentions: { users: [userId], repliedUser: false },
     components: [new ActionRowBuilder().addComponents(confirmButton, cancelButton)]
@@ -538,8 +550,12 @@ async function sendAttendanceActionConfirmation(message, context) {
       const active = pendingAttendanceActionConfirmations.get(token);
       if (!active || active.confirmationMessageId !== sent.id) return;
       pendingAttendanceActionConfirmations.delete(token);
+      if (isLogin) {
+        const delayMs = getAttendanceActionDelayMs(active);
+        scheduleAttendanceActionExecution(message.client, active, delayMs);
+      }
       sent.delete().catch(() => {});
-    }, 10 * 60 * 1000);
+    }, isLogin ? 60 * 1000 : 10 * 60 * 1000);
     timer.unref?.();
     pendingEntry.promptCleanupTimer = timer;
   } else {
@@ -632,7 +648,11 @@ async function handleAttendanceActionButton(interaction) {
       { name: 'Access', value: `Buttons are locked to <@${pending.userId}> only.` }
     )
     .setColor(action === 'login' ? 0x57F287 : 0xED4245)
-    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)' })
+    .setFooter({
+      text: action === 'login'
+        ? 'Aavgo Operations - Attendance Confirmation (auto-confirms in 1 minute if ignored)'
+        : 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)'
+    })
     .setTimestamp();
 
   const buildPrimaryButtons = () => {
@@ -713,17 +733,7 @@ async function handleAttendanceActionButton(interaction) {
   clearPromptTimer();
   pendingAttendanceActionConfirmations.delete(token);
 
-  const delayMs = action === 'logout'
-    ? 0
-    : (
-      pending.timeExplicit
-        ? Math.max(0, pending.targetMs - Date.now())
-        : (
-          pending.isTestRole
-            ? ATTENDANCE_TEST_DELAY_MS
-            : Math.max(0, pending.targetMs - Date.now())
-        )
-    );
+  const delayMs = getAttendanceActionDelayMs(pending);
 
   scheduleAttendanceActionExecution(interaction.client, pending, delayMs);
   const successEmbed = new EmbedBuilder()
@@ -1194,27 +1204,53 @@ client.on('messageCreate', async message => {
     const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
     if (!member) return;
 
+    const nowMs = Date.now();
+    const { targetMs, explicit: timeExplicit } = parseAttendanceTargetTime(message.content, nowMs);
+
+    if (action === 'logout') {
+      const logoutTimeIso = new Date(nowMs).toISOString();
+      const result = await auth.handleAttendanceTextLogout({
+        client,
+        guild: message.guild,
+        member,
+        logoutTimeIso
+      });
+
+      const logoutEmbed = new EmbedBuilder()
+        .setTitle(result?.ok ? 'Attendance Logout Recorded' : 'Attendance Logout Failed')
+        .setDescription(
+          result?.ok
+            ? `You have successfully logged out at **${formatAttendanceTimeLabel(nowMs)}**.`
+            : 'Could not complete your logout right now. Please try again or use `/logout`.'
+        )
+        .setColor(result?.ok ? 0x57F287 : 0xED4245)
+        .setFooter({ text: 'Aavgo Operations - Attendance Logout' })
+        .setTimestamp();
+
+      await message.reply({
+        content: `<@${message.author.id}>`,
+        embeds: [logoutEmbed],
+        allowedMentions: { users: [message.author.id], repliedUser: false }
+      }).catch(() => {});
+      return;
+    }
+
     const mode = parseAttendanceMode(message.content);
     const teamName = resolveAttendanceTeamName(member);
-    const { targetMs, explicit: timeExplicit } = parseAttendanceTargetTime(message.content, Date.now());
-    const hotelId = action === 'login' ? detectAttendanceHotelId(message.content) : null;
-    const voiceChannelId = action === 'login'
-      ? resolveAttendanceVoiceChannelId({ hotelId, mode, teamName })
-      : null;
+    const hotelId = detectAttendanceHotelId(message.content);
+    const voiceChannelId = resolveAttendanceVoiceChannelId({ hotelId, mode, teamName });
     const isTestRole = isTestRoleMember(member);
     const reminderDelayMs = Math.max(0, targetMs - Date.now());
     const targetLabel = formatAttendanceTimeLabel(targetMs);
 
-    if (action === 'login') {
-      scheduleAttendanceLoginReminder(message, {
-        member,
-        voiceChannelId,
-        targetMs,
-        targetLabel,
-        useScheduledDelay: timeExplicit,
-        reminderDelayMs: timeExplicit ? reminderDelayMs : undefined
-      });
-    }
+    scheduleAttendanceLoginReminder(message, {
+      member,
+      voiceChannelId,
+      targetMs,
+      targetLabel,
+      useScheduledDelay: timeExplicit,
+      reminderDelayMs: timeExplicit ? reminderDelayMs : undefined
+    });
 
     await sendAttendanceActionConfirmation(message, {
       action,
