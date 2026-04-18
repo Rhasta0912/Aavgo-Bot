@@ -1055,8 +1055,11 @@ async function broadcastUpdateLogLegacy(client) {
   }
 }
 
-async function closeAllActiveSessionsForAgent(agentId, client) {
-  const nowIso = new Date().toISOString();
+async function closeAllActiveSessionsForAgent(agentId, client, options = {}) {
+  const fallbackNowIso = new Date().toISOString();
+  const requestedLogoutIso = typeof options?.logoutTimeIso === 'string' ? options.logoutTimeIso : '';
+  const parsedLogoutMs = requestedLogoutIso ? parseSessionTimestamp(requestedLogoutIso) : NaN;
+  const nowIso = Number.isFinite(parsedLogoutMs) ? new Date(parsedLogoutMs).toISOString() : fallbackNowIso;
   
   // 1. Fetch active sessions to know what to refresh later
   const activeSessions = db.prepare("SELECT hotel_id, session_kind FROM sessions WHERE agent_id = ? AND status = 'active'").all(agentId);
@@ -1856,12 +1859,18 @@ async function showShiftInitModal(interaction, agent) {
   await interaction.showModal(modal);
 }
 
-async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift') {
+async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = false, allowMultiHotel = false, sessionMode = 'shift', options = {}) {
   const normalizedRole = normalizeAgentRole(agent?.role);
   const effectiveAllowMultiHotel = (
     sessionMode === 'shift' &&
     normalizedRole !== 'agent'
   ) ? allowMultiHotel : false;
+  const loginTimeIsoInput = typeof options?.loginTimeIso === 'string' ? options.loginTimeIso : '';
+  const parsedLoginMs = loginTimeIsoInput ? parseSessionTimestamp(loginTimeIsoInput) : NaN;
+  const effectiveLoginTimeIso = Number.isFinite(parsedLoginMs)
+    ? new Date(parsedLoginMs).toISOString()
+    : new Date().toISOString();
+  const skipRecentSubmissionGuard = options?.skipRecentSubmissionGuard === true;
 
   const respond = async (payload) => {
     if (interaction.deferred || interaction.replied) {
@@ -1875,10 +1884,12 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     return message;
   };
 
-  const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
-  const recentSession = db.prepare("SELECT id FROM sessions WHERE agent_id = ? AND hotel_id = ? AND login_time >= ?").get(agent.id, hotelId, fiveSecondsAgo);
-  if (recentSession) {
-    return respond({ content: '⚠️ You just logged in! Please wait a moment for the status to update.' });
+  if (!skipRecentSubmissionGuard) {
+    const fiveSecondsAgo = new Date(Date.now() - 5000).toISOString();
+    const recentSession = db.prepare("SELECT id FROM sessions WHERE agent_id = ? AND hotel_id = ? AND login_time >= ?").get(agent.id, hotelId, fiveSecondsAgo);
+    if (recentSession) {
+      return respond({ content: 'Warning: You just logged in. Please wait a moment for the status to update.' });
+    }
   }
 
   let closedHotelIds = [];
@@ -1892,37 +1903,12 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     }
   }
 
-  if (hotelId !== 'TEAM_SHIFT' && sessionMode !== 'training') {
-    const conflictingSession = db.prepare(
-      "SELECT * FROM sessions WHERE hotel_id = ? AND status = 'active' AND COALESCE(session_kind, 'shift') != 'training' AND agent_id != ? ORDER BY id DESC LIMIT 1"
-    ).get(hotelId, agent.id);
-
-    if (conflictingSession && !isTakeover) {
-      const otherAgent = db.prepare("SELECT * FROM agents WHERE id = ?").get(conflictingSession.agent_id);
-      const promptEmbed = buildShiftConflictEmbed(hotelId, otherAgent, conflictingSession.login_time);
-      const takeoverBtn = new ButtonBuilder()
-        .setCustomId(`takeover_btn_${hotelId}`)
-        .setLabel('🚧 Take Over Shift')
-        .setStyle(ButtonStyle.Success);
-
-      const cancelBtn = new ButtonBuilder()
-        .setCustomId('cancel_takeover_btn')
-        .setLabel('⬅️ Cancel')
-        .setStyle(ButtonStyle.Secondary);
-
-      return respond({
-        embeds: [promptEmbed],
-        components: [new ActionRowBuilder().addComponents(takeoverBtn, cancelBtn)]
-      });
-    }
-
-    if (conflictingSession && isTakeover) {
-      await closeOtherActiveHotelSessions(interaction, hotelId, agent.id);
-    }
-  }
-
-  const nowIso = new Date().toISOString();
-  db.prepare("INSERT INTO sessions (agent_id, hotel_id, session_kind, login_time) VALUES (?, ?, ?, ?)").run(agent.id, hotelId, sessionMode, nowIso);
+  db.prepare("INSERT INTO sessions (agent_id, hotel_id, session_kind, login_time) VALUES (?, ?, ?, ?)").run(
+    agent.id,
+    hotelId,
+    sessionMode,
+    effectiveLoginTimeIso
+  );
 
   let noteAlert = '';
   const isTrainingSession = sessionMode === 'training';
@@ -2052,7 +2038,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     }
   }
 
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = effectiveLoginTimeIso.split('T')[0];
   const schedule = db.prepare(`
     SELECT id FROM schedules
     WHERE agent_id = ? AND hotel_id = ? AND status = 'pending'
@@ -2118,7 +2104,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
 
   console.log(`[LOGIN] ${interaction.user.username} → ${hotelName}`);
 
-  const auditUnix = Math.floor(Date.now() / 1000);
+  const auditUnix = Math.floor(parseSessionTimestamp(effectiveLoginTimeIso) / 1000);
   const nickname = await getAgentDisplayName(interaction.guild, interaction.user.id);
   const isPracticeMode = sessionMode === 'training';
   sendAuditLog(interaction.client, {
@@ -4982,20 +4968,27 @@ async function handleShiftCallJoin(interaction) {
       });
     }
 
-    const allowedChannelIds = getAllowedShiftVoiceChannelIds(
-      interaction.guild,
-      interaction.member,
-      activeSessions,
-      agent
-    );
-    if (!allowedChannelIds.includes(channelId)) {
+    const targetGuild =
+      interaction.guild ||
+      interaction.client.guilds.cache.get('1482220918355922974') ||
+      interaction.client.guilds.cache.first() ||
+      null;
+    if (!targetGuild) {
       return sendComponentReply(interaction, {
-        content: '❌ This call is not available for your active shift.',
+        content: '❌ Could not resolve the server for this call action.',
         ephemeral: true
       });
     }
 
-    const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
+    const targetMember = interaction.member || await targetGuild.members.fetch(interaction.user.id).catch(() => null);
+    if (!targetMember) {
+      return sendComponentReply(interaction, {
+        content: '❌ Could not resolve your member profile in the server.',
+        ephemeral: true
+      });
+    }
+
+    const channel = await targetGuild.channels.fetch(channelId).catch(() => null);
     if (!channel || typeof channel.isVoiceBased !== 'function' || !channel.isVoiceBased()) {
       return sendComponentReply(interaction, {
         content: '❌ The selected call channel is not available right now.',
@@ -5003,8 +4996,8 @@ async function handleShiftCallJoin(interaction) {
       });
     }
 
-    const member = await interaction.guild.members.fetch(interaction.user.id).catch(() => null);
-    if (!member || !member.voice) {
+    const member = targetMember;
+    if (!member.voice) {
       return sendComponentReply(interaction, {
         content: '❌ Could not access your voice state.',
         ephemeral: true
@@ -5017,7 +5010,7 @@ async function handleShiftCallJoin(interaction) {
     } catch (error) {
       moveError = error;
       try {
-        await interaction.guild.members.edit(member.id, { channel: channel.id }, { reason: 'Active shift call join' });
+        await targetGuild.members.edit(member.id, { channel: channel.id }, { reason: 'Active shift call join' });
         moveError = null;
       } catch (fallbackError) {
         moveError = fallbackError;
@@ -5026,7 +5019,7 @@ async function handleShiftCallJoin(interaction) {
 
     if (moveError) {
       const errorText = String(moveError?.message || '').toLowerCase();
-      const jumpLink = `https://discord.com/channels/${interaction.guild.id}/${channel.id}`;
+      const jumpLink = `https://discord.com/channels/${targetGuild.id}/${channel.id}`;
       if (errorText.includes('not connected')) {
         return sendComponentReply(interaction, {
           content: `⚠️ Discord only allows bot-move if you are already in voice.\nJoin <#${channel.id}> directly: ${jumpLink}`,
@@ -6390,6 +6383,12 @@ async function handleLogout(interaction) {
     // Save references BEFORE closing
     const primarySession = activeSessions[0];
 
+    const requestedLogoutMs = interaction?.__logoutTimeIso
+      ? parseSessionTimestamp(interaction.__logoutTimeIso)
+      : Date.now();
+    const effectiveLogoutMs = Number.isFinite(requestedLogoutMs) ? requestedLogoutMs : Date.now();
+    const effectiveLogoutIso = new Date(effectiveLogoutMs).toISOString();
+
     // Calculate duration for audit log
     let durationStr = 'Unknown';
     let loginTimeDisplay = 'Unknown';
@@ -6398,7 +6397,7 @@ async function handleLogout(interaction) {
         const loginTimeStr = primarySession.login_time.includes('T') ? primarySession.login_time : primarySession.login_time.replace(' ', 'T') + 'Z';
         const loginTime = new Date(loginTimeStr).getTime();
         loginTimeDisplay = new Date(loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        const durationMs = Date.now() - loginTime;
+        const durationMs = Math.max(0, effectiveLogoutMs - loginTime);
 
         if (!isNaN(durationMs)) {
           const hours = Math.floor(durationMs / (1000 * 60 * 60));
@@ -6409,7 +6408,7 @@ async function handleLogout(interaction) {
         console.warn('[LOGOUT] Time calculation failed:', timeErr.message);
       }
     }
-    const logoutTimeDisplay = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const logoutTimeDisplay = new Date(effectiveLogoutMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const isOvertime = durationStr.includes('h') && parseInt(durationStr.split('h')[0], 10) >= 8;
     const hasTrainingSession = activeSessions.some(session => session.session_kind === 'training');
 
@@ -6420,7 +6419,9 @@ async function handleLogout(interaction) {
     const calls = activities.filter(a => a.type === 'call');
 
     // Close ALL active sessions using centralized helper
-    const closedSessionRefs = await closeAllActiveSessionsForAgent(agent.id, interaction.client);
+    const closedSessionRefs = await closeAllActiveSessionsForAgent(agent.id, interaction.client, {
+      logoutTimeIso: effectiveLogoutIso
+    });
     const closedHotelIds = [...new Set(
       (closedSessionRefs || [])
         .map(ref => (typeof ref === 'string' ? ref : (ref?.hotel_id || ref?.hotelId || null)))
@@ -6541,6 +6542,184 @@ async function handleLogout(interaction) {
         await interaction.reply({ content: '❌ Something went wrong. Please try again.', ephemeral: true });
       }
     } catch (e) { /* ignore */ }
+  }
+}
+
+function sanitizeAutomationPayload(payload) {
+  const source = payload && typeof payload === 'object' ? payload : {};
+  const sanitized = {};
+  if (typeof source.content === 'string') sanitized.content = source.content;
+  if (Array.isArray(source.embeds)) sanitized.embeds = source.embeds;
+  if (Array.isArray(source.components)) sanitized.components = source.components;
+  if (Array.isArray(source.files)) sanitized.files = source.files;
+  if (source.allowedMentions) sanitized.allowedMentions = source.allowedMentions;
+  return sanitized;
+}
+
+function createAutomationInteractionProxy({
+  client,
+  guild,
+  member,
+  user,
+  label = 'AUTO_PROXY',
+  logoutTimeIso = null,
+  deliverDm = false
+}) {
+  const proxy = {
+    client,
+    guild,
+    member,
+    user,
+    customId: `${label.toLowerCase()}_btn`,
+    commandName: '',
+    deferred: false,
+    replied: false,
+    __aavgoEphemeral: true,
+    __logoutTimeIso: logoutTimeIso || null,
+    __lastReplyMessage: null,
+    isChatInputCommand: () => false,
+    isButton: () => false,
+    isStringSelectMenu: () => false,
+    options: null
+  };
+
+  const buildFallbackMessage = () => {
+    const fallback = {
+      id: `${label}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
+      edit: async () => fallback,
+      delete: async () => {}
+    };
+    return fallback;
+  };
+
+  const sendProxyMessage = async payload => {
+    const safePayload = sanitizeAutomationPayload(payload);
+    if (!safePayload.content && !safePayload.embeds && !safePayload.components && !safePayload.files) {
+      safePayload.content = 'Action completed.';
+    }
+
+    if (!deliverDm) {
+      return buildFallbackMessage();
+    }
+
+    try {
+      const sent = await user.send(safePayload);
+      proxy.__lastReplyMessage = sent;
+      return sent;
+    } catch (_) {
+      return buildFallbackMessage();
+    }
+  };
+
+  proxy.deferReply = async () => {
+    proxy.deferred = true;
+  };
+
+  proxy.reply = async payload => {
+    proxy.replied = true;
+    return sendProxyMessage(payload);
+  };
+
+  proxy.editReply = async payload => {
+    const safePayload = sanitizeAutomationPayload(payload);
+    if (proxy.__lastReplyMessage && typeof proxy.__lastReplyMessage.edit === 'function') {
+      try {
+        const edited = await proxy.__lastReplyMessage.edit(safePayload);
+        proxy.__lastReplyMessage = edited;
+        return edited;
+      } catch (_) {}
+    }
+    return sendProxyMessage(payload);
+  };
+
+  proxy.followUp = async payload => sendProxyMessage(payload);
+  proxy.fetchReply = async () => proxy.__lastReplyMessage;
+  proxy.deleteReply = async () => {
+    if (proxy.__lastReplyMessage && typeof proxy.__lastReplyMessage.delete === 'function') {
+      await proxy.__lastReplyMessage.delete().catch(() => {});
+    }
+  };
+
+  return proxy;
+}
+
+async function handleAttendanceTextLogin({
+  client,
+  guild,
+  member,
+  hotelId,
+  sessionMode = 'shift',
+  loginTimeIso
+}) {
+  try {
+    if (!client || !guild || !member || !hotelId) {
+      return { ok: false, reason: 'missing_context' };
+    }
+
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(member.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(member, guild, 'ATTENDANCE TEXT LOGIN');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(member.id);
+    }
+    if (!agent) {
+      return { ok: false, reason: 'not_registered' };
+    }
+
+    const proxy = createAutomationInteractionProxy({
+      client,
+      guild,
+      member,
+      user: member.user,
+      label: 'ATTENDANCE_LOGIN',
+      deliverDm: false
+    });
+
+    await finalizeShiftLogin(proxy, agent, hotelId, false, false, sessionMode, {
+      loginTimeIso,
+      skipRecentSubmissionGuard: true
+    });
+    return { ok: true };
+  } catch (error) {
+    console.error('[ATTENDANCE] Failed to complete text login:', error);
+    return { ok: false, reason: 'exception', error: error.message };
+  }
+}
+
+async function handleAttendanceTextLogout({
+  client,
+  guild,
+  member,
+  logoutTimeIso
+}) {
+  try {
+    if (!client || !guild || !member) {
+      return { ok: false, reason: 'missing_context' };
+    }
+
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(member.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(member, guild, 'ATTENDANCE TEXT LOGOUT');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(member.id);
+    }
+    if (!agent) {
+      return { ok: false, reason: 'not_registered' };
+    }
+
+    const proxy = createAutomationInteractionProxy({
+      client,
+      guild,
+      member,
+      user: member.user,
+      label: 'ATTENDANCE_LOGOUT',
+      logoutTimeIso,
+      deliverDm: false
+    });
+
+    await handleLogout(proxy);
+    return { ok: true };
+  } catch (error) {
+    console.error('[ATTENDANCE] Failed to complete text logout:', error);
+    return { ok: false, reason: 'exception', error: error.message };
   }
 }
 
@@ -11025,6 +11204,8 @@ module.exports = {
   handlePurgeConfirm,
   handlePurgeDeny,
   closeAllActiveSessionsForAgent,
+  handleAttendanceTextLogin,
+  handleAttendanceTextLogout,
   applyLoggedOutRolesForMember,
   getAllowedShiftVoiceChannelIds,
   normalizeTeamInput,

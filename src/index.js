@@ -11,27 +11,291 @@ const { startWebsiteApiServer, stopWebsiteApiServer } = require('./websiteApi');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
+const TEAM_LEADER_ROLE_ID = '1482732583660818636';
+const SME_ROLE_ID = '1482382342621233153';
 const AAVGO_GUILD_ID = '1482220918355922974';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
 const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
+const ATTENDANCE_PROTOTYPE_CHANNEL_ID = '1494866014461104128';
+const TL_SME_LOGIN_CHANNEL_ID = '1494867053604245554';
+const TEST_ROLE_ID = '1487369607772766208';
 const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
+const ATTENDANCE_TEST_DELAY_MS = 10 * 1000;
 const ATTENDANCE_REMINDER_BUTTON_PREFIX = 'attendance_reminder';
+const ATTENDANCE_ACTION_BUTTON_PREFIX = 'attendance_action';
 const DEFAULT_TEMP_MESSAGE_TTL_MS = 10 * 60 * 1000;
 const SHORT_TEMP_MESSAGE_TTL_MS = 60 * 1000;
+const TRAINING_VOICE_CHANNEL_IDS = [
+  '1484706127685091415',
+  '1484854340249190422',
+  '1484854380254466058',
+  '1484854396717236244',
+  '1484854418078961825'
+];
+const HOTEL_LIVE_VOICE_CHANNEL_IDS = {
+  BW_TO: '1493890379857133628',
+  GICP: '1494857168049143838',
+  RMDA: '1493674598233804842',
+  SUP8: '1493674598233804842',
+  AD1: '1494857257647603822',
+  TRVL: '1494857143046897695',
+  DIBS: '1494857111505469611',
+  PROS: '1482249225398915102',
+  GLDL: '1493674469980377088',
+  INFL: '1494857730387742760',
+  VALS: '1493890419543638107',
+  BAYT: '1494857758099636275',
+  ANPI: '1494857785828184125',
+  ECON: '1482225519977041981',
+  BUEN: '1493763350448963615',
+  THOK: '1494858037683421234',
+  BRNT: '1494858131094900817'
+};
+const QI_RV_TEAM_VOICE_CHANNEL_IDS = {
+  'Team 1': '1482225371398017044',
+  'Team 3': '1493890481363484755'
+};
+const TEAM_ROLE_IDS = {
+  'Team 1': '1482290433236402216',
+  'Team 2': '1482255399510872105',
+  'Team 3': '1482290586831552534'
+};
 const pendingAttendanceLoginReminders = new Map();
+const pendingAttendanceActionConfirmations = new Map();
+const scheduledAttendanceActionsByUser = new Map();
 
-function shouldScheduleAttendanceLoginReminder(message) {
-  if (!message?.guild || message?.author?.bot) return false;
-  if (String(message.channelId) !== ATTENDANCE_CHANNEL_ID) return false;
-  const content = String(message.content || '');
-  if (!content.trim()) return false;
-  return /\blog\s*in\b/i.test(content) || /\blogin\b/i.test(content);
+const ATTENDANCE_HOTEL_KEYWORDS = {
+  BW_TO: ['indianhead', 'magnuson', 'ironwood'],
+  GICP: ['garden inn', 'campsite', 'gicp'],
+  RMDA: ['ramada', 'super 8', 'super8', 'sup8', 'rmda'],
+  AD1: ['ad1'],
+  TRVL: ['travelodge', 'trvl'],
+  DIBS: ['days inn bishop', 'day inns bishop', 'day inn bishop', 'dibs', 'bishop'],
+  PROS: ['prospero', 'flagship'],
+  GLDL: ['glendale', 'leef'],
+  INFL: ['fingerlakes', 'inn at the fingerlakes', 'infl'],
+  VALS: ['value suites', 'vals'],
+  BAYT: ['bayside', 'townhouse'],
+  ANPI: ['anchor beach', 'pacific inn', 'anpi'],
+  ECON: ['econolodge', 'econ'],
+  BUEN: ['buenavista', 'buena vista', 'buen'],
+  QI_RV: ['quality inn russellville', 'quality inn russelville', 'quality russellville', 'quality russelville', 'qi rv', 'russellville', 'russelville'],
+  THOK: ['thousand oaks', 'thousandoaks', 'thok'],
+  BRNT: ['brentwood', 'brnt']
+};
+
+function escapeRegex(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function scheduleAttendanceLoginReminder(message) {
+function normalizeAttendanceText(content) {
+  return String(content || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function shouldHandleAttendancePrototypeMessage(message) {
+  if (!message?.guild || message?.author?.bot) return false;
+  return String(message.channelId) === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
+}
+
+function parseAttendanceAction(content) {
+  const text = String(content || '');
+  const hasLogin = /\blog\s*in\b/i.test(text) || /\blogin\b/i.test(text);
+  const hasLogout = /\blog\s*out\b/i.test(text) || /\blogout\b/i.test(text);
+  if (hasLogin) return 'login';
+  if (hasLogout) return 'logout';
+  return null;
+}
+
+function parseAttendanceMode(content) {
+  const text = String(content || '');
+  if (/\b(training|shadowing)\b/i.test(text)) return 'training';
+  return 'shift';
+}
+
+function parseAttendanceTargetTime(content, nowMs = Date.now()) {
+  const source = String(content || '');
+  const amPmMatch = source.match(/\b(\d{1,2})(?::([0-5]\d))?\s*(a\.?m?\.?|p\.?m?\.?)\b/i);
+  if (amPmMatch) {
+    const hourRaw = Number(amPmMatch[1]);
+    const minuteRaw = Number(amPmMatch[2] || 0);
+    const suffix = String(amPmMatch[3] || '').toLowerCase();
+    if (hourRaw >= 1 && hourRaw <= 12 && minuteRaw >= 0 && minuteRaw <= 59) {
+      let hours24 = hourRaw % 12;
+      if (suffix.startsWith('p')) hours24 += 12;
+      const candidate = new Date(nowMs);
+      candidate.setHours(hours24, minuteRaw, 0, 0);
+      if (candidate.getTime() < nowMs - (6 * 60 * 60 * 1000)) {
+        candidate.setDate(candidate.getDate() + 1);
+      }
+      return { targetMs: candidate.getTime(), explicit: true };
+    }
+  }
+
+  const militaryMatch = source.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+  if (militaryMatch) {
+    const hours24 = Number(militaryMatch[1]);
+    const minuteRaw = Number(militaryMatch[2] || 0);
+    const candidate = new Date(nowMs);
+    candidate.setHours(hours24, minuteRaw, 0, 0);
+    if (candidate.getTime() < nowMs - (6 * 60 * 60 * 1000)) {
+      candidate.setDate(candidate.getDate() + 1);
+    }
+    return { targetMs: candidate.getTime(), explicit: true };
+  }
+
+  return { targetMs: nowMs, explicit: false };
+}
+
+function resolveAttendanceTeamName(member) {
+  if (!member) return null;
+  if (member.roles?.cache?.has(TEAM_ROLE_IDS['Team 1'])) return 'Team 1';
+  if (member.roles?.cache?.has(TEAM_ROLE_IDS['Team 2'])) return 'Team 2';
+  if (member.roles?.cache?.has(TEAM_ROLE_IDS['Team 3'])) return 'Team 3';
+  const dbTeam = db.prepare('SELECT team FROM agents WHERE discord_id = ?').get(member.id)?.team;
+  return auth.normalizeTeamInput(dbTeam) || null;
+}
+
+function detectAttendanceHotelId(content) {
+  const normalized = normalizeAttendanceText(content);
+  if (!normalized) return 'AD1';
+
+  let best = null;
+  for (const [hotelId, phrases] of Object.entries(ATTENDANCE_HOTEL_KEYWORDS)) {
+    let score = 0;
+    let lastIndex = -1;
+    for (const phrase of phrases) {
+      const expression = new RegExp(`\\b${escapeRegex(phrase).replace(/\s+/g, '\\s+')}\\b`, 'gi');
+      let match;
+      while ((match = expression.exec(normalized)) !== null) {
+        score += (phrase.split(/\s+/).filter(Boolean).length * 100) + phrase.length;
+        lastIndex = Math.max(lastIndex, match.index);
+      }
+    }
+    if (score <= 0) continue;
+    if (!best || score > best.score || (score === best.score && lastIndex > best.lastIndex)) {
+      best = { hotelId, score, lastIndex };
+    }
+  }
+
+  if (best?.hotelId) return best.hotelId;
+
+  const tokens = normalized.split(/\s+/).filter(Boolean);
+  const maxWindow = Math.min(4, tokens.length);
+  for (let size = maxWindow; size >= 1; size -= 1) {
+    for (let index = 0; index <= tokens.length - size; index += 1) {
+      const phrase = tokens.slice(index, index + size).join(' ');
+      const aliasHotel = auth.normalizeHotelInput(phrase);
+      if (aliasHotel && aliasHotel !== 'TEAM_SHIFT') return aliasHotel;
+    }
+  }
+
+  const aliasFromFull = auth.normalizeHotelInput(content);
+  if (aliasFromFull && aliasFromFull !== 'TEAM_SHIFT') return aliasFromFull;
+  return 'AD1';
+}
+
+function resolveAttendanceVoiceChannelId({ hotelId, mode, teamName }) {
+  if (mode === 'training') {
+    return TRAINING_VOICE_CHANNEL_IDS[0];
+  }
+  if (hotelId === 'QI_RV') {
+    return QI_RV_TEAM_VOICE_CHANNEL_IDS[teamName] || QI_RV_TEAM_VOICE_CHANNEL_IDS['Team 3'];
+  }
+  return HOTEL_LIVE_VOICE_CHANNEL_IDS[hotelId] || HOTEL_LIVE_VOICE_CHANNEL_IDS.AD1;
+}
+
+function isTestRoleMember(member) {
+  return Boolean(member?.roles?.cache?.has(TEST_ROLE_ID));
+}
+
+function getAttendanceDelayMs(member) {
+  return isTestRoleMember(member) ? ATTENDANCE_TEST_DELAY_MS : ATTENDANCE_LOGIN_REMINDER_DELAY_MS;
+}
+
+function formatAttendanceTimeLabel(ms) {
+  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function buildAttendanceActionKey(userId, action) {
+  return `${userId}:${action}`;
+}
+
+async function executeScheduledAttendanceAction(client, entry) {
+  const guild = client.guilds.cache.get(entry.guildId) || await client.guilds.fetch(entry.guildId).catch(() => null);
+  if (!guild) return;
+  const member = await guild.members.fetch(entry.userId).catch(() => null);
+  if (!member) return;
+
+  const effectiveMs = entry.isTestRole ? Date.now() : entry.targetMs;
+  if (entry.action === 'login') {
+    const loginTimeIso = new Date(effectiveMs).toISOString();
+    const result = await auth.handleAttendanceTextLogin({
+      client,
+      guild,
+      member,
+      hotelId: entry.hotelId,
+      sessionMode: entry.mode,
+      loginTimeIso
+    });
+    const hotelLabel = auth.getCombinedHotelLabel(entry.hotelId);
+    if (result?.ok) {
+      await member.send(`Attendance login confirmed for **${hotelLabel}** (${entry.mode === 'training' ? 'Training' : 'Live Shift'}).`).catch(() => {});
+    } else {
+      await member.send('Attendance login failed. Please check with Operations Manager or Developer.').catch(() => {});
+    }
+    return;
+  }
+
+  if (entry.action === 'logout') {
+    const logoutTimeIso = new Date(effectiveMs).toISOString();
+    const result = await auth.handleAttendanceTextLogout({
+      client,
+      guild,
+      member,
+      logoutTimeIso
+    });
+    if (result?.ok) {
+      await member.send('Attendance logout confirmed.').catch(() => {});
+    } else {
+      await member.send('Attendance logout failed. Please check with Operations Manager or Developer.').catch(() => {});
+    }
+  }
+}
+
+function scheduleAttendanceActionExecution(client, entry, delayMs) {
+  const key = buildAttendanceActionKey(entry.userId, entry.action);
+  const existing = scheduledAttendanceActionsByUser.get(key);
+  if (existing?.timer) {
+    clearTimeout(existing.timer);
+  }
+
+  const runNow = async () => {
+    scheduledAttendanceActionsByUser.delete(key);
+    try {
+      await executeScheduledAttendanceAction(client, entry);
+    } catch (error) {
+      console.warn('[ATTENDANCE] Scheduled action execution failed:', error.message);
+    }
+  };
+
+  if (delayMs <= 0) {
+    runNow();
+    return;
+  }
+
+  const timer = setTimeout(runNow, delayMs);
+  timer.unref?.();
+  scheduledAttendanceActionsByUser.set(key, { timer, entry, createdAt: Date.now() });
+}
+
+function scheduleAttendanceLoginReminder(message, context) {
   const userId = message?.author?.id;
   if (!userId) return;
 
+  const delayMs = getAttendanceDelayMs(context.member);
   const reminderToken = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
   const existing = pendingAttendanceLoginReminders.get(userId);
   if (existing?.timer) {
@@ -41,63 +305,118 @@ function scheduleAttendanceLoginReminder(message) {
   const timer = setTimeout(async () => {
     pendingAttendanceLoginReminders.delete(userId);
     try {
-      const loginChannelUrl = `https://discord.com/channels/${message.guild?.id || AAVGO_GUILD_ID}/${LOGIN_CHANNEL_ID}`;
       const reminderEmbed = new EmbedBuilder()
-        .setTitle('⏰ Login Reminder')
+        .setTitle('Login Reminder')
         .setDescription(
-          'It has been 30 minutes since your attendance message.\n' +
-          `Please go to <#${LOGIN_CHANNEL_ID}> and initialize your shift.`
+          `It has been ${delayMs === ATTENDANCE_TEST_DELAY_MS ? '10 seconds (test mode)' : '30 minutes'} since your attendance message.\n` +
+          'Please join your assigned voice channel now.'
         )
         .setColor(0xFEE75C)
-        .setFooter({ text: 'Aavgo Operations • Attendance Reminder' })
+        .setFooter({ text: 'Aavgo Operations - Attendance Reminder' })
         .setTimestamp();
 
-      const openLoginChannelButton = new ButtonBuilder()
-        .setStyle(ButtonStyle.Link)
-        .setLabel('Open Login Channel')
-        .setURL(loginChannelUrl);
+      const joinButton = new ButtonBuilder()
+        .setCustomId(`shift_call_join:${context.voiceChannelId}`)
+        .setLabel('Join Voice')
+        .setStyle(ButtonStyle.Primary);
 
-      const row = new ActionRowBuilder().addComponents(openLoginChannelButton);
-      await message.author.send({ embeds: [reminderEmbed], components: [row] });
+      await message.author.send({
+        embeds: [reminderEmbed],
+        components: [new ActionRowBuilder().addComponents(joinButton)]
+      });
     } catch (error) {
-      console.warn(`[ATTENDANCE] Failed to send login reminder DM to ${userId}:`, error.message);
+      console.warn(`[ATTENDANCE] Failed to send voice reminder DM to ${userId}:`, error.message);
     }
-  }, ATTENDANCE_LOGIN_REMINDER_DELAY_MS);
+  }, delayMs);
 
   timer.unref?.();
-  pendingAttendanceLoginReminders.set(userId, { timer, messageId: message.id, createdAt: Date.now(), reminderToken });
+  pendingAttendanceLoginReminders.set(userId, {
+    timer,
+    reminderToken,
+    createdAt: Date.now(),
+    messageId: message.id
+  });
 
   const preferenceEmbed = new EmbedBuilder()
     .setTitle('Attendance Reminder Preference')
     .setDescription(
-      'You posted `log in` in the attendance channel.\n' +
-      'Do you want to keep a reminder DM for 30 minutes later?\n\n' +
+      'You posted a `log in` attendance message.\n' +
+      `Do you want to keep a reminder DM for ${delayMs === ATTENDANCE_TEST_DELAY_MS ? '10 seconds (test)' : '30 minutes'} later?\n\n` +
       'If you ignore this, the reminder will still be sent.'
     )
     .setColor(0x5865F2)
-    .setFooter({ text: 'Aavgo Operations • Attendance Reminder' })
+    .setFooter({ text: 'Aavgo Operations - Attendance Reminder' })
     .setTimestamp();
 
   const yesButton = new ButtonBuilder()
     .setCustomId(`${ATTENDANCE_REMINDER_BUTTON_PREFIX}:yes:${reminderToken}`)
     .setLabel('Yes, Remind Me')
     .setStyle(ButtonStyle.Success);
-
   const noButton = new ButtonBuilder()
     .setCustomId(`${ATTENDANCE_REMINDER_BUTTON_PREFIX}:no:${reminderToken}`)
     .setLabel("Don't Remind Me")
     .setStyle(ButtonStyle.Secondary);
 
-  const row = new ActionRowBuilder().addComponents(yesButton, noButton);
-  message.author.send({ embeds: [preferenceEmbed], components: [row] }).catch(error => {
+  message.author.send({
+    embeds: [preferenceEmbed],
+    components: [new ActionRowBuilder().addComponents(yesButton, noButton)]
+  }).catch(error => {
     console.warn(`[ATTENDANCE] Failed to send reminder preference DM to ${userId}:`, error.message);
+  });
+}
+
+async function sendAttendanceActionConfirmation(message, context) {
+  const token = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const userId = message.author.id;
+  const isLogin = context.action === 'login';
+  const modeLabel = context.mode === 'training' ? 'Training' : 'Live Shift';
+  const targetLabel = formatAttendanceTimeLabel(context.targetMs);
+  const hotelLabel = isLogin ? auth.getCombinedHotelLabel(context.hotelId) : null;
+
+  pendingAttendanceActionConfirmations.set(token, {
+    token,
+    action: context.action,
+    userId,
+    guildId: message.guild.id,
+    hotelId: context.hotelId,
+    mode: context.mode,
+    targetMs: context.targetMs,
+    isTestRole: context.isTestRole,
+    teamName: context.teamName
+  });
+
+  const confirmationEmbed = new EmbedBuilder()
+    .setTitle(isLogin ? 'Confirm Attendance Login' : 'Confirm Attendance Logout')
+    .setDescription(
+      isLogin
+        ? `Please confirm your attendance login.\n\n**Hotel:** ${hotelLabel}\n**Mode:** ${modeLabel}\n**Time:** ${targetLabel}`
+        : `Please confirm your attendance logout.\n\n**Time:** ${targetLabel}`
+    )
+    .setColor(isLogin ? 0x57F287 : 0xED4245)
+    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation' })
+    .setTimestamp();
+
+  const confirmButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${context.action}:confirm:${token}`)
+    .setLabel(isLogin ? 'Confirm Login' : 'Confirm Logout')
+    .setStyle(ButtonStyle.Primary);
+  const cancelButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${context.action}:cancel:${token}`)
+    .setLabel('Cancel')
+    .setStyle(ButtonStyle.Secondary);
+
+  await message.author.send({
+    embeds: [confirmationEmbed],
+    components: [new ActionRowBuilder().addComponents(confirmButton, cancelButton)]
+  }).catch(error => {
+    console.warn(`[ATTENDANCE] Failed to send action confirmation DM to ${userId}:`, error.message);
   });
 }
 
 async function handleAttendanceReminderButton(interaction) {
   const parts = String(interaction.customId || '').split(':');
   if (parts.length < 3) {
-    return interaction.reply({ content: '❌ Invalid reminder action.', ephemeral: true }).catch(() => {});
+    return interaction.reply({ content: 'Invalid reminder action.', ephemeral: true }).catch(() => {});
   }
 
   const action = parts[1];
@@ -128,14 +447,61 @@ async function handleAttendanceReminderButton(interaction) {
   }).catch(() => {});
 
   const statusText = action === 'no'
-    ? '✅ Reminder canceled. You will not get the 30-minute login reminder from this attendance check-in.'
+    ? 'Reminder canceled. You will not get the delayed attendance reminder from this check-in.'
     : (pending
-      ? '✅ Reminder kept. You will receive the 30-minute login reminder.'
-      : 'ℹ️ No active reminder timer was found, but your preference was noted.');
+      ? 'Reminder kept. You will receive the delayed attendance reminder.'
+      : 'No active reminder timer was found, but your preference was noted.');
 
   await interaction.followUp({ content: statusText }).catch(() => {});
 }
 
+async function handleAttendanceActionButton(interaction) {
+  const parts = String(interaction.customId || '').split(':');
+  if (parts.length < 4) {
+    return interaction.reply({ content: 'Invalid attendance action.', ephemeral: true }).catch(() => {});
+  }
+
+  const action = parts[1];
+  const decision = parts[2];
+  const token = parts[3];
+  const pending = pendingAttendanceActionConfirmations.get(token);
+
+  if (!pending || pending.userId !== interaction.user.id) {
+    return interaction.reply({ content: 'This attendance confirmation is no longer active.', ephemeral: true }).catch(() => {});
+  }
+
+  const confirmButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${action}:confirm:${token}`)
+    .setLabel(action === 'login' ? 'Confirm Login' : 'Confirm Logout')
+    .setStyle(decision === 'confirm' ? ButtonStyle.Success : ButtonStyle.Secondary)
+    .setDisabled(true);
+  const cancelButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${action}:cancel:${token}`)
+    .setLabel('Cancel')
+    .setStyle(decision === 'cancel' ? ButtonStyle.Danger : ButtonStyle.Secondary)
+    .setDisabled(true);
+
+  await interaction.update({
+    components: [new ActionRowBuilder().addComponents(confirmButton, cancelButton)]
+  }).catch(() => {});
+
+  pendingAttendanceActionConfirmations.delete(token);
+  if (decision !== 'confirm') {
+    await interaction.followUp({ content: `${action === 'login' ? 'Login' : 'Logout'} request canceled.` }).catch(() => {});
+    return;
+  }
+
+  const delayMs = pending.isTestRole
+    ? ATTENDANCE_TEST_DELAY_MS
+    : Math.max(0, pending.targetMs - Date.now());
+
+  scheduleAttendanceActionExecution(interaction.client, pending, delayMs);
+  await interaction.followUp({
+    content: delayMs > 0
+      ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} is scheduled in ${Math.ceil(delayMs / 1000)} second(s).`
+      : `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied now.`
+  }).catch(() => {});
+}
 function isLoginSystemInteraction(interaction) {
   const commandName = String(interaction?.commandName || '').toLowerCase();
   if (['login', 'logout', 'status', 'setup-login', 'setup-login-team', 'end-shift'].includes(commandName)) {
@@ -581,10 +947,37 @@ client.on('guildMemberRemove', async member => {
 
 client.on('messageCreate', async message => {
   try {
-    if (!shouldScheduleAttendanceLoginReminder(message)) return;
-    scheduleAttendanceLoginReminder(message);
+    if (!shouldHandleAttendancePrototypeMessage(message)) return;
+
+    const action = parseAttendanceAction(message.content);
+    if (!action) return;
+
+    const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
+    if (!member) return;
+
+    const mode = parseAttendanceMode(message.content);
+    const teamName = resolveAttendanceTeamName(member);
+    const { targetMs } = parseAttendanceTargetTime(message.content, Date.now());
+    const hotelId = action === 'login' ? detectAttendanceHotelId(message.content) : null;
+    const voiceChannelId = action === 'login'
+      ? resolveAttendanceVoiceChannelId({ hotelId, mode, teamName })
+      : null;
+    const isTestRole = isTestRoleMember(member);
+
+    if (action === 'login') {
+      scheduleAttendanceLoginReminder(message, { member, voiceChannelId });
+    }
+
+    await sendAttendanceActionConfirmation(message, {
+      action,
+      mode,
+      hotelId,
+      targetMs,
+      teamName,
+      isTestRole
+    });
   } catch (error) {
-    console.warn('[ATTENDANCE] Failed to schedule login reminder:', error.message);
+    console.warn('[ATTENDANCE] Failed to process attendance message:', error.message);
   }
 });
 
@@ -792,6 +1185,8 @@ client.on('interactionCreate', async interaction => {
   } else if (interaction.isButton()) {
     if (interaction.customId.startsWith(`${ATTENDANCE_REMINDER_BUTTON_PREFIX}:`)) {
       await handleAttendanceReminderButton(interaction);
+    } else if (interaction.customId.startsWith(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:`)) {
+      await handleAttendanceActionButton(interaction);
     } else if (interaction.customId.startsWith('devtodo_')) {
       await devTodo.handleButton(interaction);
     } else if (interaction.customId.startsWith('profiles_')) {
@@ -799,7 +1194,21 @@ client.on('interactionCreate', async interaction => {
     } else if (interaction.customId.startsWith('test_ui_')) {
       await auth.handleTestUiButton(interaction);
     } else if (interaction.customId === 'start_shift_btn') {
-      await auth.handleShiftRolePrompt(interaction);
+      if (String(interaction.channelId) === TL_SME_LOGIN_CHANNEL_ID) {
+        const isOm = interaction.member?.roles?.cache?.has(OPERATIONS_MANAGER_ROLE_ID);
+        const isTl = interaction.member?.roles?.cache?.has(TEAM_LEADER_ROLE_ID);
+        const isSme = interaction.member?.roles?.cache?.has(SME_ROLE_ID);
+        if (!isOm && !isTl && !isSme) {
+          return interaction.reply({
+            content: 'This portal is for Team Leaders, SMEs, and Operations Managers only.',
+            ephemeral: true
+          });
+        }
+        const managementLabel = isOm ? 'Operations Manager' : (isTl ? 'Team Leader' : 'SME');
+        await auth.handleManagementRoutePick(interaction, managementLabel);
+      } else {
+        await auth.handleShiftRolePrompt(interaction);
+      }
     } else if (interaction.customId === 'shift_role_agent_btn') {
       await auth.handleAgentRoutePick(interaction);
     } else if (interaction.customId === 'shift_role_team_leader_btn') {
