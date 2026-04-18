@@ -21,6 +21,7 @@ const TL_SME_LOGIN_CHANNEL_ID = '1494867053604245554';
 const TEST_ROLE_ID = '1487369607772766208';
 const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
 const ATTENDANCE_TEST_DELAY_MS = 10 * 1000;
+const ATTENDANCE_TIME_ZONE = 'Asia/Manila';
 const ATTENDANCE_REMINDER_BUTTON_PREFIX = 'attendance_reminder';
 const ATTENDANCE_ACTION_BUTTON_PREFIX = 'attendance_action';
 const DEFAULT_TEMP_MESSAGE_TTL_MS = 10 * 60 * 1000;
@@ -95,6 +96,51 @@ function normalizeAttendanceText(content) {
     .trim();
 }
 
+function getTimeZoneDateParts(timestampMs, timeZone = ATTENDANCE_TIME_ZONE) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(new Date(timestampMs));
+  const values = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') values[part.type] = part.value;
+  }
+  return {
+    year: Number(values.year),
+    month: Number(values.month),
+    day: Number(values.day),
+    hour: Number(values.hour),
+    minute: Number(values.minute),
+    second: Number(values.second)
+  };
+}
+
+function getTimeZoneOffsetMs(timestampMs, timeZone = ATTENDANCE_TIME_ZONE) {
+  const parts = getTimeZoneDateParts(timestampMs, timeZone);
+  const asUtcMs = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    parts.hour,
+    parts.minute,
+    parts.second
+  );
+  return asUtcMs - timestampMs;
+}
+
+function buildTimeZoneTimestampMs({ year, month, day, hour, minute, second = 0 }, timeZone = ATTENDANCE_TIME_ZONE) {
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute, second);
+  const offsetMs = getTimeZoneOffsetMs(utcGuess, timeZone);
+  return utcGuess - offsetMs;
+}
+
 function shouldHandleAttendancePrototypeMessage(message) {
   if (!message?.guild || message?.author?.bot) return false;
   return String(message.channelId) === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
@@ -117,6 +163,8 @@ function parseAttendanceMode(content) {
 
 function parseAttendanceTargetTime(content, nowMs = Date.now()) {
   const source = String(content || '');
+  const nowParts = getTimeZoneDateParts(nowMs, ATTENDANCE_TIME_ZONE);
+
   const amPmMatch = source.match(/\b(\d{1,2})(?::([0-5]\d))?\s*(a\.?m?\.?|p\.?m?\.?)\b/i);
   if (amPmMatch) {
     const hourRaw = Number(amPmMatch[1]);
@@ -125,12 +173,18 @@ function parseAttendanceTargetTime(content, nowMs = Date.now()) {
     if (hourRaw >= 1 && hourRaw <= 12 && minuteRaw >= 0 && minuteRaw <= 59) {
       let hours24 = hourRaw % 12;
       if (suffix.startsWith('p')) hours24 += 12;
-      const candidate = new Date(nowMs);
-      candidate.setHours(hours24, minuteRaw, 0, 0);
-      if (candidate.getTime() < nowMs - (6 * 60 * 60 * 1000)) {
-        candidate.setDate(candidate.getDate() + 1);
+      let candidateMs = buildTimeZoneTimestampMs({
+        year: nowParts.year,
+        month: nowParts.month,
+        day: nowParts.day,
+        hour: hours24,
+        minute: minuteRaw,
+        second: 0
+      }, ATTENDANCE_TIME_ZONE);
+      if (candidateMs < nowMs - (6 * 60 * 60 * 1000)) {
+        candidateMs += (24 * 60 * 60 * 1000);
       }
-      return { targetMs: candidate.getTime(), explicit: true };
+      return { targetMs: candidateMs, explicit: true };
     }
   }
 
@@ -138,12 +192,18 @@ function parseAttendanceTargetTime(content, nowMs = Date.now()) {
   if (militaryMatch) {
     const hours24 = Number(militaryMatch[1]);
     const minuteRaw = Number(militaryMatch[2] || 0);
-    const candidate = new Date(nowMs);
-    candidate.setHours(hours24, minuteRaw, 0, 0);
-    if (candidate.getTime() < nowMs - (6 * 60 * 60 * 1000)) {
-      candidate.setDate(candidate.getDate() + 1);
+    let candidateMs = buildTimeZoneTimestampMs({
+      year: nowParts.year,
+      month: nowParts.month,
+      day: nowParts.day,
+      hour: hours24,
+      minute: minuteRaw,
+      second: 0
+    }, ATTENDANCE_TIME_ZONE);
+    if (candidateMs < nowMs - (6 * 60 * 60 * 1000)) {
+      candidateMs += (24 * 60 * 60 * 1000);
     }
-    return { targetMs: candidate.getTime(), explicit: true };
+    return { targetMs: candidateMs, explicit: true };
   }
 
   return { targetMs: nowMs, explicit: false };
@@ -216,7 +276,18 @@ function getAttendanceDelayMs(member) {
 }
 
 function formatAttendanceTimeLabel(ms) {
-  return new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const datePart = new Date(ms).toLocaleDateString('en-PH', {
+    timeZone: ATTENDANCE_TIME_ZONE,
+    month: 'short',
+    day: 'numeric'
+  });
+  const timePart = new Date(ms).toLocaleTimeString('en-PH', {
+    timeZone: ATTENDANCE_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true
+  });
+  return `${datePart} ${timePart} PHT`;
 }
 
 function buildAttendanceActionKey(userId, action) {
@@ -382,38 +453,31 @@ async function sendAttendanceActionConfirmation(message, context) {
     modeLabel,
     targetLabel,
     hotelLabel,
-    detectedText
+    detectedText,
+    promptCleanupTimer: null
   };
   pendingAttendanceActionConfirmations.set(token, pendingEntry);
 
-  const confirmationEmbed = new EmbedBuilder()
-    .setTitle(isLogin ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
+  const promptEmbed = new EmbedBuilder()
+    .setTitle('Attendance Confirmation Ready')
     .setDescription(
-      isLogin
-        ? `Please confirm if you want to log in on this hotel and time from your attendance message.\n\n**Hotel:** ${hotelLabel}\n**Mode:** ${modeLabel}\n**Time:** ${targetLabel}`
-        : 'Please confirm logout.\n\nThis will end your shift immediately once you confirm.'
+      `Click **Open Private Confirmation** below.\n` +
+      `The confirmation embed will be shown as **Only you can see this**.\n\n` +
+      `**Action:** ${isLogin ? 'Login' : 'Logout'}`
     )
-    .addFields(
-      { name: 'Detected Attendance Text', value: detectedText ? `\`${detectedText.slice(0, 950)}\`` : '`(empty)`' },
-      { name: 'Access', value: `Buttons are locked to <@${userId}> only.` }
-    )
-    .setColor(isLogin ? 0x57F287 : 0xED4245)
-    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)' })
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation Launcher' })
     .setTimestamp();
 
-  const confirmButton = new ButtonBuilder()
-    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${context.action}:confirm:${token}`)
-    .setLabel(isLogin ? 'Confirm Login' : 'Confirm Logout')
+  const openButton = new ButtonBuilder()
+    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${context.action}:open:${token}`)
+    .setLabel('Open Private Confirmation')
     .setStyle(ButtonStyle.Primary);
-  const cancelButton = new ButtonBuilder()
-    .setCustomId(`${ATTENDANCE_ACTION_BUTTON_PREFIX}:${context.action}:cancel:${token}`)
-    .setLabel('Cancel')
-    .setStyle(ButtonStyle.Secondary);
 
   const sent = await message.reply({
-    embeds: [confirmationEmbed],
-    allowedMentions: { repliedUser: true },
-    components: [new ActionRowBuilder().addComponents(confirmButton, cancelButton)]
+    embeds: [promptEmbed],
+    allowedMentions: { users: [userId], repliedUser: false },
+    components: [new ActionRowBuilder().addComponents(openButton)]
   }).catch(error => {
     console.warn(`[ATTENDANCE] Failed to send in-channel action confirmation to ${userId}:`, error.message);
     return null;
@@ -422,6 +486,14 @@ async function sendAttendanceActionConfirmation(message, context) {
   if (sent?.id) {
     pendingEntry.confirmationMessageId = sent.id;
     pendingEntry.confirmationChannelId = sent.channelId;
+    const timer = setTimeout(() => {
+      const active = pendingAttendanceActionConfirmations.get(token);
+      if (!active || active.confirmationMessageId !== sent.id) return;
+      pendingAttendanceActionConfirmations.delete(token);
+      sent.delete().catch(() => {});
+    }, 10 * 60 * 1000);
+    timer.unref?.();
+    pendingEntry.promptCleanupTimer = timer;
   } else {
     pendingAttendanceActionConfirmations.delete(token);
   }
@@ -484,12 +556,36 @@ async function handleAttendanceActionButton(interaction) {
     return interaction.reply({ content: 'This attendance confirmation is no longer active.', ephemeral: true }).catch(() => {});
   }
 
-  const scheduleDeleteConfirmationMessage = (delayMs = 1200) => {
+  const scheduleDeleteConfirmationMessage = (delayMs = 1400) => {
     const timer = setTimeout(() => {
-      interaction.message?.delete().catch(() => {});
+      interaction.deleteReply().catch(() => {
+        interaction.message?.delete().catch(() => {});
+      });
     }, delayMs);
     timer.unref?.();
   };
+
+  const clearPromptTimer = () => {
+    if (pending.promptCleanupTimer) {
+      clearTimeout(pending.promptCleanupTimer);
+      pending.promptCleanupTimer = null;
+    }
+  };
+
+  const buildPrimaryEmbed = () => new EmbedBuilder()
+    .setTitle(action === 'login' ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
+    .setDescription(
+      action === 'login'
+        ? `Please confirm if you want to log in on this hotel and time from your attendance message.\n\n**Hotel:** ${pending.hotelLabel}\n**Mode:** ${pending.modeLabel}\n**Time:** ${pending.targetLabel}`
+        : 'Please confirm logout.\n\nThis will end your shift immediately once you confirm.'
+    )
+    .addFields(
+      { name: 'Detected Attendance Text', value: pending.detectedText ? `\`${pending.detectedText.slice(0, 950)}\`` : '`(empty)`' },
+      { name: 'Access', value: `Buttons are locked to <@${pending.userId}> only.` }
+    )
+    .setColor(action === 'login' ? 0x57F287 : 0xED4245)
+    .setFooter({ text: 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)' })
+    .setTimestamp();
 
   const buildPrimaryButtons = () => {
     const confirmButton = new ButtonBuilder()
@@ -502,6 +598,16 @@ async function handleAttendanceActionButton(interaction) {
       .setStyle(ButtonStyle.Secondary);
     return new ActionRowBuilder().addComponents(confirmButton, cancelButton);
   };
+
+  if (decision === 'open') {
+    await interaction.reply({
+      embeds: [buildPrimaryEmbed()],
+      components: [buildPrimaryButtons()],
+      ephemeral: true
+    }).catch(() => {});
+    interaction.message?.delete().catch(() => {});
+    return;
+  }
 
   if (decision === 'cancel') {
     const warningEmbed = new EmbedBuilder()
@@ -531,34 +637,24 @@ async function handleAttendanceActionButton(interaction) {
   }
 
   if (decision === 'cancel_back') {
-    const restoreEmbed = new EmbedBuilder()
-      .setTitle(action === 'login' ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
-      .setDescription(
-        action === 'login'
-          ? `Please confirm if you want to log in on this hotel and time from your attendance message.\n\n**Hotel:** ${pending.hotelLabel}\n**Mode:** ${pending.modeLabel}\n**Time:** ${pending.targetLabel}`
-          : 'Please confirm logout.\n\nThis will end your shift immediately once you confirm.'
-      )
-      .addFields(
-        { name: 'Detected Attendance Text', value: pending.detectedText ? `\`${pending.detectedText.slice(0, 950)}\`` : '`(empty)`' },
-        { name: 'Access', value: `Buttons are locked to <@${pending.userId}> only.` }
-      )
-      .setColor(action === 'login' ? 0x57F287 : 0xED4245)
-      .setFooter({ text: 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)' })
-      .setTimestamp();
-
     await interaction.update({
-      embeds: [restoreEmbed],
+      embeds: [buildPrimaryEmbed()],
       components: [buildPrimaryButtons()]
     }).catch(() => {});
     return;
   }
 
   if (decision === 'cancel_yes') {
+    clearPromptTimer();
     pendingAttendanceActionConfirmations.delete(token);
-    await interaction.deferUpdate().catch(() => {});
-    await interaction.followUp({
-      content: `${action === 'login' ? 'Login' : 'Logout'} request canceled. Please retype your attendance message if needed.`,
-      ephemeral: true
+    const canceledEmbed = new EmbedBuilder()
+      .setTitle(`${action === 'login' ? 'Login' : 'Logout'} Request Canceled`)
+      .setDescription('Request canceled. Please retype your attendance message if needed.')
+      .setColor(0xED4245)
+      .setTimestamp();
+    await interaction.update({
+      embeds: [canceledEmbed],
+      components: []
     }).catch(() => {});
     scheduleDeleteConfirmationMessage();
     return;
@@ -568,8 +664,8 @@ async function handleAttendanceActionButton(interaction) {
     return interaction.reply({ content: 'Invalid attendance decision.', ephemeral: true }).catch(() => {});
   }
 
+  clearPromptTimer();
   pendingAttendanceActionConfirmations.delete(token);
-  await interaction.deferUpdate().catch(() => {});
 
   const delayMs = action === 'logout'
     ? 0
@@ -578,11 +674,18 @@ async function handleAttendanceActionButton(interaction) {
       : Math.max(0, pending.targetMs - Date.now()));
 
   scheduleAttendanceActionExecution(interaction.client, pending, delayMs);
-  await interaction.followUp({
-    content: delayMs > 0
-      ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} is scheduled in ${Math.ceil(delayMs / 1000)} second(s).`
-      : `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied now.`,
-    ephemeral: true
+  const successEmbed = new EmbedBuilder()
+    .setTitle(`${action === 'login' ? 'Login' : 'Logout'} Confirmed`)
+    .setDescription(
+      delayMs > 0
+        ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} is scheduled in ${Math.ceil(delayMs / 1000)} second(s).\n**Target:** ${pending.targetLabel}`
+        : `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied now.`
+    )
+    .setColor(0x57F287)
+    .setTimestamp();
+  await interaction.update({
+    embeds: [successEmbed],
+    components: []
   }).catch(() => {});
   scheduleDeleteConfirmationMessage();
 }
