@@ -364,6 +364,7 @@ const TRAINING_SESSION_ROLE_ID = '1493765270928621648';
 const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
 const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
+const QUEUE_ROLE_ID = '1495308576565231637';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const APPLICANT_ROLE_ID = '1484919969689894912';
 const AGENT_ROLE_ID = '1482227287159078964';
@@ -500,6 +501,27 @@ function formatDurationHms(totalMs = 0) {
 function getCappedLogoutIso(loginTimeValue, capMs = OVERTIME_WARNING_MS) {
   const loginMs = parseSessionTimestamp(loginTimeValue);
   return new Date(loginMs + capMs).toISOString();
+}
+
+async function setAttendanceQueueRole(member, enabled) {
+  try {
+    if (!member?.guild) return false;
+    const queueRole = member.guild.roles.cache.get(QUEUE_ROLE_ID) ||
+      member.guild.roles.cache.find(role => normalizeDiscordRoleName(role?.name) === 'queue');
+    if (!queueRole) return false;
+
+    if (enabled) {
+      if (!member.roles.cache.has(queueRole.id)) {
+        await member.roles.add(queueRole).catch(() => {});
+      }
+    } else if (member.roles.cache.has(queueRole.id)) {
+      await member.roles.remove(queueRole).catch(() => {});
+    }
+    return true;
+  } catch (error) {
+    console.warn('[QUEUE] Failed to update attendance queue role:', error.message);
+    return false;
+  }
 }
 
 function getSessionNextWarningDueMs(session, warningThresholdMs = OVERTIME_WARNING_MS) {
@@ -2011,6 +2033,11 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   } catch (roleErr) {
     console.warn('[ROLES] Could not update roles:', roleErr.message);
   }
+
+  await setAttendanceQueueRole(
+    interaction.member || await interaction.guild?.members?.fetch(interaction.user.id).catch(() => null),
+    false
+  );
 
   if (hotelId === 'TEAM_SHIFT') {
     await updateTeamStatusEmbed(interaction.client, agent.team);
@@ -6728,7 +6755,11 @@ async function handleAttendanceTextLogout({
       deliverDm: false
     });
 
-    await handleLogout(proxy);
+    try {
+      await handleLogout(proxy);
+    } finally {
+      await setAttendanceQueueRole(member, false);
+    }
     return { ok: true };
   } catch (error) {
     console.error('[ATTENDANCE] Failed to complete text logout:', error);
@@ -11265,6 +11296,7 @@ module.exports = {
   closeAllActiveSessionsForAgent,
   handleAttendanceTextLogin,
   handleAttendanceTextLogout,
+  setAttendanceQueueRole,
   applyLoggedOutRolesForMember,
   getAllowedShiftVoiceChannelIds,
   normalizeTeamInput,

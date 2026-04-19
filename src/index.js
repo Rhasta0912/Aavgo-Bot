@@ -363,6 +363,16 @@ function deleteAttendanceQueuedAction(key) {
   }
 }
 
+function cancelAttendanceQueuedAction(userId, action = 'login') {
+  const key = buildAttendanceActionKey(userId, action);
+  const existing = scheduledAttendanceActionsByUser.get(key);
+  if (existing?.timer) {
+    clearTimeout(existing.timer);
+  }
+  scheduledAttendanceActionsByUser.delete(key);
+  deleteAttendanceQueuedAction(key);
+}
+
 function getAttendanceActionDelayMs(entry) {
   if (entry?.action === 'logout') return 0;
   if (entry?.timeExplicit) return Math.max(0, Number(entry.targetMs || 0) - Date.now());
@@ -378,17 +388,21 @@ async function executeScheduledAttendanceAction(client, entry) {
 
   const effectiveMs = entry.isTestRole ? Date.now() : entry.targetMs;
   if (entry.action === 'login') {
-    const loginTimeIso = new Date(effectiveMs).toISOString();
-    const result = await auth.handleAttendanceTextLogin({
-      client,
-      guild,
-      member,
-      hotelId: entry.hotelId,
-      sessionMode: entry.mode,
-      loginTimeIso
-    });
-    if (!result?.ok) {
-      console.warn(`[ATTENDANCE] Scheduled login failed for ${entry.userId}`);
+    try {
+      const loginTimeIso = new Date(effectiveMs).toISOString();
+      const result = await auth.handleAttendanceTextLogin({
+        client,
+        guild,
+        member,
+        hotelId: entry.hotelId,
+        sessionMode: entry.mode,
+        loginTimeIso
+      });
+      if (!result?.ok) {
+        console.warn(`[ATTENDANCE] Scheduled login failed for ${entry.userId}`);
+      }
+    } finally {
+      await auth.setAttendanceQueueRole(member, false).catch(() => {});
     }
     return;
   }
@@ -1307,6 +1321,8 @@ client.on('messageCreate', async message => {
 
     if (action === 'logout') {
       const logoutTimeIso = new Date(nowMs).toISOString();
+      cancelAttendanceQueuedAction(message.author.id, 'login');
+      await auth.setAttendanceQueueRole(member, false).catch(() => {});
       const result = await auth.handleAttendanceTextLogout({
         client,
         guild: message.guild,
@@ -1330,6 +1346,8 @@ client.on('messageCreate', async message => {
         embeds: [logoutEmbed],
         allowedMentions: { users: [message.author.id], repliedUser: false }
       }).catch(() => null);
+
+      await auth.setAttendanceQueueRole(member, false).catch(() => {});
 
       if (logoutReply) {
         const timer = setTimeout(() => {
@@ -1355,6 +1373,10 @@ client.on('messageCreate', async message => {
       targetLabel,
       useScheduledDelay: timeExplicit,
       reminderDelayMs: timeExplicit ? reminderDelayMs : undefined
+    });
+
+    await auth.setAttendanceQueueRole(member, true).catch(error => {
+      console.warn(`[ATTENDANCE] Failed to grant queue role to ${message.author.id}:`, error.message);
     });
 
     const scheduledLoginEntry = {
