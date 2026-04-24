@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added Attendance channel status reactions and login/logout easter eggs.
+  - Summary: Attendance posts now get a clock reaction when a staff member is within 30 minutes of a scheduled shift and not logged in, a check reaction once the shift is live or the user is already active, and a tada reaction when the user logs out. The bot also has a 1% heart easter egg reply on attendance posts so the channel stays useful without getting noisy.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Added PIN visibility in Profiles member view.
   - Summary: Profile review cards now show the user PIN line directly in the details section (`ðŸ” PIN`) so management/developer profile checks can see the stored PIN while reviewing agent records.
   - Files touched:

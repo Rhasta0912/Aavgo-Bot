@@ -1308,6 +1308,10 @@ client.on('guildMemberRemove', async member => {
 
 client.on('messageCreate', async message => {
   try {
+    if (String(message.channelId) === ATTENDANCE_CHANNEL_ID) {
+      await auth.processAttendanceMessage(message);
+    }
+
     if (!shouldHandleAttendancePrototypeMessage(message)) return;
 
     const action = parseAttendanceAction(message.content);

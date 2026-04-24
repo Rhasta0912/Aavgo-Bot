@@ -17,6 +17,13 @@ const fs = require('fs');
 const path = require('path');
 const { createTestUiHandlers } = require('./testui');
 
+const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
+const ATTENDANCE_CLOCK_EMOJI = '⏰';
+const ATTENDANCE_CHECK_EMOJI = '✅';
+const ATTENDANCE_TADA_EMOJI = '🎉';
+const ATTENDANCE_HEART_EMOJI = '❤️';
+const attendanceMessageByUserId = new Map();
+
 // ─── Identity Helpers ────────────────────────────────
 async function getAgentDisplayName(guild, discordId) {
   try {
@@ -26,6 +33,128 @@ async function getAgentDisplayName(guild, discordId) {
   } catch (e) {
     return 'Unknown Agent';
   }
+}
+
+function rememberAttendanceMessage(message) {
+  const userId = String(message?.author?.id || '').trim();
+  if (!userId || !message?.id) return;
+  attendanceMessageByUserId.set(userId, {
+    channelId: String(message.channelId || ''),
+    messageId: String(message.id),
+    guildId: String(message.guildId || ''),
+    createdAt: Date.now()
+  });
+}
+
+async function fetchAttendanceMessageForUser(client, userId) {
+  const normalizedUserId = String(userId || '').trim();
+  if (!client || !normalizedUserId) return null;
+
+  const cachedRef = attendanceMessageByUserId.get(normalizedUserId) || null;
+  if (cachedRef?.messageId && cachedRef.channelId === ATTENDANCE_CHANNEL_ID) {
+    const cachedChannel = await client.channels.fetch(cachedRef.channelId).catch(() => null);
+    if (cachedChannel && cachedChannel.messages && typeof cachedChannel.messages.fetch === 'function') {
+      const cachedMessage = await cachedChannel.messages.fetch(cachedRef.messageId).catch(() => null);
+      if (cachedMessage) {
+        return cachedMessage;
+      }
+    }
+  }
+
+  const attendanceChannel = await client.channels.fetch(ATTENDANCE_CHANNEL_ID).catch(() => null);
+  if (!attendanceChannel || typeof attendanceChannel.messages?.fetch !== 'function') return null;
+
+  const recentMessages = await attendanceChannel.messages.fetch({ limit: 25 }).catch(() => null);
+  if (!recentMessages) return null;
+
+  return recentMessages.find(message => String(message?.author?.id || '') === normalizedUserId) || null;
+}
+
+function getAttendanceShiftState(discordId) {
+  const normalizedDiscordId = String(discordId || '').trim();
+  if (!normalizedDiscordId) return null;
+
+  const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(normalizedDiscordId);
+  if (!agent?.id) return null;
+
+  const activeSession = db.prepare(`
+    SELECT id, login_time, session_kind, hotel_id
+    FROM sessions
+    WHERE agent_id = ? AND status = 'active'
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(agent.id) || null;
+
+  const nextSchedule = db.prepare(`
+    SELECT id, start_time, hotel_id, status
+    FROM schedules
+    WHERE agent_id = ? AND status = 'pending'
+    ORDER BY datetime(start_time) ASC, id ASC
+    LIMIT 1
+  `).get(agent.id) || null;
+
+  let minutesUntilShift = null;
+  if (nextSchedule?.start_time) {
+    const startMs = new Date(nextSchedule.start_time).getTime();
+    if (Number.isFinite(startMs)) {
+      minutesUntilShift = Math.round((startMs - Date.now()) / 60000);
+    }
+  }
+
+  return {
+    activeSession,
+    nextSchedule,
+    minutesUntilShift
+  };
+}
+
+async function reactToLatestAttendanceMessage(client, userId, emoji) {
+  const message = await fetchAttendanceMessageForUser(client, userId);
+  if (!message) return false;
+
+  try {
+    await message.react(emoji);
+    return true;
+  } catch (error) {
+    console.warn(`[ATTENDANCE] Failed to react with ${emoji} for ${userId}:`, error.message);
+    return false;
+  }
+}
+
+async function processAttendanceMessage(message) {
+  if (!message?.guild || message?.author?.bot) return null;
+  if (String(message.channelId) !== ATTENDANCE_CHANNEL_ID) return null;
+
+  rememberAttendanceMessage(message);
+
+  const state = getAttendanceShiftState(message.author.id);
+  if (!state) return null;
+
+  const hasActiveSession = Boolean(state.activeSession);
+  const minutesUntilShift = Number(state.minutesUntilShift);
+  const isPreShiftWindow = Number.isFinite(minutesUntilShift) && minutesUntilShift > 0 && minutesUntilShift <= 30;
+  const isShiftDueOrPast = Number.isFinite(minutesUntilShift) && minutesUntilShift <= 0;
+
+  try {
+    if (hasActiveSession || isShiftDueOrPast) {
+      await message.react(ATTENDANCE_CHECK_EMOJI);
+    } else if (isPreShiftWindow) {
+      await message.react(ATTENDANCE_CLOCK_EMOJI);
+    }
+  } catch (error) {
+    console.warn('[ATTENDANCE] Failed to add attendance reaction:', error.message);
+  }
+
+  if (Math.random() < 0.01) {
+    await message.reply({
+      content: ATTENDANCE_HEART_EMOJI,
+      allowedMentions: { repliedUser: false }
+    }).catch(error => {
+      console.warn('[ATTENDANCE] Failed to send heart easter egg:', error.message);
+    });
+  }
+
+  return state;
 }
 
 async function safeDeferComponentUpdate(interaction) {
@@ -363,7 +492,6 @@ const TRAINING_LOG_CHANNEL_ID = '1488041967769358369';
 const TRAINING_SESSION_ROLE_ID = '1493765270928621648';
 const HOTEL_STATUS_CHANNEL_ID = '1487355252398100601';
 const LOGIN_CHANNEL_ID = '1482228169485582446';
-const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
 const QUEUE_ROLE_ID = '1495308576565231637';
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const APPLICANT_ROLE_ID = '1484919969689894912';
@@ -6341,6 +6469,8 @@ async function handleModalSubmit(interaction) {
     guild: interaction.guild
   });
 
+  await reactToLatestAttendanceMessage(interaction.client, interaction.user.id, ATTENDANCE_CHECK_EMOJI).catch(() => {});
+
       // Simplified notification (Discord only)
 
   } catch (error) {
@@ -6572,6 +6702,8 @@ async function handleLogout(interaction) {
         guild: interaction.guild
       });
     }
+
+    await reactToLatestAttendanceMessage(interaction.client, targetDiscordId, ATTENDANCE_TADA_EMOJI).catch(() => {});
 
     // Analytics summary completed
 
@@ -11174,6 +11306,8 @@ module.exports = {
   HOTEL_LOGIN_CHANNELS,
   sendAuditLog,
   broadcastUpdateLog,
+  processAttendanceMessage,
+  reactToLatestAttendanceMessage,
   ensureAgentKioskMessage,
   updateHotelStatusEmbed,
   updateAllHotelStatusEmbed,
