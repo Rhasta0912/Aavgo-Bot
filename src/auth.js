@@ -24,6 +24,7 @@ const ATTENDANCE_CHECK_EMOJI = '✅';
 const ATTENDANCE_TADA_EMOJI = '🎉';
 const ATTENDANCE_HEART_EMOJI = '❤️';
 const attendanceMessageByUserId = new Map();
+const attendanceReactionTimersByUserId = new Map();
 
 function isAttendanceMessageChannel(channelId) {
   const normalizedChannelId = String(channelId || '').trim();
@@ -61,12 +62,25 @@ function rememberAttendanceMessage(message) {
   });
 }
 
-async function fetchAttendanceMessageForUser(client, userId) {
+function clearAttendanceReactionTimer(userId) {
   const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) return false;
+
+  const existing = attendanceReactionTimersByUserId.get(normalizedUserId) || null;
+  if (existing?.timer) {
+    clearTimeout(existing.timer);
+  }
+  attendanceReactionTimersByUserId.delete(normalizedUserId);
+  return true;
+}
+
+async function fetchAttendanceMessageForUser(client, userId, channelId = ATTENDANCE_CHANNEL_ID) {
+  const normalizedUserId = String(userId || '').trim();
+  const normalizedChannelId = String(channelId || '').trim();
   if (!client || !normalizedUserId) return null;
 
   const cachedRef = attendanceMessageByUserId.get(normalizedUserId) || null;
-  if (cachedRef?.messageId && cachedRef.channelId === ATTENDANCE_CHANNEL_ID) {
+  if (cachedRef?.messageId && cachedRef.channelId === normalizedChannelId) {
     const cachedChannel = await client.channels.fetch(cachedRef.channelId).catch(() => null);
     if (cachedChannel && cachedChannel.messages && typeof cachedChannel.messages.fetch === 'function') {
       const cachedMessage = await cachedChannel.messages.fetch(cachedRef.messageId).catch(() => null);
@@ -76,7 +90,7 @@ async function fetchAttendanceMessageForUser(client, userId) {
     }
   }
 
-  const attendanceChannel = await client.channels.fetch(ATTENDANCE_CHANNEL_ID).catch(() => null);
+  const attendanceChannel = await client.channels.fetch(normalizedChannelId).catch(() => null);
   if (!attendanceChannel || typeof attendanceChannel.messages?.fetch !== 'function') return null;
 
   const recentMessages = await attendanceChannel.messages.fetch({ limit: 25 }).catch(() => null);
@@ -136,6 +150,52 @@ async function reactToLatestAttendanceMessage(client, userId, emoji) {
   }
 }
 
+async function flipAttendanceLoginReaction(client, userId, channelId = ATTENDANCE_CHANNEL_ID) {
+  const message = await fetchAttendanceMessageForUser(client, userId, channelId);
+  if (!message) return false;
+
+  try {
+    const clockReaction = message.reactions?.cache?.find(reaction => reaction?.emoji?.name === ATTENDANCE_CLOCK_EMOJI) || null;
+    if (clockReaction?.users?.remove && client?.user?.id) {
+      await clockReaction.users.remove(client.user.id).catch(() => {});
+    }
+    await message.react(ATTENDANCE_CHECK_EMOJI);
+    return true;
+  } catch (error) {
+    console.warn(`[ATTENDANCE] Failed to flip login reaction for ${userId}:`, error.message);
+    return false;
+  }
+}
+
+function scheduleAttendanceReactionFlip(message, targetMs) {
+  const userId = String(message?.author?.id || '').trim();
+  const channelId = String(message?.channelId || '').trim();
+  if (!userId || !channelId) return false;
+
+  clearAttendanceReactionTimer(userId);
+
+  const dueMs = Number(targetMs);
+  if (!Number.isFinite(dueMs)) return false;
+
+  const delayMs = Math.max(0, dueMs - Date.now());
+  const run = async () => {
+    attendanceReactionTimersByUserId.delete(userId);
+    await flipAttendanceLoginReaction(message.client, userId, channelId).catch(error => {
+      console.warn(`[ATTENDANCE] Scheduled reaction flip failed for ${userId}:`, error.message);
+    });
+  };
+
+  if (delayMs <= 0) {
+    run();
+    return true;
+  }
+
+  const timer = setTimeout(run, delayMs);
+  timer.unref?.();
+  attendanceReactionTimersByUserId.set(userId, { timer, channelId, targetMs: dueMs });
+  return true;
+}
+
 async function processAttendanceMessage(message, options = {}) {
   if (!message?.guild || message?.author?.bot) return null;
   if (!isAttendanceMessageChannel(message.channelId)) return null;
@@ -160,11 +220,16 @@ async function processAttendanceMessage(message, options = {}) {
 
   try {
     if (action === 'logout') {
+      clearAttendanceReactionTimer(message.author.id);
       await message.react(ATTENDANCE_TADA_EMOJI);
     } else if (hasActiveSession || isShiftDueOrPast) {
+      clearAttendanceReactionTimer(message.author.id);
       await message.react(ATTENDANCE_CHECK_EMOJI);
     } else if (isPreShiftWindow) {
       await message.react(ATTENDANCE_CLOCK_EMOJI);
+      if (Number.isFinite(targetMs) && targetMs > nowMs) {
+        scheduleAttendanceReactionFlip(message, targetMs);
+      }
     }
   } catch (error) {
     console.warn('[ATTENDANCE] Failed to add attendance reaction:', error.message);
@@ -6728,6 +6793,8 @@ async function handleLogout(interaction) {
       });
     }
 
+    clearAttendanceReactionTimer(targetDiscordId);
+
     if (!interaction.__skipAttendanceReaction) {
       await reactToLatestAttendanceMessage(interaction.client, targetDiscordId, ATTENDANCE_TADA_EMOJI).catch(() => {});
     }
@@ -11348,6 +11415,8 @@ module.exports = {
   broadcastUpdateLog,
   processAttendanceMessage,
   reactToLatestAttendanceMessage,
+  scheduleAttendanceReactionFlip,
+  clearAttendanceReactionTimer,
   ensureAgentKioskMessage,
   updateHotelStatusEmbed,
   updateAllHotelStatusEmbed,

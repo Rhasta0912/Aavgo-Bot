@@ -1347,9 +1347,10 @@ client.on('guildMemberRemove', async member => {
         });
       }
 
-        if (action === 'logout') {
+      if (action === 'logout') {
         const logoutTimeIso = new Date(nowMs).toISOString();
         cancelAttendanceQueuedAction(message.author.id, 'login');
+        auth.clearAttendanceReactionTimer(message.author.id);
         if (!isPreviewAttendanceChannel) {
           await auth.setAttendanceQueueRole(member, false).catch(() => {});
         }
