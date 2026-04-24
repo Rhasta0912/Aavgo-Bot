@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Fixed Attendance test-channel behavior so it reacts without logging hours.
+  - Summary: The attendance prototype channel now gets the same clock/check/tada reaction handling as the live Attendance channel, but it is marked preview-only so it does not create real sessions, queue records, or worked hours. The reminder confirmation flow also carries the preview flag so auto-confirm cannot silently write hours later.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Added Attendance channel status reactions and login/logout easter eggs.
   - Summary: Attendance posts now get a clock reaction when a staff member is within 30 minutes of a scheduled shift and not logged in, a check reaction once the shift is live or the user is already active, and a tada reaction when the user logs out. The bot also has a 1% heart easter egg reply on attendance posts so the channel stays useful without getting noisy.
   - Files touched:

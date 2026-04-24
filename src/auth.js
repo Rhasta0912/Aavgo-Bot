@@ -18,11 +18,17 @@ const path = require('path');
 const { createTestUiHandlers } = require('./testui');
 
 const ATTENDANCE_CHANNEL_ID = '1489840627209470022';
+const ATTENDANCE_PROTOTYPE_CHANNEL_ID = '1494866014461104128';
 const ATTENDANCE_CLOCK_EMOJI = '⏰';
 const ATTENDANCE_CHECK_EMOJI = '✅';
 const ATTENDANCE_TADA_EMOJI = '🎉';
 const ATTENDANCE_HEART_EMOJI = '❤️';
 const attendanceMessageByUserId = new Map();
+
+function isAttendanceMessageChannel(channelId) {
+  const normalizedChannelId = String(channelId || '').trim();
+  return normalizedChannelId === ATTENDANCE_CHANNEL_ID || normalizedChannelId === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
+}
 
 // ─── Identity Helpers ────────────────────────────────
 async function getAgentDisplayName(guild, discordId) {
@@ -123,7 +129,7 @@ async function reactToLatestAttendanceMessage(client, userId, emoji) {
 
 async function processAttendanceMessage(message) {
   if (!message?.guild || message?.author?.bot) return null;
-  if (String(message.channelId) !== ATTENDANCE_CHANNEL_ID) return null;
+  if (!isAttendanceMessageChannel(message.channelId)) return null;
 
   rememberAttendanceMessage(message);
 
@@ -6821,11 +6827,16 @@ async function handleAttendanceTextLogin({
   member,
   hotelId,
   sessionMode = 'shift',
-  loginTimeIso
+  loginTimeIso,
+  previewOnly = false
 }) {
   try {
     if (!client || !guild || !member || !hotelId) {
       return { ok: false, reason: 'missing_context' };
+    }
+
+    if (previewOnly) {
+      return { ok: true, previewOnly: true };
     }
 
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(member.id);
@@ -6861,11 +6872,16 @@ async function handleAttendanceTextLogout({
   client,
   guild,
   member,
-  logoutTimeIso
+  logoutTimeIso,
+  previewOnly = false
 }) {
   try {
     if (!client || !guild || !member) {
       return { ok: false, reason: 'missing_context' };
+    }
+
+    if (previewOnly) {
+      return { ok: true, previewOnly: true };
     }
 
     let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(member.id);

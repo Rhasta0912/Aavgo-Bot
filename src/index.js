@@ -386,8 +386,13 @@ async function executeScheduledAttendanceAction(client, entry) {
   const member = await guild.members.fetch(entry.userId).catch(() => null);
   if (!member) return;
 
+  const previewOnly = entry?.previewOnly === true;
   const effectiveMs = entry.isTestRole ? Date.now() : entry.targetMs;
   if (entry.action === 'login') {
+    if (previewOnly) {
+      console.log(`[ATTENDANCE] Preview-only login skipped for ${entry.userId}.`);
+      return;
+    }
     try {
       const loginTimeIso = new Date(effectiveMs).toISOString();
       const result = await auth.handleAttendanceTextLogin({
@@ -398,21 +403,25 @@ async function executeScheduledAttendanceAction(client, entry) {
         sessionMode: entry.mode,
         loginTimeIso
       });
-      if (!result?.ok) {
-        console.warn(`[ATTENDANCE] Scheduled login failed for ${entry.userId}`);
+        if (!result?.ok) {
+          console.warn(`[ATTENDANCE] Scheduled login failed for ${entry.userId}`);
+        }
+      } finally {
+        await auth.setAttendanceQueueRole(member, false).catch(() => {});
       }
-    } finally {
-      await auth.setAttendanceQueueRole(member, false).catch(() => {});
+      return;
     }
-    return;
-  }
 
-  if (entry.action === 'logout') {
-    const logoutTimeIso = new Date(effectiveMs).toISOString();
-    const result = await auth.handleAttendanceTextLogout({
-      client,
-      guild,
-      member,
+    if (entry.action === 'logout') {
+      if (previewOnly) {
+        console.log(`[ATTENDANCE] Preview-only logout skipped for ${entry.userId}.`);
+        return;
+      }
+      const logoutTimeIso = new Date(effectiveMs).toISOString();
+      const result = await auth.handleAttendanceTextLogout({
+        client,
+        guild,
+        member,
       logoutTimeIso
     });
     if (!result?.ok) {
@@ -427,7 +436,9 @@ function scheduleAttendanceActionExecution(client, entry, delayMs) {
   if (existing?.timer) {
     clearTimeout(existing.timer);
   }
-  upsertAttendanceQueuedAction(key, entry);
+  if (!entry?.previewOnly) {
+    upsertAttendanceQueuedAction(key, entry);
+  }
 
   const runNow = async () => {
     scheduledAttendanceActionsByUser.delete(key);
@@ -466,22 +477,28 @@ function recoverScheduledAttendanceActions(client) {
 
   let restoredCount = 0;
   for (const row of rows) {
-    const entry = {
-      guildId: String(row.guild_id || ''),
-      userId: String(row.user_id || ''),
-      action: String(row.action || ''),
-      hotelId: row.hotel_id || null,
+      const entry = {
+        guildId: String(row.guild_id || ''),
+        userId: String(row.user_id || ''),
+        action: String(row.action || ''),
+        hotelId: row.hotel_id || null,
       mode: row.mode || null,
       targetMs: Number.isFinite(Number(row.target_ms)) ? Number(row.target_ms) : Date.now(),
       isTestRole: Number(row.is_test_role || 0) === 1,
-      timeExplicit: Number(row.time_explicit || 0) === 1,
-      teamName: row.team_name || null
-    };
+        timeExplicit: Number(row.time_explicit || 0) === 1,
+        teamName: row.team_name || null
+      };
 
-    if (!entry.guildId || !entry.userId || !entry.action) {
-      const fallbackKey = String(row.action_key || buildAttendanceActionKey(entry.userId, entry.action));
-      deleteAttendanceQueuedAction(fallbackKey);
-      continue;
+      if (entry.previewOnly) {
+        const fallbackKey = String(row.action_key || buildAttendanceActionKey(entry.userId, entry.action));
+        deleteAttendanceQueuedAction(fallbackKey);
+        continue;
+      }
+
+      if (!entry.guildId || !entry.userId || !entry.action) {
+        const fallbackKey = String(row.action_key || buildAttendanceActionKey(entry.userId, entry.action));
+        deleteAttendanceQueuedAction(fallbackKey);
+        continue;
     }
 
     scheduleAttendanceActionExecution(client, entry, getAttendanceActionDelayMs(entry));
@@ -591,11 +608,11 @@ async function sendAttendanceActionConfirmation(message, context) {
   const hotelLabel = isLogin ? auth.getCombinedHotelLabel(context.hotelId) : null;
   const detectedText = String(message.content || '').trim();
 
-  const pendingEntry = {
-    token,
-    action: context.action,
-    userId,
-    guildId: message.guild.id,
+    const pendingEntry = {
+      token,
+      action: context.action,
+      userId,
+      guildId: message.guild.id,
     hotelId: context.hotelId,
     mode: context.mode,
     targetMs: context.targetMs,
@@ -603,11 +620,12 @@ async function sendAttendanceActionConfirmation(message, context) {
     timeExplicit: context.timeExplicit === true,
     teamName: context.teamName,
     modeLabel,
-    targetLabel,
-    hotelLabel,
-    detectedText,
-    promptCleanupTimer: null
-  };
+      targetLabel,
+      hotelLabel,
+      detectedText,
+      previewOnly: context.previewOnly === true,
+      promptCleanupTimer: null
+    };
   pendingAttendanceActionConfirmations.set(token, pendingEntry);
 
   const confirmationEmbed = new EmbedBuilder()
@@ -1308,7 +1326,10 @@ client.on('guildMemberRemove', async member => {
 
 client.on('messageCreate', async message => {
   try {
-    if (String(message.channelId) === ATTENDANCE_CHANNEL_ID) {
+    const isAttendanceChannel = String(message.channelId) === ATTENDANCE_CHANNEL_ID;
+    const isPreviewAttendanceChannel = String(message.channelId) === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
+
+    if (isAttendanceChannel || isPreviewAttendanceChannel) {
       await auth.processAttendanceMessage(message);
     }
 
@@ -1323,27 +1344,30 @@ client.on('messageCreate', async message => {
     const nowMs = Date.now();
     const { targetMs, explicit: timeExplicit } = parseAttendanceTargetTime(message.content, nowMs);
 
-    if (action === 'logout') {
-      const logoutTimeIso = new Date(nowMs).toISOString();
-      cancelAttendanceQueuedAction(message.author.id, 'login');
-      await auth.setAttendanceQueueRole(member, false).catch(() => {});
-      const result = await auth.handleAttendanceTextLogout({
-        client,
-        guild: message.guild,
-        member,
-        logoutTimeIso
-      });
+      if (action === 'logout') {
+        const logoutTimeIso = new Date(nowMs).toISOString();
+        cancelAttendanceQueuedAction(message.author.id, 'login');
+        if (!isPreviewAttendanceChannel) {
+          await auth.setAttendanceQueueRole(member, false).catch(() => {});
+        }
+        const result = await auth.handleAttendanceTextLogout({
+          client,
+          guild: message.guild,
+          member,
+          logoutTimeIso,
+          previewOnly: isPreviewAttendanceChannel
+        });
 
-      const logoutEmbed = new EmbedBuilder()
-        .setTitle(result?.ok ? 'Attendance Logout Recorded' : 'Attendance Logout Failed')
-        .setDescription(
-          result?.ok
-            ? `You have successfully logged out at **${formatAttendanceTimeLabel(nowMs)}**.`
-            : 'Could not complete your logout right now. Please try again or use `/logout`.'
-        )
-        .setColor(result?.ok ? 0x57F287 : 0xED4245)
-        .setFooter({ text: 'Aavgo Operations - Attendance Logout' })
-        .setTimestamp();
+        const logoutEmbed = new EmbedBuilder()
+          .setTitle(result?.ok ? 'Attendance Logout Recorded' : 'Attendance Logout Failed')
+          .setDescription(
+            result?.ok
+              ? `You have successfully logged out at **${formatAttendanceTimeLabel(nowMs)}**.${isPreviewAttendanceChannel ? '\n\nTest mode: no hours were logged.' : ''}`
+              : 'Could not complete your logout right now. Please try again or use `/logout`.'
+          )
+          .setColor(result?.ok ? 0x57F287 : 0xED4245)
+          .setFooter({ text: isPreviewAttendanceChannel ? 'Aavgo Operations - Attendance Logout (Test mode)' : 'Aavgo Operations - Attendance Logout' })
+          .setTimestamp();
 
       const logoutReply = await message.reply({
         content: `<@${message.author.id}>`,
@@ -1367,50 +1391,55 @@ client.on('messageCreate', async message => {
     const hotelId = detectAttendanceHotelId(message.content);
     const voiceChannelId = resolveAttendanceVoiceChannelId({ hotelId, mode, teamName, userId: message.author.id });
     const isTestRole = isTestRoleMember(member);
-    const reminderDelayMs = Math.max(0, targetMs - nowMs);
-    const targetLabel = formatAttendanceTimeLabel(targetMs);
+      const reminderDelayMs = Math.max(0, targetMs - nowMs);
+      const targetLabel = formatAttendanceTimeLabel(targetMs);
+      const previewOnly = isPreviewAttendanceChannel;
 
-    scheduleAttendanceLoginReminder(message, {
-      member,
-      voiceChannelId,
-      targetMs,
-      targetLabel,
-      useScheduledDelay: timeExplicit,
-      reminderDelayMs: timeExplicit ? reminderDelayMs : undefined
-    });
+      scheduleAttendanceLoginReminder(message, {
+        member,
+        voiceChannelId,
+        targetMs,
+        targetLabel,
+        useScheduledDelay: timeExplicit,
+        reminderDelayMs: timeExplicit ? reminderDelayMs : undefined,
+        previewOnly
+      });
 
-    await auth.setAttendanceQueueRole(member, true).catch(error => {
-      console.warn(`[ATTENDANCE] Failed to grant queue role to ${message.author.id}:`, error.message);
-    });
+      if (!previewOnly) {
+        await auth.setAttendanceQueueRole(member, true).catch(error => {
+          console.warn(`[ATTENDANCE] Failed to grant queue role to ${message.author.id}:`, error.message);
+        });
+      }
 
-    const scheduledLoginEntry = {
-      action: 'login',
-      userId: message.author.id,
-      guildId: message.guild.id,
+      const scheduledLoginEntry = {
+        action: 'login',
+        userId: message.author.id,
+        guildId: message.guild.id,
       hotelId,
       mode,
       targetMs,
       isTestRole,
       timeExplicit,
       teamName,
-      modeLabel: mode === 'training' ? 'Training' : 'Live Shift',
-      targetLabel,
-      hotelLabel: auth.getCombinedHotelLabel(hotelId),
-      detectedText: String(message.content || '').trim()
-    };
-    const delayMs = getAttendanceActionDelayMs(scheduledLoginEntry);
-    scheduleAttendanceActionExecution(client, scheduledLoginEntry, delayMs);
+        modeLabel: mode === 'training' ? 'Training' : 'Live Shift',
+        targetLabel,
+        hotelLabel: auth.getCombinedHotelLabel(hotelId),
+        detectedText: String(message.content || '').trim(),
+        previewOnly
+      };
+      const delayMs = getAttendanceActionDelayMs(scheduledLoginEntry);
+      scheduleAttendanceActionExecution(client, scheduledLoginEntry, delayMs);
 
-    const confirmedEmbed = new EmbedBuilder()
-      .setTitle('Login Confirmed')
-      .setDescription(
-        delayMs > 0
-          ? `Confirmed. Login is scheduled in **${formatDurationFromMs(delayMs)}**.\n**Target:** ${targetLabel}`
-          : 'Confirmed. Login was applied now.'
-      )
-      .setColor(0x57F287)
-      .setFooter({ text: 'Aavgo Operations - Attendance Login' })
-      .setTimestamp();
+      const confirmedEmbed = new EmbedBuilder()
+        .setTitle('Login Confirmed')
+        .setDescription(
+          delayMs > 0
+            ? `Confirmed. Login is scheduled in **${formatDurationFromMs(delayMs)}**.\n**Target:** ${targetLabel}${previewOnly ? '\n\nTest mode: no hours will be logged.' : ''}`
+            : `Confirmed. Login was applied now.${previewOnly ? '\n\nTest mode: no hours will be logged.' : ''}`
+        )
+        .setColor(0x57F287)
+        .setFooter({ text: previewOnly ? 'Aavgo Operations - Attendance Login (Test mode)' : 'Aavgo Operations - Attendance Login' })
+        .setTimestamp();
 
     const confirmedReply = await message.reply({
       content: `<@${message.author.id}>`,
