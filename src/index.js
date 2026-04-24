@@ -1324,27 +1324,30 @@ client.on('guildMemberRemove', async member => {
   await auth.handleMemberLeave(member);
 });
 
-client.on('messageCreate', async message => {
-  try {
-    const isAttendanceChannel = String(message.channelId) === ATTENDANCE_CHANNEL_ID;
-    const isPreviewAttendanceChannel = String(message.channelId) === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
+  client.on('messageCreate', async message => {
+    try {
+      const isAttendanceChannel = String(message.channelId) === ATTENDANCE_CHANNEL_ID;
+      const isPreviewAttendanceChannel = String(message.channelId) === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
 
-    if (isAttendanceChannel || isPreviewAttendanceChannel) {
-      await auth.processAttendanceMessage(message);
-    }
+      if (!shouldHandleAttendancePrototypeMessage(message)) return;
 
-    if (!shouldHandleAttendancePrototypeMessage(message)) return;
+      const action = parseAttendanceAction(message.content);
+      if (!action) return;
 
-    const action = parseAttendanceAction(message.content);
-    if (!action) return;
+      const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
+      if (!member) return;
 
-    const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
-    if (!member) return;
+      const nowMs = Date.now();
+      const { targetMs, explicit: timeExplicit } = parseAttendanceTargetTime(message.content, nowMs);
+      if (isAttendanceChannel || isPreviewAttendanceChannel) {
+        await auth.processAttendanceMessage(message, {
+          previewOnly: isPreviewAttendanceChannel,
+          nowMs,
+          targetMs
+        });
+      }
 
-    const nowMs = Date.now();
-    const { targetMs, explicit: timeExplicit } = parseAttendanceTargetTime(message.content, nowMs);
-
-      if (action === 'logout') {
+        if (action === 'logout') {
         const logoutTimeIso = new Date(nowMs).toISOString();
         cancelAttendanceQueuedAction(message.author.id, 'login');
         if (!isPreviewAttendanceChannel) {

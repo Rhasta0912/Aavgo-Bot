@@ -30,6 +30,15 @@ function isAttendanceMessageChannel(channelId) {
   return normalizedChannelId === ATTENDANCE_CHANNEL_ID || normalizedChannelId === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
 }
 
+function parseAttendanceAction(content) {
+  const text = String(content || '');
+  const hasLogin = /\blog\s*in\b/i.test(text) || /\blogin\b/i.test(text);
+  const hasLogout = /\blog\s*out\b/i.test(text) || /\blogout\b/i.test(text);
+  if (hasLogout) return 'logout';
+  if (hasLogin) return 'login';
+  return null;
+}
+
 // ─── Identity Helpers ────────────────────────────────
 async function getAgentDisplayName(guild, discordId) {
   try {
@@ -127,22 +136,32 @@ async function reactToLatestAttendanceMessage(client, userId, emoji) {
   }
 }
 
-async function processAttendanceMessage(message) {
+async function processAttendanceMessage(message, options = {}) {
   if (!message?.guild || message?.author?.bot) return null;
   if (!isAttendanceMessageChannel(message.channelId)) return null;
 
   rememberAttendanceMessage(message);
 
+  const action = parseAttendanceAction(message.content);
   const state = getAttendanceShiftState(message.author.id);
   if (!state) return null;
 
-  const hasActiveSession = Boolean(state.activeSession);
-  const minutesUntilShift = Number(state.minutesUntilShift);
-  const isPreShiftWindow = Number.isFinite(minutesUntilShift) && minutesUntilShift > 0 && minutesUntilShift <= 30;
+  const previewOnly = options?.previewOnly === true;
+  const hasActiveSession = previewOnly ? false : Boolean(state.activeSession);
+  const nowMs = Number.isFinite(Number(options?.nowMs)) ? Number(options.nowMs) : Date.now();
+  const targetMs = Number.isFinite(Number(options?.targetMs)) ? Number(options.targetMs) : null;
+  const minutesUntilShift = previewOnly && Number.isFinite(targetMs)
+    ? Math.round((targetMs - nowMs) / 60000)
+    : Number(state.minutesUntilShift);
+  const isPreShiftWindow = previewOnly
+    ? Number.isFinite(minutesUntilShift) && minutesUntilShift > 0
+    : Number.isFinite(minutesUntilShift) && minutesUntilShift > 0 && minutesUntilShift <= 30;
   const isShiftDueOrPast = Number.isFinite(minutesUntilShift) && minutesUntilShift <= 0;
 
   try {
-    if (hasActiveSession || isShiftDueOrPast) {
+    if (action === 'logout') {
+      await message.react(ATTENDANCE_TADA_EMOJI);
+    } else if (hasActiveSession || isShiftDueOrPast) {
       await message.react(ATTENDANCE_CHECK_EMOJI);
     } else if (isPreShiftWindow) {
       await message.react(ATTENDANCE_CLOCK_EMOJI);
@@ -6709,7 +6728,9 @@ async function handleLogout(interaction) {
       });
     }
 
-    await reactToLatestAttendanceMessage(interaction.client, targetDiscordId, ATTENDANCE_TADA_EMOJI).catch(() => {});
+    if (!interaction.__skipAttendanceReaction) {
+      await reactToLatestAttendanceMessage(interaction.client, targetDiscordId, ATTENDANCE_TADA_EMOJI).catch(() => {});
+    }
 
     // Analytics summary completed
 
@@ -6741,7 +6762,8 @@ function createAutomationInteractionProxy({
   user,
   label = 'AUTO_PROXY',
   logoutTimeIso = null,
-  deliverDm = false
+  deliverDm = false,
+  skipAttendanceReaction = false
 }) {
   const proxy = {
     client,
@@ -6754,6 +6776,7 @@ function createAutomationInteractionProxy({
     replied: false,
     __aavgoEphemeral: true,
     __logoutTimeIso: logoutTimeIso || null,
+    __skipAttendanceReaction: skipAttendanceReaction === true,
     __lastReplyMessage: null,
     isChatInputCommand: () => false,
     isButton: () => false,
@@ -6893,15 +6916,16 @@ async function handleAttendanceTextLogout({
       return { ok: false, reason: 'not_registered' };
     }
 
-    const proxy = createAutomationInteractionProxy({
-      client,
-      guild,
-      member,
-      user: member.user,
-      label: 'ATTENDANCE_LOGOUT',
-      logoutTimeIso,
-      deliverDm: false
-    });
+      const proxy = createAutomationInteractionProxy({
+        client,
+        guild,
+        member,
+        user: member.user,
+        label: 'ATTENDANCE_LOGOUT',
+        logoutTimeIso,
+        deliverDm: false,
+        skipAttendanceReaction: true
+      });
 
     try {
       await handleLogout(proxy);

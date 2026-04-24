@@ -55,6 +55,12 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Corrected Attendance reaction selection so logout posts use `🎉` and preview-channel login posts use the clock before shift.
+  - Summary: The attendance reaction logic now reads the message action instead of treating every attendance post as a login. Logout posts react with tada, live login posts keep the 30-minute pre-shift clock/check behavior, and the preview Attendance channel ignores real session state so test messages don't get the wrong checkmark reaction.
+  - Files touched:
+    - src/auth.js
+    - src/index.js
+    - HISTORY.md
 - Fixed Attendance test-channel behavior so it reacts without logging hours.
   - Summary: The attendance prototype channel now gets the same clock/check/tada reaction handling as the live Attendance channel, but it is marked preview-only so it does not create real sessions, queue records, or worked hours. The reminder confirmation flow also carries the preview flag so auto-confirm cannot silently write hours later.
   - Files touched:
