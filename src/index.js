@@ -168,6 +168,23 @@ function parseAttendanceTargetTime(content, nowMs = Date.now()) {
   const source = String(content || '');
   const nowParts = getTimeZoneDateParts(nowMs, ATTENDANCE_TIME_ZONE);
 
+  const pickClosestAttendanceCandidate = candidateMs => {
+    const offsets = [0, 12 * 60 * 60 * 1000, 24 * 60 * 60 * 1000];
+    let bestMs = candidateMs;
+    let bestDiff = Number.POSITIVE_INFINITY;
+
+    for (const offset of offsets) {
+      const optionMs = candidateMs + offset;
+      const diff = Math.abs(optionMs - nowMs);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestMs = optionMs;
+      }
+    }
+
+    return bestMs;
+  };
+
   const amPmMatch = source.match(/\b(\d{1,2})(?::([0-5]\d))?\s*(a\.?m?\.?|p\.?m?\.?)\b/i);
   if (amPmMatch) {
     const hourRaw = Number(amPmMatch[1]);
@@ -184,10 +201,7 @@ function parseAttendanceTargetTime(content, nowMs = Date.now()) {
         minute: minuteRaw,
         second: 0
       }, ATTENDANCE_TIME_ZONE);
-      if (candidateMs < nowMs - (6 * 60 * 60 * 1000)) {
-        candidateMs += (24 * 60 * 60 * 1000);
-      }
-      return { targetMs: candidateMs, explicit: true };
+      return { targetMs: pickClosestAttendanceCandidate(candidateMs), explicit: true };
     }
   }
 
@@ -214,25 +228,11 @@ function parseAttendanceTargetTime(content, nowMs = Date.now()) {
 
 function resolveAttendanceLogoutTimeMs(content, nowMs = Date.now()) {
   const { targetMs, explicit } = parseAttendanceTargetTime(content, nowMs);
-  if (!explicit) {
+  if (!explicit || !Number.isFinite(Number(targetMs))) {
     return nowMs;
   }
 
-  let resolvedMs = Number(targetMs);
-  if (!Number.isFinite(resolvedMs)) {
-    return nowMs;
-  }
-
-  if (resolvedMs > nowMs) {
-    const priorMs = resolvedMs - (12 * 60 * 60 * 1000);
-    if (Number.isFinite(priorMs) && priorMs <= nowMs) {
-      resolvedMs = priorMs;
-    } else {
-      resolvedMs = nowMs;
-    }
-  }
-
-  return resolvedMs;
+  return Number(targetMs);
 }
 
 function resolveAttendanceTeamName(member) {

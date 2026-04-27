@@ -27,6 +27,9 @@ Working rules:
 - Repo: `https://github.com/Rhasta0912/Aavgo-Bot`
 
 ## Recent Milestones
+- Reworked attendance AM/PM parsing so explicit times stay on the intended day or closest half-day match instead of hopping everything to tomorrow.
+- Added support-role handling for SME support sessions and kept On-Shift assignment stable during login/logout swaps.
+- Capped text attendance logout timestamps to the scheduled time they were typed against instead of the delayed post time.
 - Extended the overtime confirm grace window from 5 minutes to 15 minutes.
 - Summary: Overtime warnings still trigger at 8 hours and still hard-cap the session at 12 hours, but the bot now gives agents 15 minutes to click `Confirm Overtime` before auto-logout. Updated the warning and auto-logout copy so every overtime path reports the new grace window consistently.
 - Hosted the bot successfully and verified the live startup flow on SparkedHost.
