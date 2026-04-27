@@ -592,6 +592,7 @@ const TEAM_LEADER_ROLE_ID = '1482732583660818636';
 const OPERATIONS_MANAGER_DISCORD_ROLE_ID = '1482226842047090809';
 const DEVELOPER_DISCORD_ROLE_ID = '1482312134875418737';
 const NO_PIN_ROLE_ID = '1485275671797436620';
+const SUPPORT_ROLE_ID = '1498249599780126791';
 const DEVELOPER_FALLBACK_IDS = ['320128931971727360', '1186978205018632242'];
 const PROMOTION_REQUEST_KEY_PREFIX = 'PROMOTE';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
@@ -1383,8 +1384,9 @@ async function applyLoggedOutRolesForMember(guild, member, hotelRefs = []) {
 
     const onShiftRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
     const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+    const supportRole = guild.roles.cache.get(SUPPORT_ROLE_ID);
     const trainingSessionRole = guild.roles.cache.get(TRAINING_SESSION_ROLE_ID);
-    const rolesToRemove = [onShiftRole, trainingSessionRole].filter(Boolean);
+    const rolesToRemove = [onShiftRole, supportRole, trainingSessionRole].filter(Boolean);
     const rolesToAdd = [loggedOutRole].filter(Boolean);
     const memberTeamFromDb = normalizeTeamInput(
       db.prepare("SELECT team FROM agents WHERE discord_id = ?").get(member.id)?.team
@@ -2175,6 +2177,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
     const guild = interaction.guild;
     const onShift = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
     const loggedOut = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
+    const supportRole = guild.roles.cache.get(SUPPORT_ROLE_ID);
     const trainingSessionRole = guild.roles.cache.get(TRAINING_SESSION_ROLE_ID);
     const loginTeamFromAgent = normalizeTeamInput(agent?.team);
     const loginTeamFromRoles = normalizeTeamInput(resolveTeamFromMemberRoles(member));
@@ -2187,6 +2190,8 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       .map(roleId => guild.roles.cache.get(roleId))
       .filter(Boolean);
 
+    const isSupportSession = normalizedRole === 'sme' && sessionMode !== 'training';
+
     if (isTrainingSession) {
       const sessionHotelRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]) || guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const otherHotelRoles = allHotelRoles.filter(role => role.id !== sessionHotelRole?.id);
@@ -2194,6 +2199,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       const rolesToRemove = [
         onShift,
         loggedOut,
+        supportRole,
         ...otherHotelRoles,
         team2GhostRole,
         team3GhostRole,
@@ -2207,6 +2213,24 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
         await member.roles.remove([...new Map(rolesToRemove.map(role => [role.id, role])).values()]);
       }
       console.log(`[ROLES] Training roles swapped for ${interaction.user.username}: +Hotel/+Training, -On-Shift/-Logged Out/-Ghost`);
+    } else if (isSupportSession) {
+      const rolesToAdd = [onShift, supportRole].filter(Boolean);
+      const rolesToRemove = [
+        loggedOut,
+        trainingSessionRole,
+        ...allHotelRoles,
+        team2GhostRole,
+        team3GhostRole,
+        team2PermissionRole,
+        team3PermissionRole
+      ].filter(Boolean);
+      if (rolesToAdd.length > 0) {
+        await member.roles.add([...new Map(rolesToAdd.map(role => [role.id, role])).values()]);
+      }
+      if (rolesToRemove.length > 0) {
+        await member.roles.remove([...new Map(rolesToRemove.map(role => [role.id, role])).values()]);
+      }
+      console.log(`[ROLES] Support roles swapped for ${interaction.user.username}: +On-Shift/+Support, -Logged Out/-Hotel Stack`);
     } else if (hotelId === 'TEAM_SHIFT') {
       if (
         (normalizedRole === 'sme' || normalizedRole === 'team_leader') &&
@@ -2214,7 +2238,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
         loggedOut
       ) {
         const rolesToAdd = [onShift];
-        const rolesToRemove = [loggedOut, trainingSessionRole, ...allHotelRoles].filter(Boolean);
+        const rolesToRemove = [loggedOut, supportRole, trainingSessionRole, ...allHotelRoles].filter(Boolean);
         await member.roles.add(rolesToAdd);
         if (rolesToRemove.length > 0) {
           await member.roles.remove(rolesToRemove);
@@ -2239,7 +2263,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       const sessionHotelRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]) || guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);
       const otherHotelRoles = allHotelRoles.filter(role => role.id !== sessionHotelRole?.id);
       const rolesToAdd = [onShift, sessionHotelRole].filter(Boolean);
-      const rolesToRemove = [loggedOut, trainingSessionRole, ...otherHotelRoles].filter(Boolean);
+      const rolesToRemove = [loggedOut, supportRole, trainingSessionRole, ...otherHotelRoles].filter(Boolean);
       if (rolesToAdd.length > 0) {
         await member.roles.add([...new Map(rolesToAdd.map(role => [role.id, role])).values()]);
       }
@@ -7303,7 +7327,8 @@ function collectAgentRolesToRemove(guild, teamName) {
   const agentsRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.AGENTS.toLowerCase());
   const loggedOutRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.LOGGED_OUT.toLowerCase());
   const onShiftRole = guild.roles.cache.find(r => r.name.toLowerCase() === ROLE_NAMES.ON_SHIFT.toLowerCase());
-  rolesToRemove.push(agentsRole, loggedOutRole, onShiftRole);
+  const supportRole = guild.roles.cache.get(SUPPORT_ROLE_ID);
+  rolesToRemove.push(agentsRole, loggedOutRole, onShiftRole, supportRole);
 
   if (teamName) {
     const teamRole = guild.roles.cache.find(r => r.name.toLowerCase() === String(teamName).toLowerCase());

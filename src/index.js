@@ -212,6 +212,29 @@ function parseAttendanceTargetTime(content, nowMs = Date.now()) {
   return { targetMs: nowMs, explicit: false };
 }
 
+function resolveAttendanceLogoutTimeMs(content, nowMs = Date.now()) {
+  const { targetMs, explicit } = parseAttendanceTargetTime(content, nowMs);
+  if (!explicit) {
+    return nowMs;
+  }
+
+  let resolvedMs = Number(targetMs);
+  if (!Number.isFinite(resolvedMs)) {
+    return nowMs;
+  }
+
+  if (resolvedMs > nowMs) {
+    const priorMs = resolvedMs - (12 * 60 * 60 * 1000);
+    if (Number.isFinite(priorMs) && priorMs <= nowMs) {
+      resolvedMs = priorMs;
+    } else {
+      resolvedMs = nowMs;
+    }
+  }
+
+  return resolvedMs;
+}
+
 function resolveAttendanceTeamName(member) {
   if (!member) return null;
   if (member.roles?.cache?.has(TEAM_ROLE_IDS['Team 1'])) return 'Team 1';
@@ -1348,7 +1371,8 @@ client.on('guildMemberRemove', async member => {
       }
 
       if (action === 'logout') {
-        const logoutTimeIso = new Date(nowMs).toISOString();
+        const logoutMs = resolveAttendanceLogoutTimeMs(message.content, nowMs);
+        const logoutTimeIso = new Date(logoutMs).toISOString();
         cancelAttendanceQueuedAction(message.author.id, 'login');
         auth.clearAttendanceReactionTimer(message.author.id);
         if (!isPreviewAttendanceChannel) {
@@ -1366,7 +1390,7 @@ client.on('guildMemberRemove', async member => {
           .setTitle(result?.ok ? 'Attendance Logout Recorded' : 'Attendance Logout Failed')
           .setDescription(
             result?.ok
-              ? `You have successfully logged out at **${formatAttendanceTimeLabel(nowMs)}**.${isPreviewAttendanceChannel ? '\n\nTest mode: no hours were logged.' : ''}`
+              ? `You have successfully logged out at **${formatAttendanceTimeLabel(logoutMs)}**.${isPreviewAttendanceChannel ? '\n\nTest mode: no hours were logged.' : ''}`
               : 'Could not complete your logout right now. Please try again or use `/logout`.'
           )
           .setColor(result?.ok ? 0x57F287 : 0xED4245)
