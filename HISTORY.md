@@ -27,6 +27,8 @@ Working rules:
 - Repo: `https://github.com/Rhasta0912/Aavgo-Bot`
 
 ## Recent Milestones
+- Extended the overtime confirm grace window from 5 minutes to 15 minutes.
+- Summary: Overtime warnings still trigger at 8 hours and still hard-cap the session at 12 hours, but the bot now gives agents 15 minutes to click `Confirm Overtime` before auto-logout. Updated the warning and auto-logout copy so every overtime path reports the new grace window consistently.
 - Hosted the bot successfully and verified the live startup flow on SparkedHost.
 - Connected the repo to GitHub and proved restart-based Git deploys work end to end.
 - Added and polished the onboarding DM, including yellow Aavgo styling and the onboarding channel reminder.

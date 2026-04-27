@@ -596,7 +596,7 @@ const DEVELOPER_FALLBACK_IDS = ['320128931971727360', '1186978205018632242'];
 const PROMOTION_REQUEST_KEY_PREFIX = 'PROMOTE';
 const OVERTIME_WARNING_MS = 8 * 60 * 60 * 1000;
 const OVERTIME_FINAL_LIMIT_MS = 12 * 60 * 60 * 1000;
-const OVERTIME_CONFIRM_GRACE_MS = 5 * 60 * 1000;
+const OVERTIME_CONFIRM_GRACE_MS = 15 * 60 * 1000;
 const OVERTIME_AUTO_LOGOUT_MS = OVERTIME_WARNING_MS + OVERTIME_CONFIRM_GRACE_MS;
 const OVERTIME_TEST_WARNING_MS = 3 * 60 * 1000;
 const TEST_ROLE_ID = '1487369607772766208';
@@ -950,7 +950,7 @@ async function sendOvertimeWarningNotice(client, session, source = 'AUTO', warni
     .setDescription(
       `You have reached **${warningThresholdLabel}** on your current ${modeLabel}.\n\n` +
       `If you need to continue, tap **Confirm Overtime** below to extend your session up to the **12-hour final limit**.\n\n` +
-      `If you do not confirm within **5 minutes**, you will be auto-logged out and this record will be capped at **${warningThresholdLabel}**.`
+      `If you do not confirm within **15 minutes**, you will be auto-logged out and this record will be capped at **${warningThresholdLabel}**.`
     )
     .addFields(
       { name: 'Mode', value: modeLabel === 'training' ? 'Training' : 'Shift', inline: true },
@@ -3414,7 +3414,7 @@ async function monitorOvertimeSessionsLegacy(client) {
       const sessionIdKey = String(session.id);
       const warningMs = session.overtime_warning_at ? parseSessionTimestamp(session.overtime_warning_at) : null;
       const warningElapsedMs = warningMs ? nowMs - warningMs : null;
-      const warningExpired = warningElapsedMs !== null && warningElapsedMs >= (5 * 60 * 1000);
+      const warningExpired = warningElapsedMs !== null && warningElapsedMs >= OVERTIME_CONFIRM_GRACE_MS;
       const reachedWarningThreshold = nowMs >= nextWarningDueMs;
 
       if (!warningMs && reachedWarningThreshold && !overtimeWarnedSessionIds.has(sessionIdKey)) {
@@ -3475,7 +3475,7 @@ async function monitorOvertimeSessionsLegacy(client) {
           if (user) {
             const reasonText = primarySessionOverLimit
               ? `You reached the **${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minute test' : '8 hour'}** limit and did not confirm overtime in time.`
-              : 'You did not click **Confirm Overtime** before the 5-minute grace window ended.';
+              : 'You did not click **Confirm Overtime** before the 15-minute grace window ended.';
             const capText = primarySessionOverLimit
               ? `This record is capped at **${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8 hours'}**.`
               : 'This record was closed at the end of the grace window.';
@@ -3499,7 +3499,7 @@ async function monitorOvertimeSessionsLegacy(client) {
               description:
                 `**User:** ${session.username} (<@${session.discord_id}>)\n` +
                 `**Mode:** ${session.session_kind === 'training' ? 'Training' : 'Shift'}\n` +
-              `**Rule:** Auto-logout after warning + 5 minute grace window${primarySessionOverLimit ? `, capped to ${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8h'} logged time` : ''}`,
+              `**Rule:** Auto-logout after warning + ${Math.floor(OVERTIME_CONFIRM_GRACE_MS / 60000)} minute grace window${primarySessionOverLimit ? `, capped to ${warningThresholdMs === OVERTIME_TEST_WARNING_MS ? '3 minutes' : '8h'} logged time` : ''}`,
               color: 0xED4245,
               userId: session.discord_id
             });
@@ -3701,7 +3701,7 @@ async function monitorOvertimeSessions(client) {
             const autoLogoutEmbed = new EmbedBuilder()
               .setTitle('🛑 Overtime Auto Logout')
               .setDescription(
-                'You did not click **Confirm Overtime** within the 5-minute grace window.\n\n' +
+                'You did not click **Confirm Overtime** within the 15-minute grace window.\n\n' +
                 `This record is capped at **${thresholdLabel}**.`
               )
               .addFields(
