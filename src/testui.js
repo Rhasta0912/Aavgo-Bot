@@ -47,18 +47,40 @@ const TEST_UI_SCREENS = {
 };
 
 const DEMO_HOTELS = {
-  bw_to: { id: 'BW_TO', label: 'Indianhead/Magnuson', team: 'Team 1', emoji: '🏨' },
+  bw_to: { id: 'BW_TO', label: 'Magnuson / Ironwood', team: 'Team 5', emoji: '🏨' },
+  gicp: { id: 'GICP', label: 'Garden Inn and the Campground', team: 'Team 5', emoji: '🏨' },
   rmda_sup8: { id: 'RMDA', label: 'Ramada / Super 8', team: 'Team 1', emoji: '🏠' },
-  gicp: { id: 'GICP', label: 'The Garden Inn At Campsite', team: 'Team 1', emoji: '🏨' },
-  ad1: { id: 'AD1', label: 'AD1', team: 'Team 1', emoji: '📞' },
+  dibs: { id: 'DIBS', label: 'Days Inn Bishop', team: 'Team 1', emoji: '🏨' },
+  parm: { id: 'PARM', label: 'Parmani', team: 'Team 1', emoji: '🏨' },
+  econ: { id: 'ECON', label: 'Econolodge', team: 'Team 1', emoji: '🏨' },
+  qi_rv: { id: 'QI_RV', label: 'Quality Russelville', team: 'Team 1', emoji: '🏨' },
+  buen: { id: 'BUEN', label: 'Buenavista Inn', team: 'Team 1', emoji: '🏨' },
   trvl: { id: 'TRVL', label: 'Travelodge', team: 'Team 1', emoji: '🏩' },
-  dibs: { id: 'DIBS', label: 'Day Inns Bishop', team: 'Team 1', emoji: '🏨' },
-  qi_rv: { id: 'QI_RV', label: 'Quality-Inn-Russelville', team: 'Team 1', emoji: '🏨' },
-  pros: { id: 'PROS', label: 'Prospero Flagship', team: 'Team 2', emoji: '🏨' }
+  vals: { id: 'VALS', label: 'Value Suites', team: 'Team 2', emoji: '🏨' },
+  infl: { id: 'INFL', label: 'Inn at the Fingerlakes', team: 'Team 2', emoji: '🏨' },
+  anpi: { id: 'ANPI', label: 'Anchor Beach / Pacific Inn', team: 'Team 2', emoji: '🏨' },
+  bayt: { id: 'BAYT', label: 'Town House / Bayside', team: 'Team 2', emoji: '🏨' },
+  gldl: { id: 'GLDL', label: 'Glendale / The Leef Hotel', team: 'Team 2', emoji: '🏨' },
+  myal: { id: 'MYAL', label: 'Mylo / Alpine', team: 'Team 3', emoji: '🏨' },
+  pros: { id: 'PROS', label: 'Flagship', team: 'Team 3', emoji: '🏨' },
+  sage: { id: 'SAGE', label: 'Sage', team: 'Team 3', emoji: '🏨' },
+  ad1: { id: 'AD1', label: 'AD1', team: 'Team 3', emoji: '📞' },
+  zico: { id: 'ZICO', label: 'Hotel Zico', team: 'Team 3', emoji: '🏨' },
+  wgfr: { id: 'WGFR', label: 'WG Fresno', team: 'Team 4', emoji: '🏨' },
+  thok: { id: 'THOK', label: 'Thousand Oaks', team: 'Team 4', emoji: '🏨' },
+  bwsf: { id: 'BWSF', label: 'BW Springfield', team: 'Team 4', emoji: '🏨' },
+  lqst: { id: 'LQST', label: 'LQ Stockton', team: 'Team 4', emoji: '🏨' },
+  lqfr: { id: 'LQFR', label: 'LQ Fresno', team: 'Team 4', emoji: '🏨' },
+  bwvi: { id: 'BWVI', label: 'BW Visalia', team: 'Team 4', emoji: '🏨' },
+  live: { id: 'LIVE', label: 'The Live Hotel', team: 'Team 5', emoji: '🏨' },
+  brnt: { id: 'BRNT', label: 'Brentwood Inn', team: 'Team 5', emoji: '🏨' }
 };
 
-const TEAM_1_HOTEL_KEYS = ['bw_to', 'rmda_sup8', 'gicp', 'ad1', 'trvl', 'dibs', 'qi_rv'];
-const TEAM_2_HOTEL_KEYS = ['pros'];
+const TEAM_1_HOTEL_KEYS = ['dibs', 'rmda_sup8', 'parm', 'econ', 'qi_rv', 'buen', 'trvl'];
+const TEAM_2_HOTEL_KEYS = ['vals', 'infl', 'anpi', 'bayt', 'gldl'];
+const TEAM_3_HOTEL_KEYS = ['myal', 'pros', 'sage', 'ad1', 'zico'];
+const TEAM_4_HOTEL_KEYS = ['wgfr', 'thok', 'bwsf', 'lqst', 'lqfr', 'bwvi'];
+const TEAM_5_HOTEL_KEYS = ['live', 'gicp', 'brnt', 'bw_to'];
 
 function normalizeTheme(themeKey) {
   const normalized = String(themeKey || '').trim().toLowerCase();
@@ -133,6 +155,9 @@ function randomState() {
 function getHotelKeysForScope(hotelKey) {
   const selectedHotel = DEMO_HOTELS[normalizeHotel(hotelKey)] || DEMO_HOTELS.bw_to;
   if (selectedHotel.team === 'Team 2') return TEAM_2_HOTEL_KEYS;
+  if (selectedHotel.team === 'Team 3') return TEAM_3_HOTEL_KEYS;
+  if (selectedHotel.team === 'Team 4') return TEAM_4_HOTEL_KEYS;
+  if (selectedHotel.team === 'Team 5') return TEAM_5_HOTEL_KEYS;
   return TEAM_1_HOTEL_KEYS;
 }
 
@@ -240,20 +265,33 @@ function buildShiftRouteEmbed(state, interaction) {
 
 function buildTrainingGroups(state) {
   const base = {
-    bw_to: [
-      { agent: '@Charlyn Quilos', since: '2 hours ago' },
-      { agent: '@Rodjon Eamiguel', since: '2 hours ago' }
-    ],
+    bw_to: [{ agent: '@Maintenance', since: '2 hours ago' }],
+    gicp: [{ agent: '@Ops Support', since: '4 hours ago' }],
     rmda_sup8: [{ agent: '@Testing Bot', since: '6 hours ago' }],
-    gicp: [
-      { agent: '@Ariane', since: '4 hours ago' },
-      { agent: '@Kenzo Bernabe', since: '4 hours ago' }
-    ],
-    ad1: [{ agent: '@Portia Ebol', since: '21 minutes ago' }],
-    trvl: [],
     dibs: [],
+    parm: [],
+    econ: [],
     qi_rv: [],
-    pros: []
+    buen: [],
+    trvl: [],
+    vals: [],
+    infl: [],
+    anpi: [],
+    bayt: [],
+    gldl: [],
+    myal: [],
+    pros: [],
+    sage: [],
+    ad1: [{ agent: '@Portia Ebol', since: '21 minutes ago' }],
+    zico: [],
+    wgfr: [],
+    thok: [],
+    bwsf: [],
+    lqst: [],
+    lqfr: [],
+    bwvi: [],
+    live: [],
+    brnt: []
   };
 
   if (state.variantKey !== TEST_UI_VARIANTS.active) {
@@ -263,13 +301,16 @@ function buildTrainingGroups(state) {
   if (state.hotelKey === 'pros') {
     base.pros = [{ agent: '@Portia Ebol', since: '12 minutes ago' }];
   }
+  if (state.hotelKey === 'live') {
+    base.live = [{ agent: '@Portia Ebol', since: '12 minutes ago' }];
+  }
 
   return base;
 }
 
 function buildTrainingStatusEmbed(state) {
   const groups = buildTrainingGroups(state);
-  const hotelOrder = [...TEAM_1_HOTEL_KEYS, ...TEAM_2_HOTEL_KEYS];
+  const hotelOrder = [...TEAM_1_HOTEL_KEYS, ...TEAM_2_HOTEL_KEYS, ...TEAM_3_HOTEL_KEYS, ...TEAM_4_HOTEL_KEYS, ...TEAM_5_HOTEL_KEYS];
   let activeCount = 0;
 
   const groupLines = hotelOrder.map(hotelKey => {
@@ -290,7 +331,7 @@ function buildTrainingStatusEmbed(state) {
     DIVIDER,
     compactLine('🤖 Board', 'Live training presence tracker', state.densityKey),
     compactLine('👥 Active Trainees', String(activeCount), state.densityKey),
-    compactLine('📍 Scope', 'Team 1 and Team 2 training groups', state.densityKey),
+    compactLine('📍 Scope', 'Five-team training groups', state.densityKey),
     DIVIDER,
     groupLines
   ].join('\n');
