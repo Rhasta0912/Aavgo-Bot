@@ -1,24 +1,33 @@
 const { SlashCommandBuilder } = require('discord.js');
 
 const HOTEL_CHOICES = [
-  { name: 'Indianhead/Magnuson', value: 'BW_TO' },
-  { name: 'The Garden Inn At Campsite', value: 'GICP' },
-  { name: 'Super 8', value: 'SUP8' },
-  { name: 'Ramada', value: 'RMDA' },
-  { name: 'AD1', value: 'AD1' },
-  { name: 'Travelodge', value: 'TRVL' },
-  { name: 'Day Inns Bishop', value: 'DIBS' },
-  { name: 'Prospero Flagship', value: 'PROS' },
-  { name: 'Glendale / The Leef Hotel', value: 'GLDL' },
-  { name: 'Inn at the Fingerlakes', value: 'INFL' },
-  { name: 'Value Suites', value: 'VALS' },
-  { name: 'Bayside / Townhouse', value: 'BAYT' },
-  { name: 'Anchor Beach / Pacific Inn', value: 'ANPI' },
+  { name: 'Days Inn Bishop', value: 'DIBS' },
+  { name: 'Ramada / Super 8', value: 'RMDA' },
+  { name: 'Parmani', value: 'PARM' },
   { name: 'Econolodge', value: 'ECON' },
-  { name: 'Buenavista', value: 'BUEN' },
   { name: 'Quality Russelville', value: 'QI_RV' },
+  { name: 'Buenavista Inn', value: 'BUEN' },
+  { name: 'Travelodge', value: 'TRVL' },
+  { name: 'Value Suites', value: 'VALS' },
+  { name: 'Inn at the Fingerlakes', value: 'INFL' },
+  { name: 'Anchor Beach / Pacific Inn', value: 'ANPI' },
+  { name: 'Town House / Bayside', value: 'BAYT' },
+  { name: 'Glendale / The Leef Hotel', value: 'GLDL' },
+  { name: 'Mylo / Alpine', value: 'MYAL' },
+  { name: 'Flagship', value: 'PROS' },
+  { name: 'Sage', value: 'SAGE' },
+  { name: 'AD1', value: 'AD1' },
+  { name: 'Hotel Zico', value: 'ZICO' },
+  { name: 'WG Fresno', value: 'WGFR' },
   { name: 'Thousand Oaks', value: 'THOK' },
-  { name: 'Brentwood', value: 'BRNT' }
+  { name: 'BW Springfield', value: 'BWSF' },
+  { name: 'LQ Stockton', value: 'LQST' },
+  { name: 'LQ Fresno', value: 'LQFR' },
+  { name: 'BW Visalia', value: 'BWVI' },
+  { name: 'The Live Hotel', value: 'LIVE' },
+  { name: 'Garden Inn and the Campground', value: 'GICP' },
+  { name: 'Brentwood Inn', value: 'BRNT' },
+  { name: 'Magnuson / Ironwood', value: 'BW_TO' }
 ];
 
 const commandData = [

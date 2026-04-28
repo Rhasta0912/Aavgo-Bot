@@ -472,6 +472,8 @@ const ROLE_NAMES = {
   TEAM_1: 'Team 1',
   TEAM_2: 'Team 2',
   TEAM_3: 'Team 3',
+  TEAM_4: 'Team 4',
+  TEAM_5: 'Team 5',
   // Green (On-Shift / Permission) Roles
   GREEN: {
     'BW_TO': '1482227783232000070',
@@ -491,7 +493,17 @@ const ROLE_NAMES = {
     'BUEN': '1491281133323681792',
     'QI_RV': '1491281264647344268',
     'THOK': '1493532824362418186',
-    'BRNT': '1494529686590718072'
+    'BRNT': '1494529686590718072',
+    'PARM': '1498675612053798973',
+    'MYAL': '1498676610986147940',
+    'SAGE': '1498676814699303005',
+    'ZICO': '1498676933527863488',
+    'WGFR': '1498677107847467058',
+    'BWSF': '1498677251510767676',
+    'LQST': '1498677256854311003',
+    'LQFR': '1498677411686912000',
+    'BWVI': '1498677448617885796',
+    'LIVE': '1498677720555454545'
   },
   // Grey (Permanent / Assignment) Roles
   GREY: {
@@ -512,30 +524,50 @@ const ROLE_NAMES = {
     'BUEN': '1491281133323681792',
     'QI_RV': '1491281264647344268',
     'THOK': '1493532824362418186',
-    'BRNT': '1494529686590718072'
+    'BRNT': '1494529686590718072',
+    'PARM': '1498675612053798973',
+    'MYAL': '1498676610986147940',
+    'SAGE': '1498676814699303005',
+    'ZICO': '1498676933527863488',
+    'WGFR': '1498677107847467058',
+    'BWSF': '1498677251510767676',
+    'LQST': '1498677256854311003',
+    'LQFR': '1498677411686912000',
+    'BWVI': '1498677448617885796',
+    'LIVE': '1498677720555454545'
   }
 };
 
 // Map hotel IDs to display names
 const HOTEL_NAMES = {
-  'BW_TO': 'Indianhead/Magnuson',
-  'GICP': 'The Garden Inn At Campsite',
-  'SUP8': 'Super 8',
+  'BW_TO': 'Magnuson / Ironwood',
+  'GICP': 'Garden Inn and the Campground',
+  'SUP8': 'Super 8 / Ramada',
   'RMDA': 'Ramada',
   'AD1': 'AD1',
   'TRVL': 'Travelodge',
-  'DIBS': 'Day Inns Bishop',
-  'PROS': 'Prospero Flagship',
+  'DIBS': 'Days Inn Bishop',
+  'PROS': 'Flagship',
   'GLDL': 'Glendale / The Leef Hotel',
   'INFL': 'Inn at the Fingerlakes',
   'VALS': 'Value Suites',
-  'BAYT': 'Bayside / Townhouse',
+  'BAYT': 'Town House / Bayside',
   'ANPI': 'Anchor Beach / Pacific Inn',
   'ECON': 'Econolodge',
-  'BUEN': 'Buenavista',
+  'BUEN': 'Buenavista Inn',
   'QI_RV': 'Quality Russelville',
   'THOK': 'Thousand Oaks',
-  'BRNT': 'Brentwood'
+  'BRNT': 'Brentwood Inn',
+  'PARM': 'Parmani',
+  'MYAL': 'Mylo / Alpine',
+  'SAGE': 'Sage',
+  'ZICO': 'Hotel Zico',
+  'WGFR': 'WG Fresno',
+  'BWSF': 'BW Springfield',
+  'LQST': 'LQ Stockton',
+  'LQFR': 'LQ Fresno',
+  'BWVI': 'BW Visalia',
+  'LIVE': 'The Live Hotel'
 };
 const HOTEL_SELECT_EMOJIS = {
   BW_TO: '🏙️',
@@ -556,7 +588,17 @@ const HOTEL_LOGIN_CHANNELS = {
   'AD1': '1487252636959772702',
   'TRVL': '1483418055538376735',
   'DIBS': '1487250154099703839',
-  'PROS': '1482249025016168448'
+  'PROS': '1482249025016168448',
+  'PARM': '1498685993497268295',
+  'MYAL': '1498686882614345799',
+  'ZICO': '1498687419640320132',
+  'SAGE': '1496542198991163583',
+  'WGFR': '1498687516797304983',
+  'BWSF': '1498687724373278840',
+  'LQST': '1498687667074760835',
+  'LQFR': '1498687808334987394',
+  'BWVI': '1498687859912081570',
+  'LIVE': '1498687904225034402'
 };
 
 const APPROVAL_CHANNEL_ID = '1482240202503098398';
@@ -570,6 +612,10 @@ const TEAM_2_HOTEL_STATUS_CHANNEL_ID = '1489862372867965141';
 const TEAM_3_OPERATIONS_CHANNEL_ID = '1482222166656417843';
 const TEAM_3_HOTEL_STATUS_CHANNEL_ID = '1482222166656417843';
 const TEAM_3_LOG_CHANNEL_ID = '1491285753978949662';
+const TEAM_4_HOTEL_STATUS_CHANNEL_ID = '1482222215184519360';
+const TEAM_4_LOG_CHANNEL_ID = '1498683972895637525';
+const TEAM_5_HOTEL_STATUS_CHANNEL_ID = '1498685179726921788';
+const TEAM_5_LOG_CHANNEL_ID = '1498685207723638915';
 const PROSPERO_LOG_CHANNEL_ID = '1482383371320430592';
 const TEAM_2_PERMISSION_ROLE_ID = '1489855054134640740';
 const TEAM_2_GHOST_ROLE_ID = '1489855140767993997';
@@ -604,12 +650,16 @@ const TEST_ROLE_ID = '1487369607772766208';
 const TEAM_ROLE_IDS = {
   'Team 1': '1482290433236402216',
   'Team 2': '1482255399510872105',
-  'Team 3': '1482290586831552534'
+  'Team 3': '1482290586831552534',
+  'Team 4': '1498676979413553192',
+  'Team 5': '1498677499058716785'
 };
 const TEAM_LOG_CHANNEL_IDS = {
   'Team 1': '1482383356753612991',
   'Team 2': '1482383371320430592',
-  'Team 3': '1491285753978949662'
+  'Team 3': '1491285753978949662',
+  'Team 4': '1498683972895637525',
+  'Team 5': '1498685207723638915'
 };
 const NOTIFICATION_ROLE_ID = '1491273475086876862';
 const OVERTIME_8H_LOG_CHANNEL_ID = '1491058569506717909';
@@ -627,10 +677,12 @@ const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   APPLICANT_ROLE_ID
 ];
 
-const TEAM_1_HOTELS = ['BW_TO', 'GICP', 'SUP8', 'RMDA', 'AD1', 'TRVL', 'DIBS', 'QI_RV'];
-const TEAM_2_HOTELS = ['PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI'];
-const TEAM_3_HOTELS = ['ECON', 'BUEN', 'THOK', 'BRNT'];
-const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3'];
+const TEAM_1_HOTELS = ['DIBS', 'SUP8', 'RMDA', 'PARM', 'ECON', 'QI_RV', 'BUEN', 'TRVL'];
+const TEAM_2_HOTELS = ['VALS', 'INFL', 'ANPI', 'BAYT', 'GLDL'];
+const TEAM_3_HOTELS = ['MYAL', 'PROS', 'SAGE', 'AD1', 'ZICO'];
+const TEAM_4_HOTELS = ['WGFR', 'THOK', 'BWSF', 'LQST', 'LQFR', 'BWVI'];
+const TEAM_5_HOTELS = ['LIVE', 'GICP', 'BRNT', 'BW_TO'];
+const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5'];
 const ON_SHIFT_CALL_CHANNEL_IDS = {
   'Team 1': ['1482225371398017044', '1493674598233804842', '1493890379857133628'],
   'Team 2': ['1482249225398915102', '1493674469980377088', '1493890419543638107'],
@@ -652,23 +704,33 @@ const TRAINING_CALL_CHANNEL_IDS = [
 ];
 const TL_SME_CALL_CHANNEL_ID = '1493764447309795368';
 const TRAINING_HOTEL_GROUPS = [
-  { label: 'Indianhead/Magnuson', hotelIds: ['BW_TO'] },
+  { label: 'Magnuson / Ironwood', hotelIds: ['BW_TO'] },
+  { label: 'Garden Inn and the Campground', hotelIds: ['GICP'] },
   { label: 'Ramada / Super 8', hotelIds: ['RMDA', 'SUP8'] },
-  { label: 'The Garden Inn At Campsite', hotelIds: ['GICP'] },
-  { label: 'AD1', hotelIds: ['AD1'] },
-  { label: 'Travelodge', hotelIds: ['TRVL'] },
-  { label: 'Day Inns Bishop', hotelIds: ['DIBS'] },
-  { label: 'Prospero Flagship', hotelIds: ['PROS'] },
-  { label: 'Glendale / The Leef Hotel', hotelIds: ['GLDL'] },
-  { label: 'Inn at the Fingerlakes', hotelIds: ['INFL'] },
-  { label: 'Value Suites', hotelIds: ['VALS'] },
-  { label: 'Bayside / Townhouse', hotelIds: ['BAYT'] },
-  { label: 'Anchor Beach / Pacific Inn', hotelIds: ['ANPI'] },
+  { label: 'Days Inn Bishop', hotelIds: ['DIBS'] },
+  { label: 'Parmani', hotelIds: ['PARM'] },
   { label: 'Econolodge', hotelIds: ['ECON'] },
-  { label: 'Buenavista', hotelIds: ['BUEN'] },
   { label: 'Quality Russelville', hotelIds: ['QI_RV'] },
+  { label: 'Buenavista Inn', hotelIds: ['BUEN'] },
+  { label: 'Travelodge', hotelIds: ['TRVL'] },
+  { label: 'Value Suites', hotelIds: ['VALS'] },
+  { label: 'Inn at the Fingerlakes', hotelIds: ['INFL'] },
+  { label: 'Anchor Beach / Pacific Inn', hotelIds: ['ANPI'] },
+  { label: 'Town House / Bayside', hotelIds: ['BAYT'] },
+  { label: 'Glendale / The Leef Hotel', hotelIds: ['GLDL'] },
+  { label: 'Mylo / Alpine', hotelIds: ['MYAL'] },
+  { label: 'Flagship', hotelIds: ['PROS'] },
+  { label: 'Sage', hotelIds: ['SAGE'] },
+  { label: 'AD1', hotelIds: ['AD1'] },
+  { label: 'Hotel Zico', hotelIds: ['ZICO'] },
+  { label: 'WG Fresno', hotelIds: ['WGFR'] },
   { label: 'Thousand Oaks', hotelIds: ['THOK'] },
-  { label: 'Brentwood', hotelIds: ['BRNT'] }
+  { label: 'BW Springfield', hotelIds: ['BWSF'] },
+  { label: 'LQ Stockton', hotelIds: ['LQST'] },
+  { label: 'LQ Fresno', hotelIds: ['LQFR'] },
+  { label: 'BW Visalia', hotelIds: ['BWVI'] },
+  { label: 'The Live Hotel', hotelIds: ['LIVE'] },
+  { label: 'Brentwood Inn', hotelIds: ['BRNT'] }
 ];
 const AGENT_STATUS_LABELS = {
   standby: 'Standby Agent',
@@ -865,6 +927,8 @@ function normalizeTeamLogLabel(input) {
   if (cleaned === 'team 1' || cleaned === 'team1' || cleaned === '1') return 'Team 1';
   if (cleaned === 'team 2' || cleaned === 'team2' || cleaned === '2') return 'Team 2';
   if (cleaned === 'team 3' || cleaned === 'team3' || cleaned === '3') return 'Team 3';
+  if (cleaned === 'team 4' || cleaned === 'team4' || cleaned === '4') return 'Team 4';
+  if (cleaned === 'team 5' || cleaned === 'team5' || cleaned === '5') return 'Team 5';
   return null;
 }
 
@@ -1100,10 +1164,12 @@ async function sendAuditLog(
       if (!normalizedHotelId) return null;
 
       // Route by explicit hotel-team groups first so attendance/login logs always
-      // land in the expected Team 1/2/3 log channels.
+      // land in the expected team log channels.
       if (TEAM_1_HOTELS.includes(normalizedHotelId)) return TEAM_LOG_CHANNEL_IDS['Team 1'] || null;
       if (TEAM_2_HOTELS.includes(normalizedHotelId)) return TEAM_LOG_CHANNEL_IDS['Team 2'] || null;
       if (TEAM_3_HOTELS.includes(normalizedHotelId)) return TEAM_LOG_CHANNEL_IDS['Team 3'] || null;
+      if (TEAM_4_HOTELS.includes(normalizedHotelId)) return TEAM_LOG_CHANNEL_IDS['Team 4'] || null;
+      if (TEAM_5_HOTELS.includes(normalizedHotelId)) return TEAM_LOG_CHANNEL_IDS['Team 5'] || null;
 
       const hotelTeam = normalizeTeamInput(
         db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizedHotelId)?.team
@@ -1111,6 +1177,8 @@ async function sendAuditLog(
       if (hotelTeam === 'Team 1') return TEAM_LOG_CHANNEL_IDS['Team 1'] || null;
       if (hotelTeam === 'Team 2') return TEAM_LOG_CHANNEL_IDS['Team 2'] || null;
       if (hotelTeam === 'Team 3') return TEAM_LOG_CHANNEL_IDS['Team 3'] || null;
+      if (hotelTeam === 'Team 4') return TEAM_LOG_CHANNEL_IDS['Team 4'] || null;
+      if (hotelTeam === 'Team 5') return TEAM_LOG_CHANNEL_IDS['Team 5'] || null;
       return null;
     };
 
@@ -1690,6 +1758,8 @@ function normalizeTeamInput(input) {
   if (cleaned === 'team 1' || cleaned === '1' || cleaned === 'team1') return 'Team 1';
   if (cleaned === 'team 2' || cleaned === '2' || cleaned === 'team2') return 'Team 2';
   if (cleaned === 'team 3' || cleaned === '3' || cleaned === 'team3') return 'Team 3';
+  if (cleaned === 'team 4' || cleaned === '4' || cleaned === 'team4') return 'Team 4';
+  if (cleaned === 'team 5' || cleaned === '5' || cleaned === 'team5') return 'Team 5';
   return null;
 }
 
@@ -1706,19 +1776,26 @@ function normalizeHotelInput(input) {
     BWPLUSTHOUSANDOAKSCA: 'THOK',
     INDIANHEAD: 'BW_TO',
     INDIANHEADIRONWOOD: 'BW_TO',
+    MAGNUSON: 'BW_TO',
+    MAGNUSONIRONWOOD: 'BW_TO',
+    IRONWOOD: 'BW_TO',
     BRNT: 'BRNT',
     BRENTWOOD: 'BRNT',
     BRENTWOODINNSUITES: 'BRNT',
-    MAGNUSON: 'BRNT',
+    BRENTWOODINN: 'BRNT',
     GICP: 'GICP',
     GARDENINN: 'GICP',
     GARDENINNCAMPSITE: 'GICP',
     THEGARDENINNATCAMPSITE: 'GICP',
+    GARDENINNANDTHECAMPGROUND: 'GICP',
     SUP8: 'SUP8',
     SUPER8: 'SUP8',
+    SUPER8RAMADA: 'SUP8',
     RMDA: 'RMDA',
     RAMADA: 'RMDA',
     AD1: 'AD1',
+    PARM: 'PARM',
+    PARMANI: 'PARM',
     TRAVELODGE: 'TRVL',
     TRAVELLODGE: 'TRVL',
     DAYINNSBISHOP: 'DIBS',
@@ -1730,6 +1807,9 @@ function normalizeHotelInput(input) {
     QUALITYINNRUSSELLVILLE: 'QI_RV',
     RUSSELVILLE: 'QI_RV',
     RUSSELLVILLE: 'QI_RV',
+    MYLO: 'MYAL',
+    ALPINE: 'MYAL',
+    MYLOALPINE: 'MYAL',
     PROS: 'PROS',
     PROSPERO: 'PROS',
     PROSPEROFLAGSHIP: 'PROS',
@@ -1746,6 +1826,7 @@ function normalizeHotelInput(input) {
     BAYT: 'BAYT',
     BAYSIDE: 'BAYT',
     TOWNHOUSE: 'BAYT',
+    TOWNHOUSEBAYSIDE: 'BAYT',
     ANPI: 'ANPI',
     ANCHORBEACH: 'ANPI',
     PACIFICINN: 'ANPI',
@@ -1753,9 +1834,21 @@ function normalizeHotelInput(input) {
     ECONOLODGE: 'ECON',
     BUEN: 'BUEN',
     BUENAVISTA: 'BUEN',
+    BUENAVISTAINN: 'BUEN',
     THOK: 'THOK',
     QUALITYRUSSELVILLE: 'QI_RV',
-    QUALITYRUSSELLVILLE: 'QI_RV'
+    QUALITYRUSSELLVILLE: 'QI_RV',
+    SAGE: 'SAGE',
+    WGFRESNO: 'WGFR',
+    BWFRESNO: 'BWSF',
+    LQSTOCKTON: 'LQST',
+    LQFRESNO: 'LQFR',
+    BWVISALIA: 'BWVI',
+    THELIVEHOTEL: 'LIVE',
+    LIVEHOTEL: 'LIVE',
+    LIVE: 'LIVE',
+    HOTELZICO: 'ZICO',
+    ZICO: 'ZICO'
   };
 
   return aliases[cleaned] || null;
@@ -2753,7 +2846,7 @@ function handleMissingHotelStatusChannel(client, {
 function getHotelStatusGroupsForTeam(teamName) {
   const teamHotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT' AND team = ?").all(teamName);
   const normalizedIds = [...new Set(teamHotels.map(row => normalizeCombinedHotelId(row.id)).filter(Boolean))];
-  const order = ['BW_TO', 'RMDA', 'GICP', 'AD1', 'TRVL', 'DIBS', 'PROS', 'GLDL', 'INFL', 'VALS', 'BAYT', 'ANPI', 'ECON', 'BUEN', 'QI_RV', 'THOK', 'BRNT'];
+  const order = ['DIBS', 'RMDA', 'PARM', 'ECON', 'QI_RV', 'BUEN', 'TRVL', 'VALS', 'INFL', 'ANPI', 'BAYT', 'GLDL', 'MYAL', 'PROS', 'SAGE', 'AD1', 'ZICO', 'WGFR', 'THOK', 'BWSF', 'LQST', 'LQFR', 'BWVI', 'LIVE', 'GICP', 'BRNT', 'BW_TO'];
 
   const groups = normalizedIds
     .map(hotelId => getHotelStatusGroup(hotelId))
@@ -2931,6 +3024,18 @@ async function updateAllHotelStatusEmbed(client) {
       channelId: TEAM_3_HOTEL_STATUS_CHANNEL_ID,
       configKey: 'hotel_status_board_msg_team_3',
       scopeLabel: 'All Team 3 hotel boards in one view'
+    });
+    await upsertCombinedHotelStatusBoard(client, {
+      teamName: 'Team 4',
+      channelId: TEAM_4_HOTEL_STATUS_CHANNEL_ID,
+      configKey: 'hotel_status_board_msg_team_4',
+      scopeLabel: 'All Team 4 hotel boards in one view'
+    });
+    await upsertCombinedHotelStatusBoard(client, {
+      teamName: 'Team 5',
+      channelId: TEAM_5_HOTEL_STATUS_CHANNEL_ID,
+      configKey: 'hotel_status_board_msg_team_5',
+      scopeLabel: 'All Team 5 hotel boards in one view'
     });
   } catch (error) {
     console.warn('[STATUS] Failed to update combined hotel status embed:', error.message);
@@ -3885,7 +3990,13 @@ function getDiscordRoleSyncSnapshot(member) {
     .map(role => normalizeDiscordRoleName(role?.name))
     .filter(Boolean);
 
-  const teamName = normalizeTeamInput(roleNames.find(name => name === 'team 1' || name === 'team 2' || name === 'team 3')) || null;
+  const teamName = normalizeTeamInput(roleNames.find(name => (
+    name === 'team 1' ||
+    name === 'team 2' ||
+    name === 'team 3' ||
+    name === 'team 4' ||
+    name === 'team 5'
+  ))) || null;
 
   if (hasDiscordRoleName(roleNames, ['subject matter expert', 'subject_matter_expert', 'sme'])) {
     return { role: 'sme', team: teamName };
@@ -3989,6 +4100,10 @@ function resolveTeamFromMemberRoles(member) {
   if (hasTeam2) return 'Team 2';
   const hasTeam3 = member.roles.cache.some(role => normalizeDiscordRoleName(role?.name) === 'team 3');
   if (hasTeam3) return 'Team 3';
+  const hasTeam4 = member.roles.cache.some(role => normalizeDiscordRoleName(role?.name) === 'team 4');
+  if (hasTeam4) return 'Team 4';
+  const hasTeam5 = member.roles.cache.some(role => normalizeDiscordRoleName(role?.name) === 'team 5');
+  if (hasTeam5) return 'Team 5';
   return null;
 }
 
@@ -4989,7 +5104,7 @@ async function handleStartShiftClick(interaction) {
       .map(row => normalizeCombinedHotelId(row.id))
       .filter(Boolean);
     const operationalHotelSet = new Set(operationalHotelIdsRaw);
-    const preferredHotelOrder = [...TEAM_1_HOTELS, ...TEAM_2_HOTELS, ...TEAM_3_HOTELS]
+    const preferredHotelOrder = [...TEAM_1_HOTELS, ...TEAM_2_HOTELS, ...TEAM_3_HOTELS, ...TEAM_4_HOTELS, ...TEAM_5_HOTELS]
       .map(normalizeCombinedHotelId);
     const orderedOperationalHotelIds = [
       ...preferredHotelOrder.filter((hotelId, index, arr) => (
@@ -6802,7 +6917,7 @@ async function handleLogout(interaction) {
       const hotelTeam = normalizeTeamInput(
         db.prepare("SELECT team FROM hotels WHERE id = ?").get(normalizeCombinedHotelId(hotelId))?.team
       );
-      return hotelTeam === 'Team 1' || hotelTeam === 'Team 2' || hotelTeam === 'Team 3';
+      return hotelTeam === 'Team 1' || hotelTeam === 'Team 2' || hotelTeam === 'Team 3' || hotelTeam === 'Team 4' || hotelTeam === 'Team 5';
     });
 
     if (!practiceOnlyLogout && closedLiveHotelIds.length > 0) {
