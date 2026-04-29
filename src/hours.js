@@ -170,6 +170,107 @@ function buildMergedSessionIntervals(sessions, nowMs, rangeStartMs = Number.NEGA
   };
 }
 
+function getAccountedSessionEndMs(session, loginMs, rawLogoutMs, options = {}) {
+  if (session.status === 'active') {
+    return options.includeActiveSessions === false ? NaN : rawLogoutMs;
+  }
+
+  if (options.roundClosedSessionsToFullHours === false) {
+    return rawLogoutMs;
+  }
+
+  const completedHours = Math.floor((rawLogoutMs - loginMs) / HOUR_MS);
+  if (completedHours <= 0) return NaN;
+  return loginMs + (completedHours * HOUR_MS);
+}
+
+function buildLoginDaySessionIntervals(sessions, nowMs, rangeStartMs, rangeEndMs, options = {}) {
+  const buckets = { shift: new Map(), training: new Map() };
+
+  for (const session of sessions || []) {
+    const loginMs = parseDbTimestamp(session.login_time, NaN);
+    if (!Number.isFinite(loginMs) || loginMs < rangeStartMs || loginMs >= rangeEndMs) continue;
+
+    const rawLogoutMs = session.status === 'active' || !session.logout_time
+      ? nowMs
+      : parseDbTimestamp(session.logout_time, NaN);
+    if (!Number.isFinite(rawLogoutMs) || rawLogoutMs <= loginMs) continue;
+
+    const accountedEndMs = getAccountedSessionEndMs(session, loginMs, rawLogoutMs, options);
+    if (!Number.isFinite(accountedEndMs) || accountedEndMs <= loginMs) continue;
+
+    const dayIndex = Math.floor((loginMs - rangeStartMs) / DAY_MS);
+    const kind = normalizeSessionKind(session.session_kind);
+    const dayIntervals = buckets[kind].get(dayIndex) || [];
+    dayIntervals.push({ startMs: loginMs, endMs: accountedEndMs, dayIndex });
+    buckets[kind].set(dayIndex, dayIntervals);
+  }
+
+  const flatten = bucket => [...bucket.entries()].flatMap(([dayIndex, intervals]) => (
+    mergeIntervals(intervals).map(interval => ({ ...interval, dayIndex }))
+  ));
+
+  return {
+    shift: flatten(buckets.shift),
+    training: flatten(buckets.training)
+  };
+}
+
+function addLoginDayIntervals(intervals, daily, accumulatorKey) {
+  for (const interval of intervals || []) {
+    const dayIndex = interval.dayIndex;
+    if (dayIndex < 0 || dayIndex >= daily.length) continue;
+
+    const durationMs = Math.max(0, interval.endMs - interval.startMs);
+    if (durationMs <= 0) continue;
+
+    daily[dayIndex][accumulatorKey] += durationMs;
+    daily[dayIndex].firstLoginMs = daily[dayIndex].firstLoginMs === null
+      ? interval.startMs
+      : Math.min(daily[dayIndex].firstLoginMs, interval.startMs);
+    daily[dayIndex].lastLogoutMs = daily[dayIndex].lastLogoutMs === null
+      ? interval.endMs
+      : Math.max(daily[dayIndex].lastLogoutMs, interval.endMs);
+  }
+}
+
+function getPhilippineDayStartMs(timestampMs) {
+  const ph = getPhilippineParts(new Date(timestampMs));
+  return Date.UTC(ph.year, ph.month, ph.day, 0, 0, 0) - PH_OFFSET_MS;
+}
+
+function sumLoginDaySessionTotals(sessions, nowMs, options = {}) {
+  const sinceMs = Number.isFinite(options.sinceMs) ? options.sinceMs : Number.NEGATIVE_INFINITY;
+  const buckets = { shift: new Map(), training: new Map() };
+
+  for (const session of sessions || []) {
+    const loginMs = parseDbTimestamp(session.login_time, NaN);
+    if (!Number.isFinite(loginMs) || loginMs < sinceMs) continue;
+
+    const rawLogoutMs = session.status === 'active' || !session.logout_time
+      ? nowMs
+      : parseDbTimestamp(session.logout_time, NaN);
+    if (!Number.isFinite(rawLogoutMs) || rawLogoutMs <= loginMs) continue;
+
+    const accountedEndMs = getAccountedSessionEndMs(session, loginMs, rawLogoutMs, options);
+    if (!Number.isFinite(accountedEndMs) || accountedEndMs <= loginMs) continue;
+
+    const kind = normalizeSessionKind(session.session_kind);
+    const dayStartMs = getPhilippineDayStartMs(loginMs);
+    const intervals = buckets[kind].get(dayStartMs) || [];
+    intervals.push({ startMs: loginMs, endMs: accountedEndMs });
+    buckets[kind].set(dayStartMs, intervals);
+  }
+
+  const sumBucket = bucket => [...bucket.values()]
+    .reduce((sum, intervals) => sum + sumIntervalDurations(mergeIntervals(intervals)), 0);
+
+  return {
+    shiftMs: sumBucket(buckets.shift),
+    trainingMs: sumBucket(buckets.training)
+  };
+}
+
 function distributeMergedIntervalsAcrossDays(intervals, daily, rangeStartMs, accumulatorKey) {
   for (const interval of intervals) {
     let cursor = interval.startMs;
@@ -311,9 +412,12 @@ function buildPeriodHourHistory(db, agentId, period = 'month', nowInput = new Da
   `).all(agentId, Math.floor(range.endMs / 1000), Math.floor(range.startMs / 1000));
 
   const nowMs = nowInput instanceof Date ? nowInput.getTime() : parseDbTimestamp(nowInput, Date.now());
-  const mergedIntervals = buildMergedSessionIntervals(sessions, nowMs, range.startMs, range.endMs);
-  distributeMergedIntervalsAcrossDays(mergedIntervals.shift, daily, range.startMs, 'shiftMs');
-  distributeMergedIntervalsAcrossDays(mergedIntervals.training, daily, range.startMs, 'trainingMs');
+  const mergedIntervals = buildLoginDaySessionIntervals(sessions, nowMs, range.startMs, range.endMs, {
+    includeActiveSessions: false,
+    roundClosedSessionsToFullHours: true
+  });
+  addLoginDayIntervals(mergedIntervals.shift, daily, 'shiftMs');
+  addLoginDayIntervals(mergedIntervals.training, daily, 'trainingMs');
 
   const adjustments = db.prepare(`
     SELECT hours, mode, created_at, effective_at, shift_date, login_time, logout_time
@@ -402,31 +506,18 @@ function getMonthDailyHourHistory(db, agentId, monthOffset = 0, nowInput = new D
       AND (logout_time IS NULL OR logout_time >= datetime(?, 'unixepoch'))
   `).all(agentId, Math.floor(nextMonthStartMs / 1000), Math.floor(monthStartMs / 1000));
 
-  const mergedIntervals = buildMergedSessionIntervals(sessions, nowMs, monthStartMs, nextMonthStartMs);
+  const mergedIntervals = buildLoginDaySessionIntervals(sessions, nowMs, monthStartMs, nextMonthStartMs, {
+    includeActiveSessions: false,
+    roundClosedSessionsToFullHours: true
+  });
   for (const interval of mergedIntervals.shift) {
-    let cursor = interval.startMs;
-    while (cursor < interval.endMs) {
-      const dayIndex = Math.floor((cursor - monthStartMs) / DAY_MS);
-      if (dayIndex < 0 || dayIndex >= daysInMonth) break;
-      const dayStartMs = monthStartMs + (dayIndex * DAY_MS);
-      const dayEndMs = dayStartMs + DAY_MS;
-      const sliceEndMs = Math.min(dayEndMs, interval.endMs);
-      const sliceMs = Math.max(0, sliceEndMs - cursor);
-      if (sliceMs > 0) daily[dayIndex].shiftMs += sliceMs;
-      cursor = sliceEndMs;
+    if (interval.dayIndex >= 0 && interval.dayIndex < daysInMonth) {
+      daily[interval.dayIndex].shiftMs += Math.max(0, interval.endMs - interval.startMs);
     }
   }
   for (const interval of mergedIntervals.training) {
-    let cursor = interval.startMs;
-    while (cursor < interval.endMs) {
-      const dayIndex = Math.floor((cursor - monthStartMs) / DAY_MS);
-      if (dayIndex < 0 || dayIndex >= daysInMonth) break;
-      const dayStartMs = monthStartMs + (dayIndex * DAY_MS);
-      const dayEndMs = dayStartMs + DAY_MS;
-      const sliceEndMs = Math.min(dayEndMs, interval.endMs);
-      const sliceMs = Math.max(0, sliceEndMs - cursor);
-      if (sliceMs > 0) daily[dayIndex].trainingMs += sliceMs;
-      cursor = sliceEndMs;
+    if (interval.dayIndex >= 0 && interval.dayIndex < daysInMonth) {
+      daily[interval.dayIndex].trainingMs += Math.max(0, interval.endMs - interval.startMs);
     }
   }
 
@@ -498,14 +589,27 @@ function calculateAgentHourTotals(db, agentId, nowInput = new Date()) {
 
   const shiftTotals = { allMs: 0, weeklyMs: 0, monthlyMs: 0 };
   const trainingTotals = { allMs: 0, weeklyMs: 0, monthlyMs: 0 };
-  const mergedIntervals = buildMergedSessionIntervals(sessions, nowMs);
-  shiftTotals.allMs += sumIntervalDurations(mergedIntervals.shift);
-  shiftTotals.weeklyMs += sumIntervalOverlaps(mergedIntervals.shift, weeklyStartMs, nowMs);
-  shiftTotals.monthlyMs += sumIntervalOverlaps(mergedIntervals.shift, monthlyStartMs, nowMs);
+  const sessionTotalOptions = {
+    includeActiveSessions: false,
+    roundClosedSessionsToFullHours: true
+  };
+  const allSessionTotals = sumLoginDaySessionTotals(sessions, nowMs, sessionTotalOptions);
+  const weeklySessionTotals = sumLoginDaySessionTotals(sessions, nowMs, {
+    ...sessionTotalOptions,
+    sinceMs: weeklyStartMs
+  });
+  const monthlySessionTotals = sumLoginDaySessionTotals(sessions, nowMs, {
+    ...sessionTotalOptions,
+    sinceMs: monthlyStartMs
+  });
 
-  trainingTotals.allMs += sumIntervalDurations(mergedIntervals.training);
-  trainingTotals.weeklyMs += sumIntervalOverlaps(mergedIntervals.training, weeklyStartMs, nowMs);
-  trainingTotals.monthlyMs += sumIntervalOverlaps(mergedIntervals.training, monthlyStartMs, nowMs);
+  shiftTotals.allMs += allSessionTotals.shiftMs;
+  shiftTotals.weeklyMs += weeklySessionTotals.shiftMs;
+  shiftTotals.monthlyMs += monthlySessionTotals.shiftMs;
+
+  trainingTotals.allMs += allSessionTotals.trainingMs;
+  trainingTotals.weeklyMs += weeklySessionTotals.trainingMs;
+  trainingTotals.monthlyMs += monthlySessionTotals.trainingMs;
 
   for (const adjustment of adjustments) {
     const hours = Number(adjustment.hours || 0);

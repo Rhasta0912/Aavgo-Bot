@@ -1519,3 +1519,12 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 
 - **Expanded Pay-Period Visibility + Filter Matching**: Pay-period day lists now show the full day breakdown in scrollable two-column lists, and role/team/hotel filters match regardless of casing for more reliable filtering.
 
+## Latest Changes
+- Website payroll hour attribution
+  - Summary: Completed website hour snapshots now credit closed sessions to the login date, count only completed full hours after logout, and show IN SHIFT labels for active staff instead of finalized hours.
+  - Files touched:
+    - src/hours.js
+    - src/websiteApi.js
+    - HISTORY.md
+  - Notes:
+    - None
