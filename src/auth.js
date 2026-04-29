@@ -763,6 +763,103 @@ function parseSessionTimestamp(value) {
   return Number.isFinite(ms) ? ms : Date.now();
 }
 
+function normalizeManualLoginMode(value) {
+  const cleaned = String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (cleaned === 'training' || cleaned === 'shadowing') return 'training';
+  return 'shift';
+}
+
+function parseManualLoginTimeInput(value, nowMs = Date.now()) {
+  const raw = String(value || '').trim();
+  if (!raw) return new Date(nowMs).toISOString();
+
+  const lowered = raw.toLowerCase();
+  if (['now', 'current', 'current time', 'right now'].includes(lowered)) {
+    return new Date(nowMs).toISOString();
+  }
+
+  const directMs = new Date(raw).getTime();
+  if (Number.isFinite(directMs)) {
+    return new Date(directMs).toISOString();
+  }
+
+  const dateTimeMatch = raw.match(
+    /^(?:on\s+)?(?:(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+)?(\d{1,2})(?::([0-5]\d))?\s*(a\.?m?\.?|p\.?m?\.?)$/i
+  );
+  if (dateTimeMatch) {
+    const year = Number(dateTimeMatch[1] || new Date(nowMs).getFullYear());
+    const month = Number(dateTimeMatch[2] || (new Date(nowMs).getMonth() + 1));
+    const day = Number(dateTimeMatch[3] || new Date(nowMs).getDate());
+    const hourRaw = Number(dateTimeMatch[4]);
+    const minuteRaw = Number(dateTimeMatch[5] || 0);
+    const suffix = String(dateTimeMatch[6] || '').toLowerCase();
+    if (hourRaw >= 1 && hourRaw <= 12 && minuteRaw >= 0 && minuteRaw <= 59) {
+      let hour24 = hourRaw % 12;
+      if (suffix.startsWith('p')) hour24 += 12;
+      return new Date(year, month - 1, day, hour24, minuteRaw, 0, 0).toISOString();
+    }
+  }
+
+  const dateTwentyFourMatch = raw.match(
+    /^(?:on\s+)?(?:(\d{4})[-/](\d{1,2})[-/](\d{1,2})\s+)?([01]?\d|2[0-3]):([0-5]\d)$/i
+  );
+  if (dateTwentyFourMatch) {
+    const year = Number(dateTwentyFourMatch[1] || new Date(nowMs).getFullYear());
+    const month = Number(dateTwentyFourMatch[2] || (new Date(nowMs).getMonth() + 1));
+    const day = Number(dateTwentyFourMatch[3] || new Date(nowMs).getDate());
+    const hour24 = Number(dateTwentyFourMatch[4]);
+    const minuteRaw = Number(dateTwentyFourMatch[5] || 0);
+    return new Date(year, month - 1, day, hour24, minuteRaw, 0, 0).toISOString();
+  }
+
+  const timeOnlyMatch = raw.match(
+    /^(?:on\s+)?([01]?\d|2[0-3]):([0-5]\d)\s*(a\.?m?\.?|p\.?m?\.?)?$/i
+  );
+  if (timeOnlyMatch) {
+    const now = new Date(nowMs);
+    const hourRaw = Number(timeOnlyMatch[1]);
+    const minuteRaw = Number(timeOnlyMatch[2] || 0);
+    const suffix = String(timeOnlyMatch[3] || '').toLowerCase();
+    let hour24 = hourRaw;
+    if (suffix.startsWith('a') || suffix.startsWith('p')) {
+      hour24 = hourRaw % 12;
+      if (suffix.startsWith('p')) hour24 += 12;
+    }
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hour24,
+      minuteRaw,
+      0,
+      0
+    ).toISOString();
+  }
+
+  const hourOnlyMatch = raw.match(/^(?:on\s+)?([01]?\d|2[0-3])\s*(a\.?m?\.?|p\.?m?\.?)?$/i);
+  if (hourOnlyMatch) {
+    const now = new Date(nowMs);
+    const hourRaw = Number(hourOnlyMatch[1]);
+    const suffix = String(hourOnlyMatch[2] || '').toLowerCase();
+    let hour24 = hourRaw;
+    if (suffix.startsWith('a') || suffix.startsWith('p')) {
+      hour24 = hourRaw % 12;
+      if (suffix.startsWith('p')) hour24 += 12;
+    }
+    return new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hour24,
+      0,
+      0,
+      0
+    ).toISOString();
+  }
+
+  return new Date(nowMs).toISOString();
+}
+
 function getSessionTimeTravelOffsetMs(session) {
   const raw = Number(session?.time_travel_offset_ms ?? 0);
   if (!Number.isFinite(raw) || raw <= 0) return 0;
@@ -6363,9 +6460,116 @@ async function handleTakeoverShift(interaction) {
   }
 }
 
+function createManualLoginInteractionProxy(interaction, member) {
+  return {
+    client: interaction.client,
+    guild: interaction.guild,
+    member,
+    user: member.user,
+    customId: 'manual_login_cmd',
+    commandName: 'login',
+    deferred: true,
+    replied: false,
+    __aavgoEphemeral: true,
+    __skipAttendanceReaction: false,
+    __logoutTimeIso: null,
+    isChatInputCommand: () => true,
+    isButton: () => false,
+    isStringSelectMenu: () => false,
+    options: interaction.options,
+    reply: payload => interaction.editReply(payload),
+    editReply: payload => interaction.editReply(payload),
+    followUp: payload => interaction.followUp(payload),
+    fetchReply: () => interaction.fetchReply?.(),
+    deleteReply: () => interaction.deleteReply?.()
+  };
+}
+
+async function handleManualLogin(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required for manual logins.', ephemeral: true });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    interaction.__aavgoEphemeral = true;
+
+    const targetUser = interaction.options.getUser('member') || interaction.user;
+    const targetMember = await interaction.guild.members.fetch(targetUser.id).catch(() => null);
+    if (!targetMember) {
+      return interaction.editReply({ content: '❌ Could not find that member in this server.' });
+    }
+
+    let agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(targetUser.id);
+    if (!agent) {
+      await syncAgentRecordFromDiscordMember(targetMember, interaction.guild, 'MANUAL LOGIN');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(targetUser.id);
+    } else {
+      await syncAgentRecordFromDiscordMember(targetMember, interaction.guild, 'MANUAL LOGIN SYNC');
+      agent = db.prepare('SELECT * FROM agents WHERE discord_id = ?').get(targetUser.id) || agent;
+    }
+
+    if (!agent) {
+      return interaction.editReply({ content: '❌ The selected member is not registered as an agent yet.' });
+    }
+
+    const mode = normalizeManualLoginMode(interaction.options.getString('mode'));
+    const hotelInput = interaction.options.getString('hotel');
+    const linkedHotelId = normalizeCombinedHotelId(agent.hotel_id);
+    const activeSessionHotelId = db.prepare(
+      "SELECT hotel_id FROM sessions WHERE agent_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1"
+    ).get(agent.id)?.hotel_id || null;
+    const hotelId = normalizeCombinedHotelId(hotelInput) || linkedHotelId || normalizeCombinedHotelId(activeSessionHotelId);
+
+    if (!hotelId) {
+      return interaction.editReply({ content: '❌ Please choose a hotel for this manual login, or link the agent to a hotel first.' });
+    }
+
+    const loginTimeIso = parseManualLoginTimeInput(interaction.options.getString('time'));
+    const proxy = createManualLoginInteractionProxy(interaction, targetMember);
+
+    await finalizeShiftLogin(proxy, agent, hotelId, false, false, mode, {
+      loginTimeIso,
+      skipRecentSubmissionGuard: true
+    });
+
+    await sendAuditLog(interaction.client, {
+      title: '🛠️ Manual Login Recorded',
+      description:
+        `**Target:** ${targetMember.user.username} (<@${targetMember.id}>)\n` +
+        `**Hotel:** ${getCombinedHotelLabel(hotelId)}\n` +
+        `**Mode:** ${mode === 'training' ? 'Training' : 'Live Shift'}\n` +
+        `**Time:** <t:${Math.floor(parseSessionTimestamp(loginTimeIso) / 1000)}:F>\n` +
+        `**Issued By:** {{AGENT_NAME}}`,
+      color: 0x3498DB,
+      userId: interaction.user.id,
+      guild: interaction.guild,
+      forceManagerLog: true
+    });
+
+    return true;
+  } catch (error) {
+    console.error('Error in handleManualLogin:', error);
+    if (interaction.deferred || interaction.replied) {
+      return interaction.editReply({ content: '❌ Failed to apply the manual login.' }).catch(() => {});
+    }
+    return interaction.reply({ content: '❌ Failed to apply the manual login.', ephemeral: true }).catch(() => {});
+  }
+}
+
 // ─── Legacy /login handler ───────────────────────────
 async function handleLogin(interaction) {
-  await handleStartShiftClick(interaction);
+  const hasManualInputs =
+    Boolean(interaction.options?.getUser('member')) ||
+    Boolean(interaction.options?.getString('hotel')) ||
+    Boolean(interaction.options?.getString('mode')) ||
+    Boolean(interaction.options?.getString('time'));
+
+  if (hasManualInputs) {
+    return handleManualLogin(interaction);
+  }
+
+  return handleStartShiftClick(interaction);
 }
 
 async function handleShiftInitModalSubmit(interaction) {
@@ -9839,6 +10043,7 @@ async function handleHelpStaff(interaction) {
         '### 🏗️ Core Setup & Portals\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
         '> `/setup-login`: Rebuild or refresh the persistent agent login kiosk.\n' +
+        '> `/login [member] [hotel] [mode] [time]`: Start your own shift or backfill a missed login for an agent.\n' +
         '> `/setup-login-team`: Deploy the Team Leader / SME login portal.\n' +
         '> `/setup-profiles`: Deploy the staff profiles dashboard panel.\n' +
         '> `/setup-dev-todo`: Deploy or refresh the shared developer launch board.\n' +
@@ -10403,6 +10608,7 @@ async function handleHelpTeamLeader(interaction) {
       .setDescription(
         '### 📋 Management Shift Tools\n' +
         '- `/setup-login-team`: Deploy the management shift portal.\n' +
+        '- `/login`: Start your own shift or backfill a missed login with `member`, `hotel`, `mode`, and `time`.\n' +
         '- `/status`: View real-time staffing status for all hotels.\n' +
         '- `/attendance-report`: Check for missed shifts or late logins.\n\n' +
         '### 📊 Operational Oversight\n' +

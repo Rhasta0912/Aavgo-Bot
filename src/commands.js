@@ -33,7 +33,19 @@ const HOTEL_CHOICES = [
 const commandData = [
   new SlashCommandBuilder()
     .setName('login')
-    .setDescription('Log in to a hotel shift'),
+    .setDescription('Log in to a hotel shift or backfill a missed login')
+    .addUserOption(option => option.setName('member').setDescription('Agent/member to log in (defaults to you)').setRequired(false))
+    .addStringOption(option => option.setName('hotel').setDescription('Hotel to log into (optional; uses the linked hotel if omitted)').setRequired(false)
+      .addChoices(...HOTEL_CHOICES))
+    .addStringOption(option => option
+      .setName('mode')
+      .setDescription('Login mode')
+      .setRequired(false)
+      .addChoices(
+        { name: 'Live Shift', value: 'shift' },
+        { name: 'Training', value: 'training' }
+      ))
+    .addStringOption(option => option.setName('time').setDescription('Optional login time (example: now, 8:00 AM, 2026-04-30 8:00 AM)').setRequired(false)),
   new SlashCommandBuilder()
     .setName('logout')
     .setDescription('Log out from your current shift'),
