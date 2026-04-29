@@ -2489,7 +2489,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       : `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
     color: 0x57F287,
     userId: interaction.user.id,
-    hotelId: !isPracticeMode && hotelId === 'TEAM_SHIFT' ? 'TEAM_SHIFT' : undefined,
+    hotelId: !isPracticeMode ? hotelId : undefined,
     teamLogRouting: !isPracticeMode && hotelId !== 'TEAM_SHIFT',
     forceTrainingLog: isPracticeMode,
     guild: interaction.guild
@@ -6694,6 +6694,7 @@ async function handleModalSubmit(interaction) {
       : `**User:** ${nickname} (<@${interaction.user.id}>)\n**Location:** ${hotelName}\n**Time:** <t:${auditUnix}:F>`,
     color: 0x57F287,
     forceTrainingLog: sessionMode === 'training',
+    hotelId: sessionMode === 'training' ? undefined : hotelId,
     userId: interaction.user.id,
     guild: interaction.guild
   });
