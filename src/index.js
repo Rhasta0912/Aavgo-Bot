@@ -158,9 +158,27 @@ function parseAttendanceAction(content) {
   return null;
 }
 
-function parseAttendanceMode(content) {
+function normalizeDiscordRoleName(roleName) {
+  return String(roleName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function hasTrainingAttendanceRole(member) {
+  if (!member?.roles?.cache) return false;
+  return member.roles.cache.some(role => {
+    const roleName = normalizeDiscordRoleName(role?.name);
+    return roleName === 'trainee' || roleName === 'trainees';
+  });
+}
+
+function parseAttendanceMode(content, member = null) {
   const text = String(content || '');
   if (/\b(training|shadowing)\b/i.test(text)) return 'training';
+  if (/\b(live|on\s*shift|onshift)\b/i.test(text)) return 'shift';
+  if (hasTrainingAttendanceRole(member)) return 'training';
   return 'shift';
 }
 
@@ -1414,7 +1432,7 @@ client.on('guildMemberRemove', async member => {
       return;
     }
 
-    const mode = parseAttendanceMode(message.content);
+    const mode = parseAttendanceMode(message.content, member);
     const teamName = resolveAttendanceTeamName(member);
     const hotelId = detectAttendanceHotelId(message.content);
     const voiceChannelId = resolveAttendanceVoiceChannelId({ hotelId, mode, teamName, userId: message.author.id });
