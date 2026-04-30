@@ -3567,51 +3567,51 @@ async function updateTrainingStatusEmbed(client) {
 
     const buildDescription = isContinuation => {
       const activeHotelCount = hotelGroups.length;
-      const activeLabel = trainingSessions.length > 0 ? 'LIVE TRAINING PRESENCE' : 'NO ACTIVE TRAINEES';
-      const continuationText = isContinuation ? '\nContinuation of the training hotel board.' : '';
+      const activeLabel = trainingSessions.length > 0 ? '✅ LIVE TRAINING PRESENCE' : '⚠️ NO ACTIVE TRAINEES';
+      const continuationText = isContinuation ? '\n🧩 Continuation of the training hotel board.' : '';
       return (
-        `${activeLabel}${continuationText}\n` +
-        '--------------------------------\n' +
-        `Hotels Tracked: ${activeHotelCount}\n` +
-        `Active Trainees: ${trainingSessions.length}\n` +
-        'Scope: All members in training\n' +
-        '--------------------------------'
+        `### ${activeLabel}${continuationText}\n` +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        `> 🏨 **Hotels Tracked:** ${activeHotelCount}\n` +
+        `> 🧑‍🎓 **Active Trainees:** ${trainingSessions.length}\n` +
+        `> 📍 **Scope:** All members in training\n` +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
       );
     };
 
     const embeds = embedChunks.length > 0
       ? embedChunks.map((chunk, chunkIndex) => {
           const embed = new EmbedBuilder()
-            .setTitle(chunkIndex === 0 ? 'Aavgo Operations - Training Status' : 'Aavgo Operations - Training Status (cont.)')
+            .setTitle(chunkIndex === 0 ? '🎓 Aavgo Operations · Training Status' : '🎓 Aavgo Operations · Training Status (cont.)')
             .setDescription(buildDescription(chunkIndex > 0))
             .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
             .setFields(
               chunk.map(group => ({
-                name: group.label,
+                name: `🏨 ${group.label}`,
                 value: group.sessions.length > 0
-                  ? group.sessions.map(session => `- <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`).join('\n')
-                  : '- No active trainee',
+                  ? group.sessions.map(session => `• <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`).join('\n')
+                  : '• No active trainee',
                 inline: false
               }))
             )
-            .setFooter({ text: 'Aavgo Operations - Training Presence' })
+            .setFooter({ text: 'Aavgo Operations • Training Presence' })
             .setTimestamp();
           return embed;
         })
       : [
           new EmbedBuilder()
-            .setTitle('Aavgo Operations - Training Status')
+            .setTitle('🎓 Aavgo Operations · Training Status')
             .setDescription(
-              'NO ACTIVE TRAINEES\n' +
-              '--------------------------------\n' +
-              `Hotels Tracked: ${hotelGroups.length}\n` +
-              `Active Trainees: ${trainingSessions.length}\n` +
-              'Scope: All members in training\n' +
-              '--------------------------------'
+              '### ⚠️ NO ACTIVE TRAINEES\n' +
+              '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+              `> 🏨 **Hotels Tracked:** ${hotelGroups.length}\n` +
+              `> 🧑‍🎓 **Active Trainees:** ${trainingSessions.length}\n` +
+              `> 📍 **Scope:** All members in training\n` +
+              '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
             )
             .setColor(0x2B2D31)
-            .setFields([{ name: 'Training Hotels', value: '- No active trainee', inline: false }])
-            .setFooter({ text: 'Aavgo Operations - Training Presence' })
+            .setFields([{ name: '🏨 Training Hotels', value: '• No active trainee', inline: false }])
+            .setFooter({ text: 'Aavgo Operations • Training Presence' })
             .setTimestamp()
         ];
 
@@ -3619,7 +3619,7 @@ async function updateTrainingStatusEmbed(client) {
     if (trainingSessions.length > 0) {
       const endTrainingBtn = new ButtonBuilder()
         .setCustomId('training_end_btn')
-        .setLabel('End-training')
+        .setLabel('🔴 End-training')
         .setStyle(ButtonStyle.Danger);
       components.push(new ActionRowBuilder().addComponents(endTrainingBtn));
     }
