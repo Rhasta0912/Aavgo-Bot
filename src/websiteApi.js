@@ -20,12 +20,16 @@ const AGENT_ROLE_ID = '1482227287159078964';
 const TRAINEE_ROLE_ID = '1484705126026449029';
 const TEAM_ROLE_NAMES = ['team 1', 'team 2', 'team 3'];
 const WEBSITE_COMMAND_BATCH_LIMIT = 25;
+const WEBSITE_BANDWIDTH_BACKOFF_MS = 15 * 60 * 1000;
+const WEBSITE_GENERIC_BACKOFF_MS = 2 * 60 * 1000;
 
 let websiteApiServer = null;
 let websiteSyncTimer = null;
 let websiteSyncInFlight = false;
+let websiteSyncRetryAt = 0;
 let websiteCommandTimer = null;
 let websiteCommandInFlight = false;
+let websiteCommandRetryAt = 0;
 
 function getWebsiteApiConfig() {
   const token = String(process.env.AAVGO_WEBSITE_API_TOKEN || '').trim();
@@ -67,6 +71,33 @@ function json(res, statusCode, payload) {
     'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'
   });
   res.end(JSON.stringify(payload, null, 2));
+}
+
+function isBandwidthLimitError(error) {
+  const message = String(error?.message || error || '');
+  return /bandwidth limit exceeded/i.test(message) || /reaching (his\/her|their) limits/i.test(message);
+}
+
+function getWebsiteBackoffMs(error) {
+  if (isBandwidthLimitError(error)) {
+    return WEBSITE_BANDWIDTH_BACKOFF_MS;
+  }
+
+  const message = String(error?.message || error || '');
+  if (/failed \(5\d\d\)/i.test(message) || /timed out/i.test(message)) {
+    return WEBSITE_GENERIC_BACKOFF_MS;
+  }
+
+  return 0;
+}
+
+function getWebsiteRetryAt(kind, error) {
+  const backoffMs = getWebsiteBackoffMs(error);
+  if (!backoffMs) return 0;
+  const retryAt = Date.now() + backoffMs;
+  const tag = kind === 'commands' ? 'WEBSITE-COMMANDS' : 'WEBSITE-SYNC';
+  console.warn(`[${tag}] Backing off until ${new Date(retryAt).toISOString()} because: ${String(error?.message || error)}`);
+  return retryAt;
 }
 
 function roundHours(value) {
@@ -1076,6 +1107,10 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
     return false;
   }
 
+  if (websiteSyncRetryAt && Date.now() < websiteSyncRetryAt) {
+    return false;
+  }
+
   if (websiteSyncInFlight) {
     return false;
   }
@@ -1099,9 +1134,11 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
       console.log(`[WEBSITE-SYNC] Pushed admin hours snapshot to ${config.syncUrl}`);
     }
 
+    websiteSyncRetryAt = 0;
     return true;
   } catch (error) {
     console.error('[WEBSITE-SYNC] Snapshot push failed:', error.message);
+    websiteSyncRetryAt = getWebsiteRetryAt('sync', error);
     return false;
   } finally {
     websiteSyncInFlight = false;
@@ -1525,6 +1562,10 @@ async function processWebsiteCommands(client) {
     return false;
   }
 
+  if (websiteCommandRetryAt && Date.now() < websiteCommandRetryAt) {
+    return false;
+  }
+
   if (websiteCommandInFlight) {
     return false;
   }
@@ -1575,9 +1616,11 @@ async function processWebsiteCommands(client) {
       await pushWebsiteHoursSnapshot(client, { silent: true });
     }
 
+    websiteCommandRetryAt = 0;
     return true;
   } catch (error) {
     console.error('[WEBSITE-COMMANDS] Command sync failed:', error.message);
+    websiteCommandRetryAt = getWebsiteRetryAt('commands', error);
     return false;
   } finally {
     websiteCommandInFlight = false;
