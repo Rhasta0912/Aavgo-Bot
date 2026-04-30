@@ -1520,6 +1520,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - **Expanded Pay-Period Visibility + Filter Matching**: Pay-period day lists now show the full day breakdown in scrollable two-column lists, and role/team/hotel filters match regardless of casing for more reliable filtering.
 
 ## Latest Changes
+- Discord tracking heartbeat
+  - Summary: Added /check-heartbeat so staff can verify the bot database is reachable and session tracking is still recording even when the website is offline.
+  - Files touched:
+    - src/commands.js
+    - src/index.js
+    - src/auth.js
+    - HISTORY.md
+  - Notes:
+    - None
 - Protect website sync during bandwidth outages
   - Summary: Website bridge traffic now slows to a 5-minute default interval, pauses for 6 hours when cPanel returns 509 Bandwidth Limit Exceeded, and supports AAVGO_WEBSITE_SYNC_DISABLED=true as an emergency kill switch. Discord bot hour tracking continues in the bot database while website sync is paused.
   - Files touched:

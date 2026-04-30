@@ -7924,6 +7924,144 @@ async function handleCheckHours(interaction) {
   }
 }
 
+async function handleCheckHeartbeat(interaction) {
+  try {
+    await interaction.deferReply({ ephemeral: true });
+
+    const now = new Date();
+    const oneHourAgoIso = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
+    const dayAgoIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const isStaffView = interactionHasRoleAtLeast(interaction, 'team_leader');
+
+    db.prepare('SELECT 1 AS ok').get();
+
+    const ownAgent = db.prepare(`
+      SELECT id, username, role, team, hotel_id
+      FROM agents
+      WHERE discord_id = ?
+    `).get(interaction.user.id);
+
+    const activeSessionCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM sessions
+      WHERE status = 'active'
+    `).get()?.count || 0;
+
+    const recentCreatedCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM sessions
+      WHERE login_time >= ?
+    `).get(dayAgoIso)?.count || 0;
+
+    const recentClosedCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM sessions
+      WHERE logout_time IS NOT NULL
+        AND logout_time >= ?
+    `).get(dayAgoIso)?.count || 0;
+
+    const closedLastHourCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM sessions
+      WHERE logout_time IS NOT NULL
+        AND logout_time >= ?
+    `).get(oneHourAgoIso)?.count || 0;
+
+    const manualAdjustmentCount = db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM hour_adjustments
+      WHERE created_at >= ?
+    `).get(dayAgoIso)?.count || 0;
+
+    const latestSession = db.prepare(`
+      SELECT s.id, s.hotel_id, s.session_kind, s.login_time, s.logout_time, s.status, a.username
+      FROM sessions s
+      JOIN agents a ON a.id = s.agent_id
+      ORDER BY s.id DESC
+      LIMIT 1
+    `).get();
+
+    const ownActiveSession = ownAgent ? db.prepare(`
+      SELECT id, hotel_id, session_kind, login_time, status
+      FROM sessions
+      WHERE agent_id = ?
+        AND status = 'active'
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(ownAgent.id) : null;
+
+    const ownLatestSession = ownAgent ? db.prepare(`
+      SELECT id, hotel_id, session_kind, login_time, logout_time, status
+      FROM sessions
+      WHERE agent_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(ownAgent.id) : null;
+
+    const dbVerdict = latestSession || activeSessionCount > 0
+      ? 'Database is reachable and session tracking rows exist.'
+      : 'Database is reachable, but no sessions exist yet.';
+    const liveVerdict = activeSessionCount > 0
+      ? `${activeSessionCount} active shift(s) are currently open.`
+      : 'No active shifts are open right now.';
+
+    const ownLines = ownAgent
+      ? [
+          `Registered: Yes (${getRoleLabel(ownAgent.role)})`,
+          `Current status: ${ownActiveSession ? `IN SHIFT at ${ownActiveSession.hotel_id} (${ownActiveSession.session_kind || 'shift'})` : 'Not in shift'}`,
+          `Latest session: ${ownLatestSession ? `#${ownLatestSession.id} ${ownLatestSession.status} - ${ownLatestSession.hotel_id} - login ${ownLatestSession.login_time}${ownLatestSession.logout_time ? ` - logout ${ownLatestSession.logout_time}` : ''}` : 'None'}`
+        ]
+      : [
+          'Registered: No agent record found for your Discord account.',
+          'Current status: Not in shift',
+          'Latest session: None'
+        ];
+
+    const latestSessionLine = latestSession
+      ? `#${latestSession.id} ${latestSession.status} - ${latestSession.hotel_id} - ${latestSession.session_kind || 'shift'} - login ${latestSession.login_time}${latestSession.logout_time ? ` - logout ${latestSession.logout_time}` : ''}`
+      : 'None';
+
+    const staffLines = isStaffView
+      ? [
+          `Sessions created in last 24h: ${recentCreatedCount}`,
+          `Sessions closed in last 24h: ${recentClosedCount}`,
+          `Sessions closed in last 1h: ${closedLastHourCount}`,
+          `Manual hour adjustments in last 24h: ${manualAdjustmentCount}`,
+          `Latest global session: ${latestSessionLine}`
+        ]
+      : [
+          'Staff summary hidden. Team Leader, Operations Manager, or Developer access shows global counts.'
+        ];
+
+    const embed = new EmbedBuilder()
+      .setTitle('Bot Tracking Heartbeat')
+      .setDescription(
+        '**Verdict**\n' +
+        `> ${dbVerdict}\n` +
+        `> ${liveVerdict}\n` +
+        '> This checks the Discord bot database only. The website can be down while bot tracking still works.\n\n' +
+        '**Your Tracking State**\n' +
+        ownLines.map(line => `> ${line}`).join('\n') +
+        '\n\n' +
+        '**Database Activity**\n' +
+        staffLines.map(line => `> ${line}`).join('\n')
+      )
+      .setColor(0x57F287)
+      .setFooter({ text: 'Read-only diagnostic. No hours were changed.' })
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error in handleCheckHeartbeat:', error);
+    const message = `Database heartbeat failed: ${error.message || 'Unknown error'}`;
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: message, ephemeral: true }).catch(() => {});
+    } else {
+      await interaction.editReply({ content: message, embeds: [] }).catch(() => {});
+    }
+  }
+}
+
 function normalizeManualShiftDate(value) {
   const raw = String(value || '').trim();
   if (!raw) return getRelativePhilippineIsoDate(0);
@@ -10134,6 +10272,7 @@ async function handleHelpStaff(interaction) {
         '> `/find-guest`: Search guest records by name or room.\n' +
         '> `/db-log-checkin`: Manually log a guest check-in to management tracking.\n' +
         '> `/maintenance-list`: Review pending maintenance issues.\n' +
+        '> `/check-heartbeat`: Run a read-only tracking health check against the bot database.\n' +
         '> `/add-hours`: Add a dated manual hours correction with mode (live/training). Hotel can fall back, date accepts friendly formats, and hours can auto-calculate.\n' +
         '> `/remove-hours`: Remove manual hours by mode and date (supports Today/Yesterday).\n' +
         '> `/end-shift user:@name`: End your own shift or force-end another active shift (OM/Developer).\n' +
@@ -11886,6 +12025,7 @@ module.exports = {
   handleRegisterSubmit, 
   handleLogout, 
   handleStatus,
+  handleCheckHeartbeat,
   handleRegister,
   handleApproveReg,
   handleDenyReg,

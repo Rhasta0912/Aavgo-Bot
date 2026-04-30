@@ -1629,6 +1629,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleLogout(interaction);
     } else if (commandName === 'status') {
       await auth.handleStatus(interaction);
+    } else if (commandName === 'check-heartbeat') {
+      await auth.handleCheckHeartbeat(interaction);
     } else if (commandName === 'setup-login') {
       await auth.handleSetupLogin(interaction);
     } else if (commandName === 'setup-login-team') {

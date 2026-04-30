@@ -53,6 +53,9 @@ const commandData = [
     .setName('status')
     .setDescription('Check current shift statuses'),
   new SlashCommandBuilder()
+    .setName('check-heartbeat')
+    .setDescription('Check whether the bot database is currently tracking shifts'),
+  new SlashCommandBuilder()
     .setName('setup-login')
     .setDescription('Setup the unified login portal (Admin only)'),
   new SlashCommandBuilder()
