@@ -3543,87 +3543,49 @@ async function updateTrainingStatusEmbed(client) {
     const groupedSessions = new Map();
     for (const session of trainingSessions) {
       const hotelId = normalizeCombinedHotelId(session.hotel_id);
-      const groupLabel = getTrainingGroupLabel(hotelId);
-      if (!groupedSessions.has(groupLabel)) groupedSessions.set(groupLabel, []);
-      groupedSessions.get(groupLabel).push(session);
+      const hotelLabel = getCombinedHotelLabel(hotelId);
+      if (!groupedSessions.has(hotelLabel)) groupedSessions.set(hotelLabel, []);
+      groupedSessions.get(hotelLabel).push(session);
     }
 
-    const buildFieldValue = sessions => {
-      const rows = sessions.map(session => `� <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`);
-      const chunks = [];
-      let current = '';
-      for (const row of rows) {
-        const next = current ? `${current}\n${row}` : row;
-        if (next.length > 950) {
-          if (current) chunks.push(current);
-          current = row;
-        } else {
-          current = next;
-        }
-      }
-      if (current) chunks.push(current);
-      return chunks;
-    };
+    const hotelGroups = [...groupedSessions.entries()]
+      .map(([label, sessions]) => ({ label, sessions }))
+      .sort((a, b) => a.label.localeCompare(b.label));
 
-    const trainingFields = [];
-    const orderedLabels = TRAINING_HOTEL_GROUPS.map(group => group.label);
-    const seenLabels = new Set();
-
-    for (const label of orderedLabels) {
-      const sessions = groupedSessions.get(label);
-      if (!sessions || sessions.length === 0) continue;
-      seenLabels.add(label);
-      const chunks = buildFieldValue(sessions);
-      for (let i = 0; i < chunks.length; i += 1) {
-        trainingFields.push({
-          name: i === 0 ? label : `${label} (cont.)`,
-          value: chunks[i],
-          inline: false
-        });
-      }
-    }
-
-    for (const [label, sessions] of groupedSessions.entries()) {
-      if (seenLabels.has(label)) continue;
-      const chunks = buildFieldValue(sessions);
-      for (let i = 0; i < chunks.length; i += 1) {
-        trainingFields.push({
-          name: i === 0 ? label : `${label} (cont.)`,
-          value: chunks[i],
-          inline: false
-        });
-      }
-    }
-
-    if (trainingFields.length === 0) {
-      trainingFields.push({
-        name: 'All members in training',
-        value: '� No active trainee',
-        inline: false
-      });
-    }
-
-    const activeLabel = trainingSessions.length > 0 ? '?? TRAINING IN PROGRESS' : '? TRAINING BOARD IDLE';
+    const activeHotelCount = hotelGroups.length;
+    const activeLabel = trainingSessions.length > 0 ? '✅ LIVE TRAINING PRESENCE' : '⚠️ NO ACTIVE TRAINEES';
     const embed = new EmbedBuilder()
-      .setTitle('?? Aavgo Operations � Training Status')
+      .setTitle('🎓 Aavgo Operations · Training Status')
       .setDescription(
         `### ${activeLabel}\n` +
-        '--------------\n' +
-        `**?? Board:** Live training presence tracker\n` +
-        `**?? Active Trainees:** ${trainingSessions.length}\n` +
-        `**?? Scope:** All members in training\n` +
-        '--------------'
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+        `> 👥 **Hotels Tracked:** ${activeHotelCount}\n` +
+        `> 🧑‍🎓 **Active Trainees:** ${trainingSessions.length}\n` +
+        `> 📍 **Scope:** All members in training\n` +
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
       )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
-      .setFields(trainingFields)
-      .setFooter({ text: 'Aavgo Operations � Training Presence' })
+      .setFields(
+        hotelGroups.length > 0
+          ? hotelGroups.map(group => ({
+              name: `🏨 ${group.label}`,
+              value: group.sessions.map(session => `• <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`).join('\n'),
+              inline: false
+            }))
+          : [{
+              name: '🏨 Training Hotels',
+              value: '• No active trainee',
+              inline: false
+            }]
+      )
+      .setFooter({ text: 'Aavgo Operations • Training Presence' })
       .setTimestamp();
 
     const components = [];
     if (trainingSessions.length > 0) {
       const endTrainingBtn = new ButtonBuilder()
         .setCustomId('training_end_btn')
-        .setLabel('?? End-training')
+        .setLabel('🔴 End-training')
         .setStyle(ButtonStyle.Danger);
       components.push(new ActionRowBuilder().addComponents(endTrainingBtn));
     }
@@ -3646,6 +3608,7 @@ async function updateTrainingStatusEmbed(client) {
     console.warn('[TRAINING-STATUS] Failed to update training status embed:', e.message);
   }
 }
+
 async function refreshOperationalBoards(client) {
   try {
     const hotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT'").all();
