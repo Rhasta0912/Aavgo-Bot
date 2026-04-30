@@ -3559,30 +3559,61 @@ async function updateTrainingStatusEmbed(client) {
       hotelGroups.push({ label, sessions });
     }
 
-    const activeHotelCount = hotelGroups.length;
-    const activeLabel = trainingSessions.length > 0 ? 'LIVE TRAINING PRESENCE' : 'NO ACTIVE TRAINEES';
-    const embed = new EmbedBuilder()
-      .setTitle('Aavgo Operations - Training Status')
-      .setDescription(
-        `${activeLabel}\n` +
+    const chunkSize = 25;
+    const embedChunks = [];
+    for (let index = 0; index < hotelGroups.length; index += chunkSize) {
+      embedChunks.push(hotelGroups.slice(index, index + chunkSize));
+    }
+
+    const buildDescription = isContinuation => {
+      const activeHotelCount = hotelGroups.length;
+      const activeLabel = trainingSessions.length > 0 ? 'LIVE TRAINING PRESENCE' : 'NO ACTIVE TRAINEES';
+      const continuationText = isContinuation ? '\nContinuation of the training hotel board.' : '';
+      return (
+        `${activeLabel}${continuationText}\n` +
         '--------------------------------\n' +
         `Hotels Tracked: ${activeHotelCount}\n` +
         `Active Trainees: ${trainingSessions.length}\n` +
         'Scope: All members in training\n' +
         '--------------------------------'
-      )
-      .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
-      .setFields(
-        hotelGroups.map(group => ({
-          name: group.label,
-          value: group.sessions.length > 0
-            ? group.sessions.map(session => `- <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`).join('\n')
-            : '- No active trainee',
-          inline: false
-        }))
-      )
-      .setFooter({ text: 'Aavgo Operations - Training Presence' })
-      .setTimestamp();
+      );
+    };
+
+    const embeds = embedChunks.length > 0
+      ? embedChunks.map((chunk, chunkIndex) => {
+          const embed = new EmbedBuilder()
+            .setTitle(chunkIndex === 0 ? 'Aavgo Operations - Training Status' : 'Aavgo Operations - Training Status (cont.)')
+            .setDescription(buildDescription(chunkIndex > 0))
+            .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
+            .setFields(
+              chunk.map(group => ({
+                name: group.label,
+                value: group.sessions.length > 0
+                  ? group.sessions.map(session => `- <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`).join('\n')
+                  : '- No active trainee',
+                inline: false
+              }))
+            )
+            .setFooter({ text: 'Aavgo Operations - Training Presence' })
+            .setTimestamp();
+          return embed;
+        })
+      : [
+          new EmbedBuilder()
+            .setTitle('Aavgo Operations - Training Status')
+            .setDescription(
+              'NO ACTIVE TRAINEES\n' +
+              '--------------------------------\n' +
+              `Hotels Tracked: ${hotelGroups.length}\n` +
+              `Active Trainees: ${trainingSessions.length}\n` +
+              'Scope: All members in training\n' +
+              '--------------------------------'
+            )
+            .setColor(0x2B2D31)
+            .setFields([{ name: 'Training Hotels', value: '- No active trainee', inline: false }])
+            .setFooter({ text: 'Aavgo Operations - Training Presence' })
+            .setTimestamp()
+        ];
 
     const components = [];
     if (trainingSessions.length > 0) {
@@ -3598,14 +3629,14 @@ async function updateTrainingStatusEmbed(client) {
     if (stored?.value) {
       try {
         const msg = await channel.messages.fetch(stored.value);
-        await msg.edit({ embeds: [embed], components });
+        await msg.edit({ embeds, components });
         return;
       } catch (e) {
         db.prepare("DELETE FROM config WHERE key = ?").run(key);
       }
     }
 
-    const newMsg = await channel.send({ embeds: [embed], components });
+    const newMsg = await channel.send({ embeds, components });
     db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, newMsg.id);
   } catch (e) {
     console.warn('[TRAINING-STATUS] Failed to update training status embed:', e.message);
