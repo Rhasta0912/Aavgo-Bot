@@ -36,7 +36,7 @@ const commandData = [
     .setDescription('Log in to a hotel shift or backfill a missed login')
     .addUserOption(option => option.setName('member').setDescription('Agent/member to log in (defaults to you)').setRequired(false))
     .addStringOption(option => option.setName('hotel').setDescription('Hotel to log into (optional; uses the linked hotel if omitted)').setRequired(false)
-      .addChoices(...HOTEL_CHOICES))
+      .setAutocomplete(true))
     .addStringOption(option => option
       .setName('mode')
       .setDescription('Login mode')
@@ -124,7 +124,7 @@ const commandData = [
       ))
     .addStringOption(option => option.setName('reason').setDescription('Why manual hours had to be added').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('Optional; defaults to the agent linked/last hotel').setRequired(false)
-      .addChoices(...HOTEL_CHOICES))
+      .setAutocomplete(true))
     .addStringOption(option => option.setName('date').setDescription('Optional; YYYY-MM-DD, YYYY/M/D, YYYY:M:D, Today, Yesterday').setRequired(false))
     .addNumberOption(option => option.setName('hours').setDescription('Optional; auto-calculated from login/logout').setRequired(false).setMinValue(0.01)),
   new SlashCommandBuilder()
@@ -369,10 +369,7 @@ const commandData = [
     .setName('add-guide')
     .setDescription('(Manager/SME) Add or update a hotel SOP guide')
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID (or "GLOBAL")').setRequired(true)
-      .addChoices(
-        { name: 'Global (All Hotels)', value: 'GLOBAL' },
-        ...HOTEL_CHOICES
-      ))
+      .setAutocomplete(true))
     .addStringOption(option => option.setName('topic').setDescription('The topic title').setRequired(true))
     .addStringOption(option => option.setName('content').setDescription('The policy details').setRequired(true)),
   new SlashCommandBuilder()
@@ -383,7 +380,7 @@ const commandData = [
     .setDescription('(Manager) Assign an agent to a hotel shift')
     .addUserOption(option => option.setName('user').setDescription('The agent to schedule').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
-      .addChoices(...HOTEL_CHOICES))
+      .setAutocomplete(true))
     .addStringOption(option => option.setName('date').setDescription('Date (YYYY-MM-DD or "Today")').setRequired(true))
     .addStringOption(option => option.setName('start').setDescription('Start Time (e.g., 09:00)').setRequired(true))
     .addStringOption(option => option.setName('end').setDescription('End Time (e.g., 17:00)').setRequired(true)),
@@ -392,14 +389,14 @@ const commandData = [
     .setDescription('(Manager) Assign an agent to two hotel shift options')
     .addUserOption(option => option.setName('user').setDescription('The agent to update').setRequired(true))
     .addStringOption(option => option.setName('hotel_1').setDescription('Primary hotel').setRequired(true)
-      .addChoices(...HOTEL_CHOICES))
+      .setAutocomplete(true))
     .addStringOption(option => option.setName('hotel_2').setDescription('Secondary hotel').setRequired(true)
-      .addChoices(...HOTEL_CHOICES)),
+      .setAutocomplete(true)),
   new SlashCommandBuilder()
     .setName('schedule-view')
     .setDescription('(Manager) View the weekly shift schedule in spreadsheet format')
     .addStringOption(option => option.setName('hotel').setDescription('Filter by hotel').setRequired(false)
-      .addChoices(...HOTEL_CHOICES)),
+      .setAutocomplete(true)),
   new SlashCommandBuilder()
     .setName('schedule-export')
     .setDescription('(Manager) Download the schedule as a CSV spreadsheet'),
@@ -431,13 +428,13 @@ const commandData = [
         { name: 'Clear Team 1 Live Embeds (Test)', value: 'clear_team1_live_embeds' }
       ))
     .addStringOption(option => option.setName('hotel').setDescription('Specific hotel to refresh').setRequired(false)
-      .addChoices(...HOTEL_CHOICES)),
+      .setAutocomplete(true)),
   new SlashCommandBuilder()
     .setName('db-assign-hotel')
     .setDescription('(Developer/Operations Manager) Manually set an agent\'s permanent hotel linking')
     .addUserOption(option => option.setName('user').setDescription('The agent to link').setRequired(true))
     .addStringOption(option => option.setName('hotel').setDescription('The hotel ID').setRequired(true)
-      .addChoices(...HOTEL_CHOICES))
+      .setAutocomplete(true))
     .addStringOption(option => option.setName('sync').setDescription('Which role type to sync').setRequired(false)
       .addChoices(
         { name: 'Both', value: 'both' },
@@ -446,8 +443,8 @@ const commandData = [
       )),
   new SlashCommandBuilder()
     .setName('help-team-leader')
-    .setDescription('Show a comprehensive guide for Team Leaders and SMEs'),
+  .setDescription('Show a comprehensive guide for Team Leaders and SMEs'),
 ].map(command => command.toJSON());
 
-module.exports = { commandData };
+module.exports = { commandData, HOTEL_CHOICES };
 

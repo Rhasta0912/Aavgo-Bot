@@ -3,6 +3,7 @@ const path = require('path');
 const { Client, GatewayIntentBits, Collection, REST, Routes, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const db = require('./database');
 const auth = require('./auth');
+const { HOTEL_CHOICES } = require('./commands');
 const tools = require('./tools');
 const profilePanel = require('./profilePanel');
 const devTodo = require('./devTodo');
@@ -54,6 +55,45 @@ const HOTEL_LIVE_VOICE_CHANNEL_IDS = {
   THOK: '1494858037683421234',
   BRNT: '1494858131094900817'
 };
+
+function normalizeAutocompleteToken(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function buildHotelAutocompleteChoices(query, includeGlobal = false) {
+  const normalizedQuery = normalizeAutocompleteToken(query);
+  const choices = includeGlobal
+    ? [{ name: 'Global (All Hotels)', value: 'GLOBAL' }, ...HOTEL_CHOICES]
+    : [...HOTEL_CHOICES];
+
+  const scored = choices
+    .map(choice => ({
+      ...choice,
+      score: normalizeAutocompleteToken(choice.name).includes(normalizedQuery) || normalizeAutocompleteToken(choice.value).includes(normalizedQuery)
+        ? 1
+        : 0
+    }))
+    .filter(choice => !normalizedQuery || choice.score > 0);
+
+  const sorted = scored
+    .sort((a, b) => {
+      if (a.name === 'Global (All Hotels)') return -1;
+      if (b.name === 'Global (All Hotels)') return 1;
+      if (a.score !== b.score) return b.score - a.score;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, 25)
+    .map(({ name, value }) => ({ name, value }));
+
+  if (sorted.length === 0 && includeGlobal) {
+    return [{ name: 'Global (All Hotels)', value: 'GLOBAL' }];
+  }
+
+  return sorted;
+}
+
 const QI_RV_TEAM_VOICE_CHANNEL_IDS = {
   'Team 1': '1482225371398017044',
   'Team 3': '1493890481363484755'
@@ -1566,6 +1606,20 @@ client.on('interactionCreate', async interaction => {
   const auth = require('./auth');
   const tools = require('./tools');
   try {
+  if (interaction.isAutocomplete()) {
+    const focused = interaction.options.getFocused(true);
+    const focusedName = String(focused?.name || '').toLowerCase();
+    const focusedValue = String(focused?.value || '');
+    const commandName = String(interaction.commandName || '').toLowerCase();
+
+    if (focusedName.includes('hotel')) {
+      const includeGlobal = commandName === 'add-guide' && focusedName === 'hotel';
+      return interaction.respond(buildHotelAutocompleteChoices(focusedValue, includeGlobal)).catch(() => {});
+    }
+
+    return interaction.respond([]).catch(() => {});
+  }
+
   if (interaction.isChatInputCommand()) {
     const { commandName } = interaction;
 
