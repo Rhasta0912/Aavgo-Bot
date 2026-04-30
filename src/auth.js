@@ -3548,11 +3548,18 @@ async function updateTrainingStatusEmbed(client) {
       groupedSessions.get(hotelLabel).push(session);
     }
 
-    const hotelGroups = [...groupedSessions.entries()]
-      .map(([label, sessions]) => ({ label, sessions }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+    const hotelGroups = TRAINING_HOTEL_GROUPS.map(group => ({
+      label: group.label,
+      sessions: groupedSessions.get(group.label) || []
+    }));
 
-    const activeHotelCount = hotelGroups.length;
+    const knownLabels = new Set(hotelGroups.map(group => group.label));
+    for (const [label, sessions] of groupedSessions.entries()) {
+      if (knownLabels.has(label)) continue;
+      hotelGroups.push({ label, sessions });
+    }
+
+    const activeHotelCount = TRAINING_HOTEL_GROUPS.length;
     const activeLabel = trainingSessions.length > 0 ? '✅ LIVE TRAINING PRESENCE' : '⚠️ NO ACTIVE TRAINEES';
     const embed = new EmbedBuilder()
       .setTitle('🎓 Aavgo Operations · Training Status')
@@ -3566,17 +3573,13 @@ async function updateTrainingStatusEmbed(client) {
       )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
       .setFields(
-        hotelGroups.length > 0
-          ? hotelGroups.map(group => ({
-              name: `🏨 ${group.label}`,
-              value: group.sessions.map(session => `• <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`).join('\n'),
-              inline: false
-            }))
-          : [{
-              name: '🏨 Training Hotels',
-              value: '• No active trainee',
-              inline: false
-            }]
+        hotelGroups.map(group => ({
+          name: `🏨 ${group.label}`,
+          value: group.sessions.length > 0
+            ? group.sessions.map(session => `• <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`).join('\n')
+            : '• No active trainee',
+          inline: false
+        }))
       )
       .setFooter({ text: 'Aavgo Operations • Training Presence' })
       .setTimestamp();
@@ -3608,7 +3611,6 @@ async function updateTrainingStatusEmbed(client) {
     console.warn('[TRAINING-STATUS] Failed to update training status embed:', e.message);
   }
 }
-
 async function refreshOperationalBoards(client) {
   try {
     const hotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT'").all();
