@@ -3530,21 +3530,41 @@ async function updateTrainingStatusEmbed(client) {
       ORDER BY sessions.login_time DESC
     `).all();
 
-    const groupRows = TRAINING_HOTEL_GROUPS.map(group => {
-      const matching = trainingSessions.filter(session => group.hotelIds.includes(session.hotel_id));
-      const groupIcon = '\u{1F3E8}';
-      const value = matching.length > 0
-        ? matching
-          .map(session => `• <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`)
-          .join('\n')
-        : '• No active trainee';
+    const buildTrainingFieldChunks = sessions => {
+      if (sessions.length === 0) {
+        return [{
+          name: '👥 All members in training',
+          value: '• No active trainee',
+          inline: false
+        }];
+      }
 
-      return {
-        name: `${groupIcon} ${group.label}`,
+      const rows = sessions.map(session => {
+        const hotelLabel = getCombinedHotelLabel(session.hotel_id);
+        return `• <@${session.discord_id}> | ${hotelLabel} | Since: ${formatLoginTimeLabel(session.login_time)}`;
+      });
+
+      const fields = [];
+      let chunk = '';
+      for (const row of rows) {
+        const nextChunk = chunk ? `${chunk}\n${row}` : row;
+        if (nextChunk.length > 950) {
+          if (chunk) fields.push(chunk);
+          chunk = row;
+        } else {
+          chunk = nextChunk;
+        }
+      }
+      if (chunk) fields.push(chunk);
+
+      return fields.map((value, index) => ({
+        name: index === 0 ? '👥 All members in training' : '👥 All members in training (cont.)',
         value,
         inline: false
-      };
-    });
+      }));
+    };
+
+    const trainingFields = buildTrainingFieldChunks(trainingSessions);
 
     const activeLabel = trainingSessions.length > 0 ? '🟦 TRAINING IN PROGRESS' : '⚫ TRAINING BOARD IDLE';
     const embed = new EmbedBuilder()
@@ -3554,11 +3574,11 @@ async function updateTrainingStatusEmbed(client) {
         '────────────────────────\n' +
         `**🤖 Board:** Live training presence tracker\n` +
         `**👥 Active Trainees:** ${trainingSessions.length}\n` +
-        `**📍 Scope:** Team 1, Team 2, and Team 3 training groups\n` +
+        `**📍 Scope:** All members in training\n` +
         '────────────────────────'
       )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
-      .setFields(groupRows)
+      .setFields(trainingFields)
       .setFooter({ text: 'Aavgo Operations • Training Presence' })
       .setTimestamp();
 
