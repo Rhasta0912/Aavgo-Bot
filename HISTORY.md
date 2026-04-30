@@ -1520,6 +1520,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
 - **Expanded Pay-Period Visibility + Filter Matching**: Pay-period day lists now show the full day breakdown in scrollable two-column lists, and role/team/hotel filters match regardless of casing for more reliable filtering.
 
 ## Latest Changes
+- Protect website sync during bandwidth outages
+  - Summary: Website bridge traffic now slows to a 5-minute default interval, pauses for 6 hours when cPanel returns 509 Bandwidth Limit Exceeded, and supports AAVGO_WEBSITE_SYNC_DISABLED=true as an emergency kill switch. Discord bot hour tracking continues in the bot database while website sync is paused.
+  - Files touched:
+    - src/websiteApi.js
+    - HISTORY.md
+  - Notes:
+    - None
 - Website payroll hour attribution
   - Summary: Completed website hour snapshots now credit closed sessions to the login date, count only completed full hours after logout, and show IN SHIFT labels for active staff instead of finalized hours.
   - Files touched:

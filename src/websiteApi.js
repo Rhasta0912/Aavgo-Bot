@@ -20,7 +20,9 @@ const AGENT_ROLE_ID = '1482227287159078964';
 const TRAINEE_ROLE_ID = '1484705126026449029';
 const TEAM_ROLE_NAMES = ['team 1', 'team 2', 'team 3'];
 const WEBSITE_COMMAND_BATCH_LIMIT = 25;
-const WEBSITE_BANDWIDTH_BACKOFF_MS = 15 * 60 * 1000;
+const WEBSITE_SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000;
+const WEBSITE_BANDWIDTH_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+const WEBSITE_BANDWIDTH_BACKOFF_MS = WEBSITE_BANDWIDTH_COOLDOWN_MS;
 const WEBSITE_GENERIC_BACKOFF_MS = 2 * 60 * 1000;
 
 let websiteApiServer = null;
@@ -30,6 +32,7 @@ let websiteSyncRetryAt = 0;
 let websiteCommandTimer = null;
 let websiteCommandInFlight = false;
 let websiteCommandRetryAt = 0;
+let websiteBridgePausedUntilMs = 0;
 
 function getWebsiteApiConfig() {
   const token = String(process.env.AAVGO_WEBSITE_API_TOKEN || '').trim();
@@ -40,8 +43,15 @@ function getWebsiteApiConfig() {
     10
   );
   const syncIntervalMs = Number.parseInt(
-    String(process.env.AAVGO_WEBSITE_SYNC_INTERVAL_MS || '30000').trim(),
+    String(process.env.AAVGO_WEBSITE_SYNC_INTERVAL_MS || String(WEBSITE_SYNC_MIN_INTERVAL_MS)).trim(),
     10
+  );
+  const bandwidthCooldownMs = Number.parseInt(
+    String(process.env.AAVGO_WEBSITE_BANDWIDTH_COOLDOWN_MS || String(WEBSITE_BANDWIDTH_COOLDOWN_MS)).trim(),
+    10
+  );
+  const syncDisabled = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.AAVGO_WEBSITE_SYNC_DISABLED || '').trim().toLowerCase()
   );
   let commandUrl = String(process.env.AAVGO_WEBSITE_COMMAND_URL || '').trim();
   if (!commandUrl && syncUrl) {
@@ -60,8 +70,10 @@ function getWebsiteApiConfig() {
     host,
     syncUrl,
     commandUrl,
+    syncDisabled,
     port: Number.isFinite(port) && port > 0 ? port : 3000,
-    syncIntervalMs: Number.isFinite(syncIntervalMs) && syncIntervalMs >= 10000 ? syncIntervalMs : 30000
+    syncIntervalMs: Number.isFinite(syncIntervalMs) && syncIntervalMs >= WEBSITE_SYNC_MIN_INTERVAL_MS ? syncIntervalMs : WEBSITE_SYNC_MIN_INTERVAL_MS,
+    bandwidthCooldownMs: Number.isFinite(bandwidthCooldownMs) && bandwidthCooldownMs >= 60000 ? bandwidthCooldownMs : WEBSITE_BANDWIDTH_COOLDOWN_MS
   };
 }
 
@@ -71,11 +83,6 @@ function json(res, statusCode, payload) {
     'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0'
   });
   res.end(JSON.stringify(payload, null, 2));
-}
-
-function isBandwidthLimitError(error) {
-  const message = String(error?.message || error || '');
-  return /bandwidth limit exceeded/i.test(message) || /reaching (his\/her|their) limits/i.test(message);
 }
 
 function getWebsiteBackoffMs(error) {
@@ -104,6 +111,27 @@ function roundHours(value) {
   const number = Number(value || 0);
   if (!Number.isFinite(number)) return 0;
   return Number(number.toFixed(2));
+}
+
+function isWebsiteBridgePaused() {
+  return websiteBridgePausedUntilMs > Date.now();
+}
+
+function getWebsiteBridgePauseSeconds() {
+  return Math.max(0, Math.ceil((websiteBridgePausedUntilMs - Date.now()) / 1000));
+}
+
+function isBandwidthLimitError(error) {
+  const statusCode = Number(error?.statusCode || 0);
+  const message = String(error?.message || '').toLowerCase();
+  return statusCode === 509 || message.includes('bandwidth limit exceeded') || message.includes('reaching his/her') || message.includes('reaching their');
+}
+
+function pauseWebsiteBridge(config, reason = 'website bandwidth limit') {
+  const cooldownMs = Number(config?.bandwidthCooldownMs || WEBSITE_BANDWIDTH_COOLDOWN_MS);
+  websiteBridgePausedUntilMs = Math.max(websiteBridgePausedUntilMs, Date.now() + cooldownMs);
+  const minutes = Math.ceil(cooldownMs / 60000);
+  console.warn(`[WEBSITE-BRIDGE] Paused website sync for about ${minutes} minute(s): ${reason}. Discord bot hour tracking continues in the bot database.`);
 }
 
 function combineHotelId(hotelId) {
@@ -1057,7 +1085,10 @@ function requestJson(urlString, token, { method = 'GET', body = null } = {}) {
         }
 
         const errorMessage = decoded?.error || responseBody || 'Request failed.';
-        reject(new Error(`${method} ${urlString} failed (${statusCode}): ${errorMessage}`));
+        const error = new Error(`${method} ${urlString} failed (${statusCode}): ${errorMessage}`);
+        error.statusCode = statusCode;
+        error.responseBody = responseBody;
+        reject(error);
       });
     });
 
@@ -1103,7 +1134,14 @@ function readJsonRequestBody(req) {
 
 async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
   const config = getWebsiteApiConfig();
-  if (!config.token || !config.syncUrl) {
+  if (config.syncDisabled || !config.token || !config.syncUrl) {
+    return false;
+  }
+
+  if (isWebsiteBridgePaused()) {
+    if (!silent) {
+      console.warn(`[WEBSITE-SYNC] Skipped because website bridge is paused for ${getWebsiteBridgePauseSeconds()}s.`);
+    }
     return false;
   }
 
@@ -1137,6 +1175,10 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
     websiteSyncRetryAt = 0;
     return true;
   } catch (error) {
+    if (isBandwidthLimitError(error)) {
+      pauseWebsiteBridge(config, 'website returned 509 Bandwidth Limit Exceeded');
+      return false;
+    }
     console.error('[WEBSITE-SYNC] Snapshot push failed:', error.message);
     websiteSyncRetryAt = getWebsiteRetryAt('sync', error);
     return false;
@@ -1146,6 +1188,7 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
 }
 
 async function fetchWebsiteCommands(config) {
+  if (isWebsiteBridgePaused()) return [];
   if (!config.commandUrl) return [];
   const response = await requestJson(config.commandUrl, config.token, { method: 'GET' });
   const commands = response?.data?.commands;
@@ -1157,6 +1200,7 @@ async function fetchWebsiteCommands(config) {
 }
 
 async function postWebsiteCommandResults(config, results) {
+  if (isWebsiteBridgePaused()) return;
   if (!config.commandUrl || !Array.isArray(results) || results.length === 0) {
     return;
   }
@@ -1558,7 +1602,11 @@ async function applyWebsiteCommand(client, guild, command) {
 
 async function processWebsiteCommands(client) {
   const config = getWebsiteApiConfig();
-  if (!config.token || !config.commandUrl) {
+  if (config.syncDisabled || !config.token || !config.commandUrl) {
+    return false;
+  }
+
+  if (isWebsiteBridgePaused()) {
     return false;
   }
 
@@ -1619,6 +1667,10 @@ async function processWebsiteCommands(client) {
     websiteCommandRetryAt = 0;
     return true;
   } catch (error) {
+    if (isBandwidthLimitError(error)) {
+      pauseWebsiteBridge(config, 'website command sync returned 509 Bandwidth Limit Exceeded');
+      return false;
+    }
     console.error('[WEBSITE-COMMANDS] Command sync failed:', error.message);
     websiteCommandRetryAt = getWebsiteRetryAt('commands', error);
     return false;
@@ -1629,6 +1681,11 @@ async function processWebsiteCommands(client) {
 
 function startWebsiteHoursSync(client) {
   const config = getWebsiteApiConfig();
+  if (config.syncDisabled) {
+    console.log('[WEBSITE-SYNC] Disabled by AAVGO_WEBSITE_SYNC_DISABLED.');
+    return;
+  }
+
   if (!config.token || websiteSyncTimer) {
     return;
   }
@@ -1654,6 +1711,11 @@ function startWebsiteHoursSync(client) {
 
 function startWebsiteCommandSync(client) {
   const config = getWebsiteApiConfig();
+  if (config.syncDisabled) {
+    console.log('[WEBSITE-COMMANDS] Disabled by AAVGO_WEBSITE_SYNC_DISABLED.');
+    return;
+  }
+
   if (!config.token || websiteCommandTimer) {
     return;
   }
@@ -1671,7 +1733,7 @@ function startWebsiteCommandSync(client) {
     processWebsiteCommands(client).catch(error => {
       console.error('[WEBSITE-COMMANDS] Interval poll crashed:', error.message);
     });
-  }, Math.max(5000, Math.floor(config.syncIntervalMs / 4)));
+  }, config.syncIntervalMs);
 
   websiteCommandTimer.unref?.();
   console.log(`[WEBSITE-COMMANDS] Polling ${config.commandUrl} for admin commands.`);
