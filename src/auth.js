@@ -11511,6 +11511,30 @@ async function handleRefreshTrainingStatus(interaction) {
   }
 }
 
+async function handleSetupTrainingStatus(interaction) {
+  try {
+    if (!isDeveloper(interaction)) {
+      return interaction.reply({ content: 'Only Developers can setup the training status board.', ephemeral: true });
+    }
+
+    await updateTrainingStatusEmbed(interaction.client);
+
+    if (interaction.deferred || interaction.replied) {
+      return interaction.editReply({ content: 'Training status board setup complete.' });
+    }
+    return interaction.reply({
+      content: 'Training status board setup complete.',
+      ephemeral: true
+    });
+  } catch (error) {
+    console.error('Error in handleSetupTrainingStatus:', error);
+    if (interaction.deferred || interaction.replied) {
+      return interaction.editReply({ content: 'Failed to setup the training status board.' }).catch(() => {});
+    }
+    return interaction.reply({ content: 'Failed to setup the training status board.', ephemeral: true }).catch(() => {});
+  }
+}
+
 function buildAssignedHotelShiftPickerPayload(hotelIds, allowMultiHotel = false) {
   const hotelOptions = buildAssignedHotelSelectionOptions(hotelIds);
   const pickMenu = new StringSelectMenuBuilder()
@@ -11858,6 +11882,7 @@ module.exports = {
   handleDbSetPin,
   handleResetPin,
   handleSetupLoginTeam,
+  handleSetupTrainingStatus,
   handleRefreshTrainingStatus,
   updateTeamStatusEmbed,
   handlePromote,
