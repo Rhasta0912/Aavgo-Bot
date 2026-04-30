@@ -212,6 +212,9 @@ const commandData = [
     .setName('setup-login-team')
     .setDescription('Refresh unified login portal (legacy alias, Admin only)'),
   new SlashCommandBuilder()
+    .setName('refresh-training-status')
+    .setDescription('(Developer Only) Refresh the training status board'),
+  new SlashCommandBuilder()
     .setName('db-add-developer')
     .setDescription('(Developer Only) Propose adding a new developer')
     .addUserOption(option => option.setName('user').setDescription('The user to add as developer').setRequired(true)),
