@@ -562,11 +562,11 @@ const HOTEL_NAMES = {
   'MYAL': 'Mylo / Alpine',
   'SAGE': 'Sage',
   'ZICO': 'Hotel Zico',
-  'WGFR': 'WG Fresno',
-  'BWSF': 'BW Springfield',
-  'LQST': 'LQ Stockton',
-  'LQFR': 'LQ Fresno',
-  'BWVI': 'BW Visalia',
+  'WGFR': 'Wyndham Garden Fresno',
+  'BWSF': 'Brentwood Springfield',
+  'LQST': 'La Quinta Stockton',
+  'LQFR': 'La Quinta Fresno',
+  'BWVI': 'Brentwood Visalia',
   'LIVE': 'The Live Hotel'
 };
 const HOTEL_SELECT_EMOJIS = {
@@ -723,12 +723,12 @@ const TRAINING_HOTEL_GROUPS = [
   { label: 'Sage', hotelIds: ['SAGE'] },
   { label: 'AD1', hotelIds: ['AD1'] },
   { label: 'Hotel Zico', hotelIds: ['ZICO'] },
-  { label: 'WG Fresno', hotelIds: ['WGFR'] },
+  { label: 'Wyndham Garden Fresno', hotelIds: ['WGFR'] },
   { label: 'Thousand Oaks', hotelIds: ['THOK'] },
-  { label: 'BW Springfield', hotelIds: ['BWSF'] },
-  { label: 'LQ Stockton', hotelIds: ['LQST'] },
-  { label: 'LQ Fresno', hotelIds: ['LQFR'] },
-  { label: 'BW Visalia', hotelIds: ['BWVI'] },
+  { label: 'Brentwood Springfield', hotelIds: ['BWSF'] },
+  { label: 'La Quinta Stockton', hotelIds: ['LQST'] },
+  { label: 'La Quinta Fresno', hotelIds: ['LQFR'] },
+  { label: 'Brentwood Visalia', hotelIds: ['BWVI'] },
   { label: 'The Live Hotel', hotelIds: ['LIVE'] },
   { label: 'Brentwood Inn', hotelIds: ['BRNT'] }
 ];
@@ -1936,11 +1936,21 @@ function normalizeHotelInput(input) {
     QUALITYRUSSELVILLE: 'QI_RV',
     QUALITYRUSSELLVILLE: 'QI_RV',
     SAGE: 'SAGE',
+    WYNDHAMGARDEN: 'WGFR',
+    WYNDHAMGARDENFRESNO: 'WGFR',
+    WINDHAMGARDEN: 'WGFR',
+    WINDHAMGARDENFRESNO: 'WGFR',
+    GARDENFRESNO: 'WGFR',
     WGFRESNO: 'WGFR',
     BWFRESNO: 'BWSF',
+    BRENTWOODSPRINGFIELD: 'BWSF',
+    BWSPRINGFIELD: 'BWSF',
     LQSTOCKTON: 'LQST',
+    LAQUINTASTOCKTON: 'LQST',
     LQFRESNO: 'LQFR',
+    LAQUINTAFRESNO: 'LQFR',
     BWVISALIA: 'BWVI',
+    BRENTWOODVISALIA: 'BWVI',
     THELIVEHOTEL: 'LIVE',
     LIVEHOTEL: 'LIVE',
     LIVE: 'LIVE',
@@ -3530,63 +3540,90 @@ async function updateTrainingStatusEmbed(client) {
       ORDER BY sessions.login_time DESC
     `).all();
 
-    const buildTrainingFieldChunks = sessions => {
-      if (sessions.length === 0) {
-        return [{
-          name: '👥 All members in training',
-          value: '• No active trainee',
-          inline: false
-        }];
-      }
+    const groupedSessions = new Map();
+    for (const session of trainingSessions) {
+      const hotelId = normalizeCombinedHotelId(session.hotel_id);
+      const groupLabel = getTrainingGroupLabel(hotelId);
+      if (!groupedSessions.has(groupLabel)) groupedSessions.set(groupLabel, []);
+      groupedSessions.get(groupLabel).push(session);
+    }
 
-      const rows = sessions.map(session => {
-        const hotelLabel = getCombinedHotelLabel(session.hotel_id);
-        return `• <@${session.discord_id}> | ${hotelLabel} | Since: ${formatLoginTimeLabel(session.login_time)}`;
-      });
-
-      const fields = [];
-      let chunk = '';
+    const buildFieldValue = sessions => {
+      const rows = sessions.map(session => `� <@${session.discord_id}> | Since: ${formatLoginTimeLabel(session.login_time)}`);
+      const chunks = [];
+      let current = '';
       for (const row of rows) {
-        const nextChunk = chunk ? `${chunk}\n${row}` : row;
-        if (nextChunk.length > 950) {
-          if (chunk) fields.push(chunk);
-          chunk = row;
+        const next = current ? `${current}\n${row}` : row;
+        if (next.length > 950) {
+          if (current) chunks.push(current);
+          current = row;
         } else {
-          chunk = nextChunk;
+          current = next;
         }
       }
-      if (chunk) fields.push(chunk);
-
-      return fields.map((value, index) => ({
-        name: index === 0 ? '👥 All members in training' : '👥 All members in training (cont.)',
-        value,
-        inline: false
-      }));
+      if (current) chunks.push(current);
+      return chunks;
     };
 
-    const trainingFields = buildTrainingFieldChunks(trainingSessions);
+    const trainingFields = [];
+    const orderedLabels = TRAINING_HOTEL_GROUPS.map(group => group.label);
+    const seenLabels = new Set();
 
-    const activeLabel = trainingSessions.length > 0 ? '🟦 TRAINING IN PROGRESS' : '⚫ TRAINING BOARD IDLE';
+    for (const label of orderedLabels) {
+      const sessions = groupedSessions.get(label);
+      if (!sessions || sessions.length === 0) continue;
+      seenLabels.add(label);
+      const chunks = buildFieldValue(sessions);
+      for (let i = 0; i < chunks.length; i += 1) {
+        trainingFields.push({
+          name: i === 0 ? label : `${label} (cont.)`,
+          value: chunks[i],
+          inline: false
+        });
+      }
+    }
+
+    for (const [label, sessions] of groupedSessions.entries()) {
+      if (seenLabels.has(label)) continue;
+      const chunks = buildFieldValue(sessions);
+      for (let i = 0; i < chunks.length; i += 1) {
+        trainingFields.push({
+          name: i === 0 ? label : `${label} (cont.)`,
+          value: chunks[i],
+          inline: false
+        });
+      }
+    }
+
+    if (trainingFields.length === 0) {
+      trainingFields.push({
+        name: 'All members in training',
+        value: '� No active trainee',
+        inline: false
+      });
+    }
+
+    const activeLabel = trainingSessions.length > 0 ? '?? TRAINING IN PROGRESS' : '? TRAINING BOARD IDLE';
     const embed = new EmbedBuilder()
-      .setTitle('🎓 Aavgo Operations · Training Status')
+      .setTitle('?? Aavgo Operations � Training Status')
       .setDescription(
         `### ${activeLabel}\n` +
-        '────────────────────────\n' +
-        `**🤖 Board:** Live training presence tracker\n` +
-        `**👥 Active Trainees:** ${trainingSessions.length}\n` +
-        `**📍 Scope:** All members in training\n` +
-        '────────────────────────'
+        '--------------\n' +
+        `**?? Board:** Live training presence tracker\n` +
+        `**?? Active Trainees:** ${trainingSessions.length}\n` +
+        `**?? Scope:** All members in training\n` +
+        '--------------'
       )
       .setColor(trainingSessions.length > 0 ? 0x5865F2 : 0x2B2D31)
       .setFields(trainingFields)
-      .setFooter({ text: 'Aavgo Operations • Training Presence' })
+      .setFooter({ text: 'Aavgo Operations � Training Presence' })
       .setTimestamp();
 
     const components = [];
     if (trainingSessions.length > 0) {
       const endTrainingBtn = new ButtonBuilder()
         .setCustomId('training_end_btn')
-        .setLabel('🔴 End-training')
+        .setLabel('?? End-training')
         .setStyle(ButtonStyle.Danger);
       components.push(new ActionRowBuilder().addComponents(endTrainingBtn));
     }

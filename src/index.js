@@ -84,7 +84,12 @@ const ATTENDANCE_HOTEL_KEYWORDS = {
   BUEN: ['buenavista', 'buena vista', 'buen'],
   QI_RV: ['quality inn russellville', 'quality inn russelville', 'quality russellville', 'quality russelville', 'qi rv', 'russellville', 'russelville'],
   THOK: ['thousand oaks', 'thousandoaks', 'thok'],
-  BRNT: ['brentwood', 'brnt']
+  BRNT: ['brentwood', 'brnt'],
+  WGFR: ['wyndham garden fresno', 'windham garden fresno', 'garden fresno', 'wg fresno', 'wgfr'],
+  BWSF: ['brentwood springfield', 'bw springfield', 'bwsf'],
+  LQST: ['la quinta stockton', 'lq stockton', 'lqst'],
+  LQFR: ['la quinta fresno', 'lq fresno', 'lqfr'],
+  BWVI: ['brentwood visalia', 'bw visalia', 'bwvi']
 };
 
 function escapeRegex(value) {

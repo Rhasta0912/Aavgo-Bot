@@ -244,15 +244,15 @@ db.exec(`
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('ZICO', 'Hotel Zico', 'Team 3')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('WGFR', 'WG Fresno', 'Team 4')
+  INSERT INTO hotels (id, name, team) VALUES ('WGFR', 'Wyndham Garden Fresno', 'Team 4')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('BWSF', 'BW Springfield', 'Team 4')
+  INSERT INTO hotels (id, name, team) VALUES ('BWSF', 'Brentwood Springfield', 'Team 4')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('LQST', 'LQ Stockton', 'Team 4')
+  INSERT INTO hotels (id, name, team) VALUES ('LQST', 'La Quinta Stockton', 'Team 4')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('LQFR', 'LQ Fresno', 'Team 4')
+  INSERT INTO hotels (id, name, team) VALUES ('LQFR', 'La Quinta Fresno', 'Team 4')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
-  INSERT INTO hotels (id, name, team) VALUES ('BWVI', 'BW Visalia', 'Team 4')
+  INSERT INTO hotels (id, name, team) VALUES ('BWVI', 'Brentwood Visalia', 'Team 4')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
   INSERT INTO hotels (id, name, team) VALUES ('LIVE', 'The Live Hotel', 'Team 5')
     ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team;
@@ -414,11 +414,11 @@ db.pragma('foreign_keys = ON');
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('MYAL', 'Mylo / Alpine', 'Team 3') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('SAGE', 'Sage', 'Team 3') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('ZICO', 'Hotel Zico', 'Team 3') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
-      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('WGFR', 'WG Fresno', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
-      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('BWSF', 'BW Springfield', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
-      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('LQST', 'LQ Stockton', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
-      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('LQFR', 'LQ Fresno', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
-      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('BWVI', 'BW Visalia', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
+      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('WGFR', 'Wyndham Garden Fresno', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
+      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('BWSF', 'Brentwood Springfield', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
+      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('LQST', 'La Quinta Stockton', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
+      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('LQFR', 'La Quinta Fresno', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
+      db.prepare("INSERT INTO hotels (id, name, team) VALUES ('BWVI', 'Brentwood Visalia', 'Team 4') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
       db.prepare("INSERT INTO hotels (id, name, team) VALUES ('LIVE', 'The Live Hotel', 'Team 5') ON CONFLICT(id) DO UPDATE SET name = excluded.name, team = excluded.team").run();
       db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('QI_RV')").run();
       db.prepare("INSERT OR IGNORE INTO hotel_status (hotel_id) VALUES ('GLDL')").run();
