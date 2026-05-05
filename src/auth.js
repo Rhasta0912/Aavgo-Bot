@@ -503,6 +503,7 @@ const ROLE_NAMES = {
     'LQST': '1498677256854311003',
     'LQFR': '1498677411686912000',
     'BWVI': '1498677448617885796',
+    'BWPE': '1501086067921518703',
     'LIVE': '1498677720555454545'
   },
   // Grey (Permanent / Assignment) Roles
@@ -534,6 +535,7 @@ const ROLE_NAMES = {
     'LQST': '1498677256854311003',
     'LQFR': '1498677411686912000',
     'BWVI': '1498677448617885796',
+    'BWPE': '1501086067921518703',
     'LIVE': '1498677720555454545'
   }
 };
@@ -567,6 +569,7 @@ const HOTEL_NAMES = {
   'LQST': 'La Quinta Stockton',
   'LQFR': 'La Quinta Fresno',
   'BWVI': 'Brentwood Visalia',
+  'BWPE': 'BW Petaluma',
   'LIVE': 'The Live Hotel'
 };
 const HOTEL_SELECT_EMOJIS = {
@@ -680,7 +683,7 @@ const EXCLUSIVE_RANK_ROLE_PRIORITY = [
 const TEAM_1_HOTELS = ['DIBS', 'SUP8', 'RMDA', 'PARM', 'ECON', 'QI_RV', 'BUEN', 'TRVL'];
 const TEAM_2_HOTELS = ['VALS', 'INFL', 'ANPI', 'BAYT', 'GLDL'];
 const TEAM_3_HOTELS = ['MYAL', 'PROS', 'SAGE', 'AD1', 'ZICO'];
-const TEAM_4_HOTELS = ['WGFR', 'THOK', 'BWSF', 'LQST', 'LQFR', 'BWVI'];
+const TEAM_4_HOTELS = ['WGFR', 'BWSF', 'LQST', 'LQFR', 'BWVI', 'THOK', 'BWPE'];
 const TEAM_5_HOTELS = ['LIVE', 'GICP', 'BRNT', 'BW_TO'];
 const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4', 'Team 5'];
 const ON_SHIFT_CALL_CHANNEL_IDS = {
@@ -724,11 +727,12 @@ const TRAINING_HOTEL_GROUPS = [
   { label: 'AD1', hotelIds: ['AD1'] },
   { label: 'Hotel Zico', hotelIds: ['ZICO'] },
   { label: 'Wyndham Garden Fresno', hotelIds: ['WGFR'] },
-  { label: 'Thousand Oaks', hotelIds: ['THOK'] },
   { label: 'Brentwood Springfield', hotelIds: ['BWSF'] },
   { label: 'La Quinta Stockton', hotelIds: ['LQST'] },
   { label: 'La Quinta Fresno', hotelIds: ['LQFR'] },
   { label: 'Brentwood Visalia', hotelIds: ['BWVI'] },
+  { label: 'Thousand Oaks', hotelIds: ['THOK'] },
+  { label: 'BW Petaluma', hotelIds: ['BWPE'] },
   { label: 'The Live Hotel', hotelIds: ['LIVE'] },
   { label: 'Brentwood Inn', hotelIds: ['BRNT'] }
 ];
@@ -1951,6 +1955,9 @@ function normalizeHotelInput(input) {
     LAQUINTAFRESNO: 'LQFR',
     BWVISALIA: 'BWVI',
     BRENTWOODVISALIA: 'BWVI',
+    BWPE: 'BWPE',
+    BWPETALUMA: 'BWPE',
+    PETALUMA: 'BWPE',
     THELIVEHOTEL: 'LIVE',
     LIVEHOTEL: 'LIVE',
     LIVE: 'LIVE',
@@ -2953,7 +2960,7 @@ function handleMissingHotelStatusChannel(client, {
 function getHotelStatusGroupsForTeam(teamName) {
   const teamHotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT' AND team = ?").all(teamName);
   const normalizedIds = [...new Set(teamHotels.map(row => normalizeCombinedHotelId(row.id)).filter(Boolean))];
-  const order = ['DIBS', 'RMDA', 'PARM', 'ECON', 'QI_RV', 'BUEN', 'TRVL', 'VALS', 'INFL', 'ANPI', 'BAYT', 'GLDL', 'MYAL', 'PROS', 'SAGE', 'AD1', 'ZICO', 'WGFR', 'THOK', 'BWSF', 'LQST', 'LQFR', 'BWVI', 'LIVE', 'GICP', 'BRNT', 'BW_TO'];
+  const order = ['DIBS', 'RMDA', 'PARM', 'ECON', 'QI_RV', 'BUEN', 'TRVL', 'VALS', 'INFL', 'ANPI', 'BAYT', 'GLDL', 'MYAL', 'PROS', 'SAGE', 'AD1', 'ZICO', 'WGFR', 'BWSF', 'LQST', 'LQFR', 'BWVI', 'THOK', 'BWPE', 'LIVE', 'GICP', 'BRNT', 'BW_TO'];
 
   const groups = normalizedIds
     .map(hotelId => getHotelStatusGroup(hotelId))
@@ -3221,12 +3228,14 @@ function buildAgentKioskPayload() {
       '> **2.** Click **Initialize Shift** below\n' +
       '> **3.** The bot will detect your role automatically\n' +
       '> **4.** Agent route: choose **Live -> Hotel Shift** or **Practice -> Training**\n' +
-      '> **5.** Team Leader / SME route: choose your assigned Team 1 / Team 2 / Team 3 shift\n\n' +
+      '> **5.** Team Leader / SME route: choose your assigned Team 1 / Team 2 / Team 3 / Team 4 / Team 5 shift\n\n' +
       '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n' +
       '### 🏨 Service Locations\n' +
       '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`\n' +
       '**Team 2:** `Prospero Flagship`, `Glendale / The Leef Hotel`, `Inn at the Fingerlakes`, `Value Suites`, `Bayside / Townhouse`, `Anchor Beach / Pacific Inn`\n' +
-      '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`, `Thousand Oaks`'
+      '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`\n' +
+      '**Team 4:** `Wyndham Garden Fresno`, `Brentwood Springfield`, `La Quinta Stockton`, `La Quinta Fresno`, `Brentwood Visalia`, `Thousand Oaks`, `BW Petaluma`\n' +
+      '**Team 5:** `The Live Hotel`, `Garden Inn and the Campground`, `Brentwood Inn`, `Magnuson / Ironwood`'
     )
     .setColor(0x5865F2)
     .setFooter({ text: 'Aavgo Operations · Automated Access Control' })
@@ -3313,7 +3322,9 @@ async function handleSetupLogin(interaction) {
         '### 🏨 Service Locations\n' +
         '**Team 1:** `Indianhead/Magnuson`, `The Garden Inn At Campsite`, `Ramada / Super 8`, `Travelodge`, `Day Inns Bishop`\n' +
         '**Team 2:** `Prospero Flagship`, `Glendale / The Leef Hotel`, `Inn at the Fingerlakes`, `Value Suites`, `Bayside / Townhouse`, `Anchor Beach / Pacific Inn`\n' +
-        '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`, `Thousand Oaks`'
+        '**Team 3:** `Econolodge`, `Buenavista`, `Quality Russelville`\n' +
+        '**Team 4:** `Wyndham Garden Fresno`, `Brentwood Springfield`, `La Quinta Stockton`, `La Quinta Fresno`, `Brentwood Visalia`, `Thousand Oaks`, `BW Petaluma`\n' +
+        '**Team 5:** `The Live Hotel`, `Garden Inn and the Campground`, `Brentwood Inn`, `Magnuson / Ironwood`'
       )
       .setColor(0x5865F2)
       .setFooter({ text: 'Aavgo Operations · Automated Access Control' })

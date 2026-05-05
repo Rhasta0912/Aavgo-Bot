@@ -67,11 +67,12 @@ const DEMO_HOTELS = {
   ad1: { id: 'AD1', label: 'AD1', team: 'Team 3', emoji: '📞' },
   zico: { id: 'ZICO', label: 'Hotel Zico', team: 'Team 3', emoji: '🏨' },
   wgfr: { id: 'WGFR', label: 'WG Fresno', team: 'Team 4', emoji: '🏨' },
-  thok: { id: 'THOK', label: 'Thousand Oaks', team: 'Team 4', emoji: '🏨' },
   bwsf: { id: 'BWSF', label: 'BW Springfield', team: 'Team 4', emoji: '🏨' },
   lqst: { id: 'LQST', label: 'LQ Stockton', team: 'Team 4', emoji: '🏨' },
   lqfr: { id: 'LQFR', label: 'LQ Fresno', team: 'Team 4', emoji: '🏨' },
   bwvi: { id: 'BWVI', label: 'BW Visalia', team: 'Team 4', emoji: '🏨' },
+  thok: { id: 'THOK', label: 'Thousand Oaks', team: 'Team 4', emoji: '🏨' },
+  bwpe: { id: 'BWPE', label: 'BW Petaluma', team: 'Team 4', emoji: '🏨' },
   live: { id: 'LIVE', label: 'The Live Hotel', team: 'Team 5', emoji: '🏨' },
   brnt: { id: 'BRNT', label: 'Brentwood Inn', team: 'Team 5', emoji: '🏨' }
 };
@@ -79,7 +80,7 @@ const DEMO_HOTELS = {
 const TEAM_1_HOTEL_KEYS = ['dibs', 'rmda_sup8', 'parm', 'econ', 'qi_rv', 'buen', 'trvl'];
 const TEAM_2_HOTEL_KEYS = ['vals', 'infl', 'anpi', 'bayt', 'gldl'];
 const TEAM_3_HOTEL_KEYS = ['myal', 'pros', 'sage', 'ad1', 'zico'];
-const TEAM_4_HOTEL_KEYS = ['wgfr', 'thok', 'bwsf', 'lqst', 'lqfr', 'bwvi'];
+const TEAM_4_HOTEL_KEYS = ['wgfr', 'bwsf', 'lqst', 'lqfr', 'bwvi', 'thok', 'bwpe'];
 const TEAM_5_HOTEL_KEYS = ['live', 'gicp', 'brnt', 'bw_to'];
 
 function normalizeTheme(themeKey) {

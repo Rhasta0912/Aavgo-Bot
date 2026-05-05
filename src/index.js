@@ -53,6 +53,7 @@ const HOTEL_LIVE_VOICE_CHANNEL_IDS = {
   ECON: '1482225519977041981',
   BUEN: '1493763350448963615',
   THOK: '1494858037683421234',
+  BWPE: '1501086191280324710',
   BRNT: '1494858131094900817'
 };
 
@@ -129,7 +130,8 @@ const ATTENDANCE_HOTEL_KEYWORDS = {
   BWSF: ['brentwood springfield', 'bw springfield', 'bwsf'],
   LQST: ['la quinta stockton', 'lq stockton', 'lqst'],
   LQFR: ['la quinta fresno', 'lq fresno', 'lqfr'],
-  BWVI: ['brentwood visalia', 'bw visalia', 'bwvi']
+  BWVI: ['brentwood visalia', 'bw visalia', 'bwvi'],
+  BWPE: ['bw petaluma', 'petaluma', 'bwpetaluma']
 };
 
 function escapeRegex(value) {
