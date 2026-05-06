@@ -1367,6 +1367,12 @@ client.on('guildMemberAdd', async member => {
     console.warn('[NEWCOMER] Failed to send newcomer announcement:', error.message);
   }
 
+  try {
+    await sendRealNameTutorial(member);
+  } catch (error) {
+    console.warn('[ONBOARDING] Failed to send real-name tutorial:', error.message);
+  }
+
 });
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
