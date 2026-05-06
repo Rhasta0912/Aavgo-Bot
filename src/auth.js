@@ -2397,7 +2397,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
       .map(roleId => guild.roles.cache.get(roleId))
       .filter(Boolean);
 
-    const isSupportSession = normalizedRole === 'sme' && sessionMode !== 'training';
+    const isSupportSession = (normalizedRole === 'sme' || normalizedRole === 'team_leader') && sessionMode !== 'training';
 
     if (isTrainingSession) {
       const sessionHotelRole = guild.roles.cache.get(ROLE_NAMES.GREY[hotelId]) || guild.roles.cache.get(ROLE_NAMES.GREEN[hotelId]);

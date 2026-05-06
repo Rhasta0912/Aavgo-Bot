@@ -1219,9 +1219,9 @@ async function sendNewcomerAnnouncement(member) {
     .setTimestamp();
 
   const message = await channel.send({
-    content: `<@&${OPERATIONS_MANAGER_ROLE_ID}>`,
+    content: `<@&${OPERATIONS_MANAGER_ROLE_ID}> <@${member.id}>`,
     embeds: [embed],
-    allowedMentions: { roles: [OPERATIONS_MANAGER_ROLE_ID] }
+    allowedMentions: { roles: [OPERATIONS_MANAGER_ROLE_ID], users: [member.id] }
   });
 
   await message.edit({
@@ -1367,7 +1367,6 @@ client.on('guildMemberAdd', async member => {
     console.warn('[NEWCOMER] Failed to send newcomer announcement:', error.message);
   }
 
-  await sendRealNameTutorial(member);
 });
 
 client.on('guildMemberUpdate', async (oldMember, newMember) => {
