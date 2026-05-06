@@ -2053,39 +2053,52 @@ async function removeApplicantsRoleIfPromoted(member, guild, contextLabel = 'ROL
   }
 }
 
-async function sendAgentPinDM(member, pin, roleLabel = 'Agent', includePin = true) {
+function buildPromotionDmDescription(roleLabel = 'Agent', { includeReferral = false } = {}) {
+  const lines = [
+    `You have been promoted to **${roleLabel}**.`,
+    '',
+    `Please use <#${ATTENDANCE_CHANNEL_ID}> for logging in and out.`,
+    'We kindly request that all Agents to follow the designated formatting for attendance logs to maintain accurate and organized records 30 minutes before the Scheduled Shift/Training.',
+    '',
+    'Format:',
+    '```',
+    '(Log in/Log out) - (Hotel Name) | (Live/Training) - (MM/DD/YYYY)  - (Time of Scheduled Login/Logout)',
+    '```',
+    '',
+    'Example:',
+    '```',
+    'Log in - The Garden Inn Campsite | Live - 4/21/2026  - 10am MNL',
+    '```',
+    '',
+    `If you have questions, please check <#${FAQ_CHANNEL_ID}>.`
+  ];
+
+  if (includeReferral) {
+    lines.push('', `If you were referred, please put the name and the GCash of the agent that referred you in <#${REFERRAL_BONUS_CHANNEL_ID}>.`);
+  }
+
+  return lines.join('\n');
+}
+
+async function sendPromotionDm(member, roleLabel = 'Agent', { includeReferral = false } = {}) {
   const embed = new EmbedBuilder()
     .setTitle(`Welcome to Aavgo, ${member.user.username}`)
-    .setDescription(
-      `You have been promoted to **${roleLabel}**.\n\n` +
-      `Your secure PIN has been set by management.\n` +
-      `For security, the PIN is never shown in direct messages.\n\n` +
-      `Please keep this private and use it only for your Aavgo login flow.`
-    )
+    .setDescription(buildPromotionDmDescription(roleLabel, { includeReferral }))
     .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations � Promotion' })
+    .setFooter({ text: 'Aavgo Operations - Promotion' })
     .setTimestamp();
 
   await member.send({ embeds: [embed] });
+}
+
+async function sendAgentPinDM(member, pin, roleLabel = 'Agent', includePin = true) {
+  return sendPromotionDm(member, roleLabel, { includeReferral: String(roleLabel || '').toLowerCase() === 'agent' });
 }
 
 async function sendNewcomerAgentSetupDM(member) {
-  const embed = new EmbedBuilder()
-    .setTitle(`Welcome to Aavgo, ${member.user.username}`)
-    .setDescription(
-      `You have been promoted to **Agent**.\n\n` +
-      `Please complete your setup in order:\n` +
-      `**1.** Open <#1482255690054762646> (**register-set-pin**).\n` +
-      `**2.** Click the **Setup Security** button.\n` +
-      `**3.** Create your PIN, re-enter the same PIN, then submit your PH phone number (\`63\` or \`09\`).\n\n` +
-      `After this, your account security setup is complete.`
-    )
-    .setColor(0xF1C40F)
-    .setFooter({ text: 'Aavgo Operations � Security Setup' })
-    .setTimestamp();
-
-  await member.send({ embeds: [embed] });
+  return sendPromotionDm(member, 'Agent', { includeReferral: true });
 }
+
 async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent', sourceLabel = 'ADD-AGENT') {
   const member = await interaction.guild.members.fetch(targetUser.id);
   const normalizedRole = normalizeAgentRole(role);
@@ -2120,19 +2133,12 @@ async function applyAgentPromotion(interaction, targetUser, pin, role = 'agent',
     console.warn(`[${sourceLabel}] Role sync warning:`, roleErr.message);
   }
 
-  if (normalizedRole === 'agent' && (sourceLabel === 'ADD-AGENT' || sourceLabel === 'NEWCOMER')) {
-    await sendNewcomerAgentSetupDM(member).catch(error => {
-      console.warn(`[${sourceLabel}] Could not DM setup tutorial:`, error.message);
-    });
-  } else {
-    await sendAgentPinDM(member, pin, getRoleLabel(normalizedRole), sourceLabel !== 'ADD-AGENT').catch(error => {
-      console.warn(`[${sourceLabel}] Could not DM PIN:`, error.message);
-    });
-  }
+  await sendPromotionDm(member, getRoleLabel(normalizedRole), { includeReferral: normalizedRole === 'agent' }).catch(error => {
+    console.warn(`[${sourceLabel}] Could not DM promotion notice:`, error.message);
+  });
 
   return member;
 }
-
 async function handleNewcomerPromotion(interaction) {
   try {
     if (!interactionHasRoleAtLeast(interaction, 'sme')) {
@@ -2169,6 +2175,10 @@ async function handleNewcomerPromotion(interaction) {
         guild: interaction.guild
       });
 
+      await sendPromotionDm(member, 'Trainee').catch(error => {
+        console.warn('[NEWCOMER] Could not DM promotion notice:', error.message);
+      });
+
       await interaction.message.edit({ components: [] }).catch(() => {});
       return interaction.reply({ content: `SUCCESS: **${member.user.username}** has been promoted to **Trainee**.`, ephemeral: true });
     }
@@ -2198,8 +2208,8 @@ async function handleNewcomerPromotion(interaction) {
     if (rolesToRemove.length > 0) await member.roles.remove(rolesToRemove);
     if (rolesToAdd.length > 0) await member.roles.add(rolesToAdd);
 
-    await sendNewcomerAgentSetupDM(member).catch(error => {
-      console.warn('[NEWCOMER] Could not DM setup tutorial:', error.message);
+    await sendPromotionDm(member, 'Agent', { includeReferral: true }).catch(error => {
+      console.warn('[NEWCOMER] Could not DM promotion notice:', error.message);
     });
 
     sendAuditLog(interaction.client, {
@@ -2218,7 +2228,7 @@ async function handleNewcomerPromotion(interaction) {
     }
 
     return interaction.reply({
-      content: `SUCCESS: **${member.user.username}** has been promoted to **Agent** with **Unverified** role. Setup tutorial was sent by DM.`,
+      content: `SUCCESS: **${member.user.username}** has been promoted to **Agent** with **Unverified** role. Promotion notice was sent by DM.`,
       ephemeral: true
     });
   } catch (error) {
