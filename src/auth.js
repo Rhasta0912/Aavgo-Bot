@@ -10729,6 +10729,10 @@ async function handleSelectTrainee(interaction) {
       content: `✅ **${targetUser.username}** has been assigned the **Trainees** role.`,
     });
 
+    await sendPromotionDm(member, 'Trainee').catch(error => {
+      console.warn('[SELECT-TRAINEE] Could not DM promotion notice:', error.message);
+    });
+
     try {
       await removeApplicantsRoleFromMember(member, interaction.guild, 'SELECT-TRAINEE');
     } catch (roleErr) {
