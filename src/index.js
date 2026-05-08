@@ -24,6 +24,7 @@ const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
 const ATTENDANCE_TEST_DELAY_MS = 10 * 1000;
 const ATTENDANCE_LOGOUT_REPLY_DELETE_MS = 10 * 1000;
 const ATTENDANCE_CONFIRM_SUCCESS_DELETE_MS = 10 * 1000;
+const ATTENDANCE_BACKDATED_CONFIRM_THRESHOLD_MS = 2 * 60 * 1000;
 const ATTENDANCE_TIME_ZONE = 'Asia/Manila';
 const ATTENDANCE_REMINDER_BUTTON_PREFIX = 'attendance_reminder';
 const ATTENDANCE_ACTION_BUTTON_PREFIX = 'attendance_action';
@@ -407,6 +408,30 @@ function formatDurationFromMs(ms) {
   return parts.join(' ');
 }
 
+function buildAttendanceBackdateImpact(action, targetMs, nowMs = Date.now()) {
+  if (!Number.isFinite(Number(targetMs)) || !Number.isFinite(Number(nowMs))) return null;
+  const diffMs = Number(nowMs) - Number(targetMs);
+  if (diffMs < ATTENDANCE_BACKDATED_CONFIRM_THRESHOLD_MS) return null;
+
+  const impactDuration = formatDurationFromMs(diffMs);
+  const targetLabel = formatAttendanceTimeLabel(targetMs);
+  const isLogin = action === 'login';
+  const actionLabel = isLogin ? 'login' : 'logout';
+  const impactLabel = isLogin
+    ? `Adds about ${impactDuration} compared with logging in right now.`
+    : `Deducts about ${impactDuration} compared with logging out right now.`;
+
+  return {
+    impactDuration,
+    impactLabel,
+    description:
+      `Are you sure you want to backdate this ${actionLabel} to **${targetLabel}**?\n\n` +
+      (isLogin
+        ? `If you confirm, the shift will start from that time and add about **${impactDuration}** to the tracked shift.`
+        : `If you confirm, the shift will end at that time and deduct about **${impactDuration}** from the tracked shift.`)
+  };
+}
+
 function buildAttendanceActionKey(userId, action) {
   return `${userId}:${action}`;
 }
@@ -505,6 +530,9 @@ async function executeScheduledAttendanceAction(client, entry) {
         console.log(`[ATTENDANCE] Preview-only logout skipped for ${entry.userId}.`);
         return;
       }
+      cancelAttendanceQueuedAction(entry.userId, 'login');
+      auth.clearAttendanceReactionTimer(entry.userId);
+      await auth.setAttendanceQueueRole(member, false).catch(() => {});
       const logoutTimeIso = new Date(effectiveMs).toISOString();
       const result = await auth.handleAttendanceTextLogout({
         client,
@@ -695,6 +723,9 @@ async function sendAttendanceActionConfirmation(message, context) {
   const targetLabel = formatAttendanceTimeLabel(context.targetMs);
   const hotelLabel = isLogin ? auth.getCombinedHotelLabel(context.hotelId) : null;
   const detectedText = String(message.content || '').trim();
+  const impactDescription = context?.pastImpact?.description || null;
+  const impactLabel = context?.pastImpact?.impactLabel || null;
+  const requiresManualConfirm = context?.requiresManualConfirm === true || Boolean(impactDescription);
 
     const pendingEntry = {
       token,
@@ -712,14 +743,23 @@ async function sendAttendanceActionConfirmation(message, context) {
       hotelLabel,
       detectedText,
       previewOnly: context.previewOnly === true,
+      requiresManualConfirm,
+      impactDescription,
+      impactLabel,
       promptCleanupTimer: null
     };
   pendingAttendanceActionConfirmations.set(token, pendingEntry);
 
   const confirmationEmbed = new EmbedBuilder()
-    .setTitle(isLogin ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
+    .setTitle(
+      requiresManualConfirm
+        ? (isLogin ? 'Backdated Login Check' : 'Backdated Logout Check')
+        : (isLogin ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
+    )
     .setDescription(
-      isLogin
+      impactDescription
+        ? impactDescription
+        : isLogin
         ? (
           `Please confirm if you want to log in on this hotel and time from your attendance message.\n\n` +
           `**Hotel:** ${hotelLabel}\n` +
@@ -731,11 +771,14 @@ async function sendAttendanceActionConfirmation(message, context) {
     )
     .addFields(
       { name: 'Detected Attendance Text', value: detectedText ? `\`${detectedText.slice(0, 950)}\`` : '`(empty)`' },
+      ...(impactLabel ? [{ name: 'Hour Impact', value: impactLabel }] : []),
       { name: 'Access', value: `Buttons are locked to <@${userId}> only.` }
     )
-    .setColor(isLogin ? 0x57F287 : 0xED4245)
+    .setColor(requiresManualConfirm ? 0xFEE75C : (isLogin ? 0x57F287 : 0xED4245))
     .setFooter({
-      text: isLogin
+      text: requiresManualConfirm
+        ? 'Aavgo Operations - Backdated Attendance (manual confirmation required)'
+        : isLogin
         ? 'Aavgo Operations - Attendance Confirmation (auto-confirms in 1 minute if ignored)'
         : 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)'
     })
@@ -767,12 +810,12 @@ async function sendAttendanceActionConfirmation(message, context) {
       const active = pendingAttendanceActionConfirmations.get(token);
       if (!active || active.confirmationMessageId !== sent.id) return;
       pendingAttendanceActionConfirmations.delete(token);
-      if (isLogin) {
+      if (isLogin && !requiresManualConfirm) {
         const delayMs = getAttendanceActionDelayMs(active);
         scheduleAttendanceActionExecution(message.client, active, delayMs);
       }
       sent.delete().catch(() => {});
-    }, isLogin ? 60 * 1000 : 10 * 60 * 1000);
+    }, (isLogin && !requiresManualConfirm) ? 60 * 1000 : 10 * 60 * 1000);
     timer.unref?.();
     pendingEntry.promptCleanupTimer = timer;
   } else {
@@ -854,19 +897,28 @@ async function handleAttendanceActionButton(interaction) {
   };
 
   const buildPrimaryEmbed = () => new EmbedBuilder()
-    .setTitle(action === 'login' ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
+    .setTitle(
+      pending.requiresManualConfirm
+        ? (action === 'login' ? 'Backdated Login Check' : 'Backdated Logout Check')
+        : (action === 'login' ? 'Attendance Login Confirmation' : 'Attendance Logout Confirmation')
+    )
     .setDescription(
-      action === 'login'
+      pending.impactDescription
+        ? pending.impactDescription
+        : action === 'login'
         ? `Please confirm if you want to log in on this hotel and time from your attendance message.\n\n**Hotel:** ${pending.hotelLabel}\n**Mode:** ${pending.modeLabel}\n**Time:** ${pending.targetLabel}`
         : 'Please confirm logout.\n\nThis will end your shift immediately once you confirm.'
     )
     .addFields(
       { name: 'Detected Attendance Text', value: pending.detectedText ? `\`${pending.detectedText.slice(0, 950)}\`` : '`(empty)`' },
+      ...(pending.impactLabel ? [{ name: 'Hour Impact', value: pending.impactLabel }] : []),
       { name: 'Access', value: `Buttons are locked to <@${pending.userId}> only.` }
     )
-    .setColor(action === 'login' ? 0x57F287 : 0xED4245)
+    .setColor(pending.requiresManualConfirm ? 0xFEE75C : (action === 'login' ? 0x57F287 : 0xED4245))
     .setFooter({
-      text: action === 'login'
+      text: pending.requiresManualConfirm
+        ? 'Aavgo Operations - Backdated Attendance (manual confirmation required)'
+        : action === 'login'
         ? 'Aavgo Operations - Attendance Confirmation (auto-confirms in 1 minute if ignored)'
         : 'Aavgo Operations - Attendance Confirmation (auto-delete after decision)'
     })
@@ -956,7 +1008,9 @@ async function handleAttendanceActionButton(interaction) {
   const successEmbed = new EmbedBuilder()
     .setTitle(`${action === 'login' ? 'Login' : 'Logout'} Confirmed`)
     .setDescription(
-      delayMs > 0
+      pending.impactLabel
+        ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied for **${pending.targetLabel}**.\n**Hour impact:** ${pending.impactLabel}${pending.previewOnly ? '\n\nTest mode: no hours were logged.' : ''}`
+        : delayMs > 0
         ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} is scheduled in **${formatDurationFromMs(delayMs)}**.\n**Target:** ${pending.targetLabel}`
         : `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied now.`
     )
@@ -1442,6 +1496,22 @@ client.on('guildMemberRemove', async member => {
 
       if (action === 'logout') {
         const logoutMs = resolveAttendanceLogoutTimeMs(message.content, nowMs);
+        const logoutBackdateImpact = timeExplicit
+          ? buildAttendanceBackdateImpact('logout', logoutMs, nowMs)
+          : null;
+        if (logoutBackdateImpact) {
+          await sendAttendanceActionConfirmation(message, {
+            action: 'logout',
+            targetMs: logoutMs,
+            isTestRole: isTestRoleMember(member),
+            timeExplicit: true,
+            teamName: resolveAttendanceTeamName(member),
+            previewOnly: isPreviewAttendanceChannel,
+            requiresManualConfirm: true,
+            pastImpact: logoutBackdateImpact
+          });
+          return;
+        }
         const logoutTimeIso = new Date(logoutMs).toISOString();
         cancelAttendanceQueuedAction(message.author.id, 'login');
         auth.clearAttendanceReactionTimer(message.author.id);
@@ -1492,6 +1562,25 @@ client.on('guildMemberRemove', async member => {
       const reminderDelayMs = Math.max(0, targetMs - nowMs);
       const targetLabel = formatAttendanceTimeLabel(targetMs);
       const previewOnly = isPreviewAttendanceChannel;
+      const loginBackdateImpact = timeExplicit
+        ? buildAttendanceBackdateImpact('login', targetMs, nowMs)
+        : null;
+      if (loginBackdateImpact) {
+        await sendAttendanceActionConfirmation(message, {
+          action: 'login',
+          member,
+          hotelId,
+          mode,
+          targetMs,
+          isTestRole,
+          timeExplicit: true,
+          teamName,
+          previewOnly,
+          requiresManualConfirm: true,
+          pastImpact: loginBackdateImpact
+        });
+        return;
+      }
 
       scheduleAttendanceLoginReminder(message, {
         member,

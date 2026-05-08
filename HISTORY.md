@@ -60,6 +60,11 @@ Working rules:
 - This repo copy exists so another PC can recover context directly from GitHub even if the desktop archive is unavailable.
 
 ## Latest Changes
+- Added backdated Attendance login/logout confirmation warnings.
+  - Summary: Attendance text posts that include a time meaningfully in the past now pause for a button confirmation before changing hours. Backdated logins warn that the shift will gain the extra tracked time, while backdated logouts warn that the shift will deduct the selected time difference. Ignored backdated confirmations expire instead of auto-applying, so normal current/future Attendance flow stays fast while payroll-impacting corrections require an explicit click.
+  - Files touched:
+    - src/index.js
+    - HISTORY.md
 - Added scheduled Attendance reaction flips so the clock turns into a check at shift time.
   - Summary: Attendance login posts now schedule a reaction flip when a future shift time is detected. Live Attendance keeps the 30-minute clock rule, while the preview Attendance channel now shows the clock for future shifts and automatically swaps to a check when the target time arrives. Logout clears any pending flip so stale clocks do not turn into checks after the user ends shift.
   - Files touched:
