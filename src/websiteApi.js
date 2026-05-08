@@ -484,6 +484,30 @@ function normalizeWebsiteClockTime(value) {
   return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 }
 
+function normalizeWebsiteIsoTimestamp(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms).toISOString();
+}
+
+function buildWebsiteManualInstant(shiftDate, clockTime, clockTimeIso) {
+  const normalizedDate = normalizeWebsiteShiftDate(shiftDate);
+  const normalizedClock = normalizeWebsiteClockTime(clockTime);
+  const normalizedIso = normalizeWebsiteIsoTimestamp(clockTimeIso);
+  if (!normalizedDate || !normalizedClock || !normalizedIso) {
+    return null;
+  }
+
+  return {
+    shiftDate: normalizedDate,
+    clockTime: normalizedClock,
+    isoTime: normalizedIso,
+    ms: Date.parse(normalizedIso)
+  };
+}
+
 function buildWebsiteManualTiming(shiftDate, loginTime, logoutTime) {
   const normalizedDate = normalizeWebsiteShiftDate(shiftDate);
   const normalizedLogin = normalizeWebsiteClockTime(loginTime);
@@ -559,6 +583,18 @@ function resolveWebsiteManualHotel(agent, explicitHotelInput) {
   return {
     hotelId: '',
     hotelLabel: 'Unassigned'
+  };
+}
+
+function resolveWebsiteSessionHotel(agent, explicitHotelInput) {
+  const inferred = resolveWebsiteManualHotel(agent, explicitHotelInput);
+  if (inferred.hotelId) {
+    return inferred;
+  }
+
+  return {
+    hotelId: 'TEAM_SHIFT',
+    hotelLabel: 'Team Operations'
   };
 }
 
@@ -674,10 +710,6 @@ async function createWebsiteHoursAdjustment(client, guild, command, mode = 'add'
     ? resolveWebsiteManualHotel(agent, command?.payload?.hotelId || '')
     : { hotelId: '', hotelLabel: 'Training mode' };
 
-  if (adjustmentMode === 'shift' && !hotelInfo.hotelId) {
-    throw new Error('Manual live-shift hours need a valid hotel or a linked hotel on the agent record.');
-  }
-
   const requestedHours = normalizeWebsiteNumber(command?.payload?.hours);
   const hours = Number.isFinite(requestedHours) && requestedHours > 0
     ? roundHours(requestedHours)
@@ -731,6 +763,178 @@ async function createWebsiteHoursAdjustment(client, guild, command, mode = 'add'
 
   return {
     message: `${agent.username} received ${formatHours(hours)} for ${timing.shiftDate}.`
+  };
+}
+
+async function applyWebsiteManualLoginCommand(client, guild, command) {
+  const discordId = String(command?.payload?.discordId || '').trim();
+  if (!discordId) {
+    throw new Error('Manual login needs a target staff member.');
+  }
+
+  const agent = db.prepare('SELECT id, discord_id, username, hotel_id FROM agents WHERE discord_id = ?').get(discordId);
+  if (!agent) {
+    throw new Error('The selected staff member does not exist in the live database.');
+  }
+
+  const reason = String(command?.payload?.reason || '').trim();
+  if (!reason) {
+    throw new Error('Manual login needs a reason.');
+  }
+
+  const timing = buildWebsiteManualInstant(
+    command?.payload?.shiftDate || '',
+    command?.payload?.loginTime || '',
+    command?.payload?.loginTimeIso || ''
+  );
+  if (!timing) {
+    throw new Error('Manual login needs a valid date and login time.');
+  }
+  if (timing.ms > Date.now() + (2 * 60 * 1000)) {
+    throw new Error('Manual login time cannot be in the future.');
+  }
+
+  const actor = buildActionActor(command);
+  const sessionMode = normalizeWebsiteHoursMode(command?.payload?.mode || 'shift');
+  const hotelInfo = resolveWebsiteSessionHotel(agent, command?.payload?.hotelId || '');
+  const activeSession = db.prepare(`
+    SELECT id, hotel_id, login_time, session_kind
+    FROM sessions
+    WHERE agent_id = ? AND status = 'active'
+    ORDER BY datetime(login_time) DESC, id DESC
+    LIMIT 1
+  `).get(agent.id);
+
+  if (activeSession) {
+    db.prepare(`
+      UPDATE sessions
+      SET hotel_id = ?,
+          session_kind = ?,
+          login_time = ?,
+          logout_time = NULL,
+          time_travel_offset_ms = 0,
+          overtime_warning_at = NULL,
+          overtime_confirmed = 0,
+          overtime_next_warning_at = NULL
+      WHERE id = ?
+    `).run(hotelInfo.hotelId, sessionMode, timing.isoTime, activeSession.id);
+  } else {
+    db.prepare(`
+      INSERT INTO sessions (agent_id, hotel_id, session_kind, login_time)
+      VALUES (?, ?, ?, ?)
+    `).run(agent.id, hotelInfo.hotelId, sessionMode, timing.isoTime);
+  }
+
+  const affectedHotelIds = [...new Set([hotelInfo.hotelId, activeSession?.hotel_id].filter(Boolean))];
+  for (const hotelId of affectedHotelIds) {
+    if (hotelId !== 'TEAM_SHIFT') {
+      void auth.updateHotelStatusEmbed(client, hotelId).catch(error => {
+        console.warn('[WEBSITE-API] Manual login hotel status refresh failed:', error.message);
+      });
+    }
+  }
+  void auth.updateAllHotelStatusEmbed(client).catch(error => {
+    console.warn('[WEBSITE-API] Manual login board refresh failed:', error.message);
+  });
+
+  void Promise.resolve().then(() => auth.sendAuditLog(client, {
+    title: 'Website Manual Login',
+    description:
+      `**User:** ${agent.username} (<@${discordId}>)\n` +
+      `**Mode:** ${sessionMode === 'training' ? 'Training' : 'Live Shift'}\n` +
+      `**Inferred Hotel:** ${hotelInfo.hotelLabel}\n` +
+      `**Login:** ${timing.shiftDate} ${timing.clockTime}\n` +
+      `**Reason:** ${reason}\n` +
+      `**Session:** ${activeSession ? 'Adjusted existing active session' : 'Created active session'}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0x57F287,
+    userId: actor.discordId,
+    guild
+  })).catch(error => {
+    console.warn('[WEBSITE-API] Manual login audit log failed:', error.message);
+  });
+
+  return {
+    message: activeSession
+      ? `${agent.username}'s active login was moved to ${timing.clockTime} on ${timing.shiftDate}.`
+      : `${agent.username} was marked logged in from ${timing.clockTime} on ${timing.shiftDate}.`
+  };
+}
+
+async function applyWebsiteManualLogoutCommand(client, guild, command) {
+  const discordId = String(command?.payload?.discordId || '').trim();
+  if (!discordId) {
+    throw new Error('Manual logout needs a target staff member.');
+  }
+
+  const agent = db.prepare('SELECT id, discord_id, username FROM agents WHERE discord_id = ?').get(discordId);
+  if (!agent) {
+    throw new Error('The selected staff member does not exist in the live database.');
+  }
+
+  const reason = String(command?.payload?.reason || '').trim();
+  if (!reason) {
+    throw new Error('Manual logout needs a reason.');
+  }
+
+  const timing = buildWebsiteManualInstant(
+    command?.payload?.shiftDate || '',
+    command?.payload?.logoutTime || '',
+    command?.payload?.logoutTimeIso || ''
+  );
+  if (!timing) {
+    throw new Error('Manual logout needs a valid date and logout time.');
+  }
+  if (timing.ms > Date.now() + (2 * 60 * 1000)) {
+    throw new Error('Manual logout time cannot be in the future.');
+  }
+
+  const activeSessions = db.prepare(`
+    SELECT id, hotel_id, login_time, session_kind
+    FROM sessions
+    WHERE agent_id = ? AND status = 'active'
+    ORDER BY datetime(login_time) DESC, id DESC
+  `).all(agent.id);
+  if (activeSessions.length === 0) {
+    throw new Error(`${agent.username} has no active website/bot session to log out.`);
+  }
+
+  const earliestLoginMs = Math.min(...activeSessions.map(session => Date.parse(session.login_time)).filter(Number.isFinite));
+  if (Number.isFinite(earliestLoginMs) && timing.ms <= earliestLoginMs) {
+    throw new Error('Manual logout time must be after the active login time.');
+  }
+
+  const closedSessionRefs = await auth.closeAllActiveSessionsForAgent(agent.id, client, {
+    logoutTimeIso: timing.isoTime
+  });
+  const member = guild ? await fetchGuildMember(guild, discordId) : null;
+  if (member) {
+    await auth.applyLoggedOutRolesForMember(guild, member, closedSessionRefs).catch(() => {});
+  }
+
+  const actor = buildActionActor(command);
+  const durationHours = Number.isFinite(earliestLoginMs)
+    ? roundHours((timing.ms - earliestLoginMs) / (60 * 60 * 1000))
+    : 0;
+
+  void Promise.resolve().then(() => auth.sendAuditLog(client, {
+    title: 'Website Manual Logout',
+    description:
+      `**User:** ${agent.username} (<@${discordId}>)\n` +
+      `**Logout:** ${timing.shiftDate} ${timing.clockTime}\n` +
+      `**Closed Sessions:** ${closedSessionRefs.length}\n` +
+      `**Estimated Hours:** ${formatHours(durationHours)}\n` +
+      `**Reason:** ${reason}\n` +
+      '**Requested By:** {{AGENT_NAME}}',
+    color: 0xED4245,
+    userId: actor.discordId,
+    guild
+  })).catch(error => {
+    console.warn('[WEBSITE-API] Manual logout audit log failed:', error.message);
+  });
+
+  return {
+    message: `${agent.username} was logged out at ${timing.clockTime} on ${timing.shiftDate}.`
   };
 }
 
@@ -1585,6 +1789,10 @@ async function applyWebsiteCommand(client, guild, command) {
       return applyForceLogoutHotelCommand(client, guild, command);
     case 'bulk_force_logout_agents':
       return applyBulkForceLogoutAgentsCommand(client, guild, command);
+    case 'manual_login_agent':
+      return applyWebsiteManualLoginCommand(client, guild, command);
+    case 'manual_logout_agent':
+      return applyWebsiteManualLogoutCommand(client, guild, command);
     case 'add_manual_hours':
       return createWebsiteHoursAdjustment(client, guild, command, 'add');
     case 'remove_manual_hours':
@@ -1774,7 +1982,7 @@ function buildRouter(client) {
           return json(res, 400, { ok: false, error: 'Missing hours action.' });
         }
 
-        if (!['set_day_hours', 'add_manual_hours', 'remove_manual_hours'].includes(action)) {
+        if (!['set_day_hours', 'add_manual_hours', 'remove_manual_hours', 'manual_login_agent', 'manual_logout_agent'].includes(action)) {
           return json(res, 400, { ok: false, error: 'Unsupported hours action.' });
         }
 

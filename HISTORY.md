@@ -1,4 +1,4 @@
-﻿# Aavgo Bot History
+# Aavgo Bot History
 
 This is the GitHub-side continuity file for the live bot repo.
 
@@ -1544,3 +1544,10 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - HISTORY.md
   - Notes:
     - None
+- Emergency website manual login/logout controls
+  - Summary: Leadership can mark an agent logged in from a selected past date/time through the website, then manually log them out at a selected time so hours count from the backdated start. The website no longer asks for hotel in the manual shift editor; the bot bridge infers the agent's linked/latest hotel and falls back to Team Operations when needed. Manual completed-shift corrections also no longer require a hotel selection.
+  - Files touched:
+    - src/websiteApi.js
+    - HISTORY.md
+  - Notes:
+    - Website repo also added the matching admin UI controls.
