@@ -1496,22 +1496,6 @@ client.on('guildMemberRemove', async member => {
 
       if (action === 'logout') {
         const logoutMs = resolveAttendanceLogoutTimeMs(message.content, nowMs);
-        const logoutBackdateImpact = timeExplicit
-          ? buildAttendanceBackdateImpact('logout', logoutMs, nowMs)
-          : null;
-        if (logoutBackdateImpact) {
-          await sendAttendanceActionConfirmation(message, {
-            action: 'logout',
-            targetMs: logoutMs,
-            isTestRole: isTestRoleMember(member),
-            timeExplicit: true,
-            teamName: resolveAttendanceTeamName(member),
-            previewOnly: isPreviewAttendanceChannel,
-            requiresManualConfirm: true,
-            pastImpact: logoutBackdateImpact
-          });
-          return;
-        }
         const logoutTimeIso = new Date(logoutMs).toISOString();
         cancelAttendanceQueuedAction(message.author.id, 'login');
         auth.clearAttendanceReactionTimer(message.author.id);
