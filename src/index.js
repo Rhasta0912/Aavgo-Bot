@@ -1360,6 +1360,13 @@ client.once('ready', async () => {
     setInterval(() => {
       auth.monitorOvertimeSessions(client);
     }, 15 * 1000);
+
+    // Live status board refresh loop (every minute).
+    setInterval(() => {
+      auth.refreshLiveStatusBoard(client).catch(error => {
+        console.warn('[LIVE-STATUS] Scheduled refresh failed:', error.message);
+      });
+    }, 60 * 1000);
     
     // Initial check on boot
     auth.checkSchedules(client);

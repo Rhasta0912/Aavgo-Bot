@@ -619,6 +619,7 @@ const TEAM_4_HOTEL_STATUS_CHANNEL_ID = '1482222215184519360';
 const TEAM_4_LOG_CHANNEL_ID = '1498683972895637525';
 const TEAM_5_HOTEL_STATUS_CHANNEL_ID = '1498685179726921788';
 const TEAM_5_LOG_CHANNEL_ID = '1498685207723638915';
+const LIVE_STATUS_CHANNEL_ID = '1502554754713256027';
 const PROSPERO_LOG_CHANNEL_ID = '1482383371320430592';
 const TEAM_2_PERMISSION_ROLE_ID = '1489855054134640740';
 const TEAM_2_GHOST_ROLE_ID = '1489855140767993997';
@@ -671,6 +672,7 @@ const overtimeWarnedSessionIds = new Set();
 const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
 let combinedHotelStatusRefreshTimer = null;
+let liveStatusRefreshInFlight = false;
 const missingHotelStatusChannelWarnings = new Set();
 const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   TEAM_LEADER_ROLE_ID,
@@ -878,6 +880,29 @@ function formatDurationHms(totalMs = 0) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${hours}h ${minutes}m ${seconds}s`;
+}
+
+function formatDurationHm(totalMs = 0) {
+  const safeMs = Math.max(0, Number(totalMs) || 0);
+  const totalMinutes = Math.floor(safeMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}h ${minutes}m`;
+}
+
+function getLiveSessionElapsedMs(session, nowMs = Date.now()) {
+  const loginMs = parseSessionTimestamp(session?.login_time);
+  const offsetMs = getSessionTimeTravelOffsetMs(session);
+  return Math.max(0, nowMs - loginMs + offsetMs);
+}
+
+function getLiveStatusRoleLabel(role) {
+  const normalized = normalizeAgentRole(role);
+  if (normalized === 'team_leader') return 'TL';
+  if (normalized === 'sme') return 'SME';
+  if (normalized === 'operations_manager') return 'OM';
+  if (normalized === 'trainee') return 'Trainee';
+  return 'Agent';
 }
 
 function getCappedLogoutIso(loginTimeValue, capMs = OVERTIME_WARNING_MS) {
@@ -2510,6 +2535,7 @@ async function finalizeShiftLogin(interaction, agent, hotelId, isTakeover = fals
   if (sessionMode === 'training') {
     updateTrainingStatusEmbed(interaction.client).catch(e => console.error('Failed to update training status embed:', e));
   }
+  refreshLiveStatusBoard(interaction.client).catch(e => console.error('Failed to update live status embed:', e));
 
   const unreadNotes = db.prepare(`
     SELECT handover_notes.*, agents.username
@@ -3663,6 +3689,229 @@ async function updateTrainingStatusEmbed(client) {
     console.warn('[TRAINING-STATUS] Failed to update training status embed:', e.message);
   }
 }
+
+function buildStatusSectionRows(title, rows, emptyText = 'No active members') {
+  const blocks = [];
+  const header = `**${title}**`;
+  if (!rows || rows.length === 0) {
+    return [`${header}\n• ${emptyText}`];
+  }
+
+  let current = `${header}\n`;
+  for (const row of rows) {
+    const addition = `${current.endsWith('\n') ? '' : '\n'}${row}`;
+    if ((current + addition).length > 1000) {
+      blocks.push(current.trimEnd());
+      current = `${header}\n${row}`;
+    } else {
+      current += `${row}\n`;
+    }
+  }
+
+  if (current.trim()) {
+    blocks.push(current.trimEnd());
+  }
+
+  return blocks.length > 0 ? blocks : [`${header}\n• ${emptyText}`];
+}
+
+function createStatusBoardSummary(activeEntries) {
+  const total = activeEntries.length;
+  const teamLeaders = activeEntries.filter(entry => entry.group === 'team_leaders').length;
+  const smes = activeEntries.filter(entry => entry.group === 'smes').length;
+  const agentsShift = activeEntries.filter(entry => entry.group === 'agents_shift').length;
+  const agentsTraining = activeEntries.filter(entry => entry.group === 'agents_training').length;
+  const traineesTraining = activeEntries.filter(entry => entry.group === 'trainees_training').length;
+
+  return [
+    `> Board: Live status tracker`,
+    `> Active Members: ${total}`,
+    `> Team Leaders: ${teamLeaders}`,
+    `> SMEs: ${smes}`,
+    `> Agents on shift: ${agentsShift}`,
+    `> Agents in training: ${agentsTraining}`,
+    `> Trainees in training: ${traineesTraining}`
+  ].join('\n');
+}
+
+async function updateLiveStatusEmbed(client) {
+  try {
+    const channel = await client.channels.fetch(LIVE_STATUS_CHANNEL_ID);
+    if (!channel) return;
+
+    const activeSessions = db.prepare(`
+      SELECT
+        sessions.id,
+        sessions.agent_id,
+        sessions.hotel_id,
+        sessions.session_kind,
+        sessions.login_time,
+        COALESCE(sessions.time_travel_offset_ms, 0) AS time_travel_offset_ms,
+        agents.username,
+        agents.discord_id,
+        agents.role
+      FROM sessions
+      JOIN agents ON sessions.agent_id = agents.id
+      WHERE sessions.status = 'active'
+      ORDER BY sessions.id DESC
+    `).all();
+
+    const latestByAgent = new Map();
+    for (const session of activeSessions) {
+      if (!latestByAgent.has(session.agent_id)) {
+        latestByAgent.set(session.agent_id, session);
+      }
+    }
+
+    const categories = {
+      team_leaders: [],
+      smes: [],
+      agents_shift: [],
+      agents_training: [],
+      trainees_training: []
+    };
+
+    const nowMs = Date.now();
+    const visibleSessions = [...latestByAgent.values()].filter(session => {
+      const normalizedRole = normalizeAgentRole(session.role);
+      return ['team_leader', 'sme', 'agent', 'trainee', 'operations_manager'].includes(normalizedRole);
+    });
+
+    visibleSessions.sort((a, b) => parseSessionTimestamp(b.login_time) - parseSessionTimestamp(a.login_time));
+
+    for (const session of visibleSessions) {
+      const normalizedRole = normalizeAgentRole(session.role);
+      const sessionKind = String(session.session_kind || 'shift').toLowerCase();
+      const hotelLabel = getCombinedHotelLabel(normalizeCombinedHotelId(session.hotel_id));
+      const elapsedLabel = formatDurationHm(getLiveSessionElapsedMs(session, nowMs));
+      const roleLabel = getLiveStatusRoleLabel(session.role);
+
+      if (normalizedRole === 'team_leader' || normalizedRole === 'operations_manager') {
+        categories.team_leaders.push(
+          sessionKind === 'training'
+            ? `• <@${session.discord_id}> - Training | ${hotelLabel} | ${roleLabel} | ${elapsedLabel}`
+            : `• <@${session.discord_id}> - Support | ${roleLabel} | ${elapsedLabel}`
+        );
+        continue;
+      }
+
+      if (normalizedRole === 'sme') {
+        categories.smes.push(
+          sessionKind === 'training'
+            ? `• <@${session.discord_id}> - Training | ${hotelLabel} | ${roleLabel} | ${elapsedLabel}`
+            : `• <@${session.discord_id}> - Support | ${roleLabel} | ${elapsedLabel}`
+        );
+        continue;
+      }
+
+      if (normalizedRole === 'trainee' && sessionKind === 'training') {
+        categories.trainees_training.push(`• <@${session.discord_id}> - Training | ${hotelLabel} | ${elapsedLabel}`);
+        continue;
+      }
+
+      if (sessionKind === 'training') {
+        categories.agents_training.push(`• <@${session.discord_id}> - Training | ${hotelLabel} | ${elapsedLabel}`);
+        continue;
+      }
+
+      categories.agents_shift.push(`• <@${session.discord_id}> - Live | ${hotelLabel} | ${elapsedLabel}`);
+    }
+
+    const fieldGroups = [
+      ['Team Leaders', categories.team_leaders],
+      ['SMEs', categories.smes],
+      ['Agents on shift', categories.agents_shift],
+      ['Agents in training', categories.agents_training],
+      ['Trainees in training', categories.trainees_training]
+    ];
+
+    const fields = [];
+    for (const [title, rows] of fieldGroups) {
+      const chunks = buildStatusSectionRows(title, rows, 'No active members');
+      chunks.forEach((chunk, index) => {
+        fields.push({
+          name: index === 0 ? title : `${title} (cont.)`,
+          value: chunk,
+          inline: false
+        });
+      });
+    }
+
+    const summaryEntries = visibleSessions.map(session => {
+      const normalizedRole = normalizeAgentRole(session.role);
+      const sessionKind = String(session.session_kind || 'shift').toLowerCase();
+      return {
+        group:
+          normalizedRole === 'team_leader' || normalizedRole === 'operations_manager'
+            ? 'team_leaders'
+            : normalizedRole === 'sme'
+              ? 'smes'
+              : normalizedRole === 'trainee' && sessionKind === 'training'
+                ? 'trainees_training'
+                : sessionKind === 'training'
+                  ? 'agents_training'
+                  : 'agents_shift'
+      };
+    });
+    const summary = createStatusBoardSummary(summaryEntries);
+
+    const embeds = [];
+    const fieldChunks = [];
+    for (let index = 0; index < fields.length; index += 25) {
+      fieldChunks.push(fields.slice(index, index + 25));
+    }
+
+    if (fieldChunks.length === 0) {
+      fieldChunks.push([]);
+    }
+
+    fieldChunks.forEach((chunk, index) => {
+      embeds.push(
+        new EmbedBuilder()
+          .setTitle(index === 0 ? 'Aavgo Operations - Live Status' : 'Aavgo Operations - Live Status (cont.)')
+          .setDescription(
+            `${index === 0 ? 'Live presence for currently active members.' : 'Continuation of the live status board.'}\n` +
+            '----------------------------------------\n' +
+            `${index === 0 ? summary : '> Continuation block'}`
+          )
+          .setColor(visibleSessions.length > 0 ? 0x57F287 : 0x2B2D31)
+          .setFields(chunk.length > 0 ? chunk : [{ name: 'Status', value: 'No active members', inline: false }])
+          .setFooter({ text: 'Aavgo Operations - Live Presence' })
+          .setTimestamp()
+      );
+    });
+
+    const key = 'live_status_msg';
+    const stored = db.prepare("SELECT value FROM config WHERE key = ?").get(key);
+    if (stored?.value) {
+      try {
+        const msg = await channel.messages.fetch(stored.value);
+        await msg.edit({ embeds });
+        return;
+      } catch (e) {
+        db.prepare("DELETE FROM config WHERE key = ?").run(key);
+      }
+    }
+
+    const newMsg = await channel.send({ embeds });
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, newMsg.id);
+  } catch (e) {
+    console.warn('[LIVE-STATUS] Failed to update live status embed:', e.message);
+  }
+}
+
+async function refreshLiveStatusBoard(client) {
+  if (!client) return;
+  if (liveStatusRefreshInFlight) return;
+  liveStatusRefreshInFlight = true;
+  try {
+    await updateLiveStatusEmbed(client);
+  } catch (error) {
+    console.warn('[LIVE-STATUS] Refresh failed:', error.message);
+  } finally {
+    liveStatusRefreshInFlight = false;
+  }
+}
 async function refreshOperationalBoards(client) {
   try {
     const hotels = db.prepare("SELECT id FROM hotels WHERE id != 'TEAM_SHIFT'").all();
@@ -3674,6 +3923,7 @@ async function refreshOperationalBoards(client) {
     await updateTeamStatusEmbed(client, 'Team 2');
     await updateTeamStatusEmbed(client, 'Team 3');
     await updateTrainingStatusEmbed(client);
+    await refreshLiveStatusBoard(client);
   } catch (error) {
     console.warn('[STATUS] Boot refresh failed:', error.message);
   }
@@ -7051,6 +7301,7 @@ async function handleLogout(interaction) {
       }
 
       await updateAllHotelStatusEmbed(interaction.client).catch(() => {});
+      await refreshLiveStatusBoard(interaction.client).catch(() => {});
       return interaction.editReply({
         content: forceEndedByManager
           ? 'That user is not currently on any shift. Live Hotel Presence has been refreshed.'
@@ -7148,6 +7399,8 @@ async function handleLogout(interaction) {
     } catch (roleErr) {
       console.warn('[ROLES] Could not revert roles:', roleErr.message);
     }
+
+    await refreshLiveStatusBoard(interaction.client).catch(() => {});
 
     // Audit log
     const hotelNames = closedHotelIds.length > 0
@@ -12032,6 +12285,7 @@ module.exports = {
   ensureAgentKioskMessage,
   updateHotelStatusEmbed,
   updateAllHotelStatusEmbed,
+  refreshLiveStatusBoard,
   handleSetupLogin, 
   handleSetupRegister,
   handleSetupSecurity,
