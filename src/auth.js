@@ -3690,21 +3690,20 @@ async function updateTrainingStatusEmbed(client) {
   }
 }
 
-function buildStatusSectionRows(title, rows, emptyText = 'No active members') {
+function buildStatusSectionRows(rows, emptyText = 'No active members') {
   const blocks = [];
-  const header = `**${title}**`;
   if (!rows || rows.length === 0) {
-    return [`${header}\n• ${emptyText}`];
+    return [`• ${emptyText}`];
   }
 
-  let current = `${header}\n`;
+  let current = '';
   for (const row of rows) {
-    const addition = `${current.endsWith('\n') ? '' : '\n'}${row}`;
+    const addition = current ? `\n${row}` : row;
     if ((current + addition).length > 1000) {
       blocks.push(current.trimEnd());
-      current = `${header}\n${row}`;
+      current = row;
     } else {
-      current += `${row}\n`;
+      current = current ? `${current}\n${row}` : row;
     }
   }
 
@@ -3712,7 +3711,7 @@ function buildStatusSectionRows(title, rows, emptyText = 'No active members') {
     blocks.push(current.trimEnd());
   }
 
-  return blocks.length > 0 ? blocks : [`${header}\n• ${emptyText}`];
+  return blocks.length > 0 ? blocks : [`• ${emptyText}`];
 }
 
 function createStatusBoardSummary(activeEntries) {
@@ -3827,7 +3826,7 @@ async function updateLiveStatusEmbed(client) {
 
     const fields = [];
     for (const [title, rows] of fieldGroups) {
-      const chunks = buildStatusSectionRows(title, rows, 'No active members');
+      const chunks = buildStatusSectionRows(rows, 'No active members');
       chunks.forEach((chunk, index) => {
         fields.push({
           name: index === 0 ? title : `${title} (cont.)`,
