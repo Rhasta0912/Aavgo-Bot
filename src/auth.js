@@ -3957,7 +3957,7 @@ function buildRulesEmbed() {
       { name: '🧠 7. Follow management instructions.', value: spaced('If a Team Leader, SME, or Operations Manager gives a work instruction, follow it unless it conflicts with a higher rule.'), inline: false },
       { name: '⏱️ 8. Do not manipulate hours or roles.', value: spaced('Do not try to extend shifts, hide logouts, or force the wrong status.\nReport mistakes instead of trying to work around them.'), inline: false },
       { name: '✅ 9. Keep attendance accurate.', value: spaced('If you log in late or log out late, make sure the entry reflects the correct schedule.\nDo not intentionally submit incorrect times.'), inline: false },
-      { name: '🤖 10. Aavgo Bot Communication.', value: spaced('When you receive a notification or message from the Aavgo Bot, you are advised to check your Direct Messages (DMs) immediately.\n\n**Why:** The bot sends critical updates and guest-related alerts that require your prompt attention to maintain high service standards.'), inline: false }
+      { name: '🤖 10. Aavgo Bot Communication.', value: spaced('When you receive a notification or message from the Aavgo Bot, you are advised to check your Direct Messages (DMs) immediately.'), inline: false }
     )
     .setFooter({ text: 'Aavgo Operations · Server Rules' })
     .setTimestamp();
