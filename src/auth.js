@@ -4010,7 +4010,7 @@ function buildApplicantsNoticeEmbed() {
       },
       {
         name: '🛡️ Approval flow',
-        value: `Operations Manager review is required for pending promotions and role adjustments.\nMention: <@&${OPERATIONS_MANAGER_DISCORD_ROLE_ID}>`,
+        value: 'Operations Manager review is required for pending promotions and role adjustments.',
         inline: false
       }
     )
