@@ -3935,6 +3935,7 @@ async function refreshLiveStatusBoard(client) {
 }
 
 function buildRulesEmbed() {
+  const spaced = text => `${text}\n\u200b`;
   return new EmbedBuilder()
     .setAuthor({ name: 'Aavgo Operations · Agent Standards' })
     .setTitle('📘 Server Rules')
@@ -3947,15 +3948,15 @@ function buildRulesEmbed() {
     )
     .setColor(0xF4C542)
     .addFields(
-      { name: '👤 1. Use your real name.', value: 'Your Discord nickname should match your first and last name.\nKeep it updated if anything changes.', inline: false },
-      { name: '🎙️ 2. Voice Channel Presence.', value: 'During your scheduled shift, you must be present in a voice channel to ensure accountability and real-time coordination.\n\n**Standard Shift:** Remain in your respective hotel\'s designated Discord voice channel.\n**Shadowing/Training:** If you are shadowing another agent, you must join one of the Training VCs.', inline: false },
-      { name: '🕒 3. Follow attendance logging rules exactly.', value: 'Log in and log out in the attendance channel only.\nDo it 30 minutes before your scheduled shift or training.', inline: false },
-      { name: '🧾 4. Use the correct attendance format.', value: '`Log in/Log out - Hotel Name | Live/Training - MM/DD/YYYY - Time`\nKeep the format consistent so records stay clean.', inline: false },
-      { name: '🏨 5. Log under the correct hotel.', value: 'Make sure the hotel you choose matches where you are actually assigned.\nIf you are unsure, ask before logging in.', inline: false },
-      { name: '❓ 6. Use FAQ before asking repeated questions.', value: 'If something is unclear, check the FAQ channel first.\nAsk management only if the answer is not already covered.', inline: false },
-      { name: '🧠 7. Follow management instructions.', value: 'If a Team Leader, SME, or Operations Manager gives a work instruction, follow it unless it conflicts with a higher rule.', inline: false },
-      { name: '⏱️ 8. Do not manipulate hours or roles.', value: 'Do not try to extend shifts, hide logouts, or force the wrong status.\nReport mistakes instead of trying to work around them.', inline: false },
-      { name: '✅ 9. Keep attendance accurate.', value: 'If you log in late or log out late, make sure the entry reflects the correct schedule.\nDo not intentionally submit incorrect times.', inline: false }
+      { name: '👤 1. Use your real name.', value: spaced('Your Discord nickname should match your first and last name.\nKeep it updated if anything changes.'), inline: false },
+      { name: '🎙️ 2. Voice Channel Presence.', value: spaced('During your scheduled shift, you must be present in a voice channel to ensure accountability and real-time coordination.\n**Standard Shift:** Remain in your respective hotel\'s designated Discord voice channel.\n**Shadowing/Training:** If you are shadowing another agent, you must join one of the Training VCs.'), inline: false },
+      { name: '🕒 3. Follow attendance logging rules exactly.', value: spaced('Log in and log out in the attendance channel only.\nDo it 30 minutes before your scheduled shift or training.'), inline: false },
+      { name: '🧾 4. Use the correct attendance format.', value: spaced('`Log in/Log out - Hotel Name | Live/Training - MM/DD/YYYY - Time`\nKeep the format consistent so records stay clean.'), inline: false },
+      { name: '🏨 5. Log under the correct hotel.', value: spaced('Make sure the hotel you choose matches where you are actually assigned.\nIf you are unsure, ask before logging in.'), inline: false },
+      { name: '❓ 6. Use FAQ before asking repeated questions.', value: spaced('If something is unclear, check the FAQ channel first.\nAsk management only if the answer is not already covered.'), inline: false },
+      { name: '🧠 7. Follow management instructions.', value: spaced('If a Team Leader, SME, or Operations Manager gives a work instruction, follow it unless it conflicts with a higher rule.'), inline: false },
+      { name: '⏱️ 8. Do not manipulate hours or roles.', value: spaced('Do not try to extend shifts, hide logouts, or force the wrong status.\nReport mistakes instead of trying to work around them.'), inline: false },
+      { name: '✅ 9. Keep attendance accurate.', value: spaced('If you log in late or log out late, make sure the entry reflects the correct schedule.\nDo not intentionally submit incorrect times.'), inline: false }
     )
     .setFooter({ text: 'Aavgo Operations · Server Rules' })
     .setTimestamp();
