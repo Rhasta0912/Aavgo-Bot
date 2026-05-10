@@ -33,6 +33,17 @@ let websiteCommandTimer = null;
 let websiteCommandInFlight = false;
 let websiteCommandRetryAt = 0;
 let websiteBridgePausedUntilMs = 0;
+const websiteBridgeHealth = {
+  lastSnapshotAttemptAt: null,
+  lastSnapshotSuccessAt: null,
+  lastSnapshotError: '',
+  lastCommandPollAt: null,
+  lastCommandSuccessAt: null,
+  lastCommandError: '',
+  lastCommandCount: 0,
+  lastCommandCompletedCount: 0,
+  lastCommandFailedCount: 0
+};
 
 function getWebsiteApiConfig() {
   const token = String(process.env.AAVGO_WEBSITE_API_TOKEN || '').trim();
@@ -130,8 +141,40 @@ function isBandwidthLimitError(error) {
 function pauseWebsiteBridge(config, reason = 'website bandwidth limit') {
   const cooldownMs = Number(config?.bandwidthCooldownMs || WEBSITE_BANDWIDTH_COOLDOWN_MS);
   websiteBridgePausedUntilMs = Math.max(websiteBridgePausedUntilMs, Date.now() + cooldownMs);
+  websiteBridgeHealth.lastSnapshotError = reason;
+  websiteBridgeHealth.lastCommandError = reason;
   const minutes = Math.ceil(cooldownMs / 60000);
   console.warn(`[WEBSITE-BRIDGE] Paused website sync for about ${minutes} minute(s): ${reason}. Discord bot hour tracking continues in the bot database.`);
+}
+
+function isoNow() {
+  return new Date().toISOString();
+}
+
+function getWebsiteBridgeHealth() {
+  const config = getWebsiteApiConfig();
+  return {
+    apiServerRunning: Boolean(websiteApiServer),
+    syncConfigured: Boolean(config.token && config.syncUrl && !config.syncDisabled),
+    commandConfigured: Boolean(config.token && config.commandUrl && !config.syncDisabled),
+    syncDisabled: Boolean(config.syncDisabled),
+    syncIntervalMs: config.syncIntervalMs,
+    syncInFlight: Boolean(websiteSyncInFlight),
+    commandInFlight: Boolean(websiteCommandInFlight),
+    paused: isWebsiteBridgePaused(),
+    pauseSecondsRemaining: getWebsiteBridgePauseSeconds(),
+    syncRetryAt: websiteSyncRetryAt ? new Date(websiteSyncRetryAt).toISOString() : '',
+    commandRetryAt: websiteCommandRetryAt ? new Date(websiteCommandRetryAt).toISOString() : '',
+    lastSnapshotAttemptAt: websiteBridgeHealth.lastSnapshotAttemptAt,
+    lastSnapshotSuccessAt: websiteBridgeHealth.lastSnapshotSuccessAt,
+    lastSnapshotError: websiteBridgeHealth.lastSnapshotError,
+    lastCommandPollAt: websiteBridgeHealth.lastCommandPollAt,
+    lastCommandSuccessAt: websiteBridgeHealth.lastCommandSuccessAt,
+    lastCommandError: websiteBridgeHealth.lastCommandError,
+    lastCommandCount: websiteBridgeHealth.lastCommandCount,
+    lastCommandCompletedCount: websiteBridgeHealth.lastCommandCompletedCount,
+    lastCommandFailedCount: websiteBridgeHealth.lastCommandFailedCount
+  };
 }
 
 function combineHotelId(hotelId) {
@@ -1358,6 +1401,7 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
   }
 
   websiteSyncInFlight = true;
+  websiteBridgeHealth.lastSnapshotAttemptAt = isoNow();
 
   try {
     const snapshot = await buildAdminHoursSnapshot(client);
@@ -1377,6 +1421,8 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
     }
 
     websiteSyncRetryAt = 0;
+    websiteBridgeHealth.lastSnapshotSuccessAt = isoNow();
+    websiteBridgeHealth.lastSnapshotError = '';
     return true;
   } catch (error) {
     if (isBandwidthLimitError(error)) {
@@ -1384,6 +1430,7 @@ async function pushWebsiteHoursSnapshot(client, { silent = false } = {}) {
       return false;
     }
     console.error('[WEBSITE-SYNC] Snapshot push failed:', error.message);
+    websiteBridgeHealth.lastSnapshotError = error.message;
     websiteSyncRetryAt = getWebsiteRetryAt('sync', error);
     return false;
   } finally {
@@ -1827,10 +1874,16 @@ async function processWebsiteCommands(client) {
   }
 
   websiteCommandInFlight = true;
+  websiteBridgeHealth.lastCommandPollAt = isoNow();
 
   try {
     const commands = await fetchWebsiteCommands(config);
+    websiteBridgeHealth.lastCommandCount = commands.length;
     if (commands.length === 0) {
+      websiteBridgeHealth.lastCommandSuccessAt = isoNow();
+      websiteBridgeHealth.lastCommandError = '';
+      websiteBridgeHealth.lastCommandCompletedCount = 0;
+      websiteBridgeHealth.lastCommandFailedCount = 0;
       return false;
     }
 
@@ -1867,12 +1920,16 @@ async function processWebsiteCommands(client) {
     }
 
     await postWebsiteCommandResults(config, results);
+    websiteBridgeHealth.lastCommandCompletedCount = results.filter(result => result.status === 'completed').length;
+    websiteBridgeHealth.lastCommandFailedCount = results.filter(result => result.status === 'failed').length;
 
     if (results.length > 0 || shouldRefreshSnapshot) {
       await pushWebsiteHoursSnapshot(client, { silent: true });
     }
 
     websiteCommandRetryAt = 0;
+    websiteBridgeHealth.lastCommandSuccessAt = isoNow();
+    websiteBridgeHealth.lastCommandError = '';
     return true;
   } catch (error) {
     if (isBandwidthLimitError(error)) {
@@ -1880,6 +1937,7 @@ async function processWebsiteCommands(client) {
       return false;
     }
     console.error('[WEBSITE-COMMANDS] Command sync failed:', error.message);
+    websiteBridgeHealth.lastCommandError = error.message;
     websiteCommandRetryAt = getWebsiteRetryAt('commands', error);
     return false;
   } finally {
@@ -2055,6 +2113,7 @@ function stopWebsiteApiServer() {
 
 module.exports = {
   buildAdminHoursSnapshot,
+  getWebsiteBridgeHealth,
   startWebsiteApiServer,
   stopWebsiteApiServer
 };

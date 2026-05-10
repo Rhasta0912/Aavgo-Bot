@@ -8389,8 +8389,13 @@ async function handleCheckHeartbeat(interaction) {
     const oneHourAgoIso = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
     const dayAgoIso = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     const isStaffView = interactionHasRoleAtLeast(interaction, 'team_leader');
+    const wsPing = Number(interaction.client?.ws?.ping);
+    const uptimeSeconds = Math.floor(Number(process.uptime?.() || 0));
+    const uptimeHours = Math.floor(uptimeSeconds / 3600);
+    const uptimeMinutes = Math.floor((uptimeSeconds % 3600) / 60);
 
     db.prepare('SELECT 1 AS ok').get();
+    const dbIntegrity = db.prepare('PRAGMA quick_check').get()?.quick_check || 'unknown';
 
     const ownAgent = db.prepare(`
       SELECT id, username, role, team, hotel_id
@@ -8490,6 +8495,36 @@ async function handleCheckHeartbeat(interaction) {
           'Staff summary hidden. Team Leader, Operations Manager, or Developer access shows global counts.'
         ];
 
+    let websiteLines = ['Website bridge details unavailable from this runtime.'];
+    if (isStaffView) {
+      try {
+        const websiteApi = require('./websiteApi');
+        const health = typeof websiteApi.getWebsiteBridgeHealth === 'function'
+          ? websiteApi.getWebsiteBridgeHealth()
+          : null;
+        if (health) {
+          const syncState = health.syncDisabled
+            ? 'Disabled by env'
+            : health.paused
+              ? `Paused (${health.pauseSecondsRemaining}s left)`
+              : health.syncConfigured
+                ? 'Configured'
+                : 'Not configured';
+          const commandState = health.commandConfigured ? 'Configured' : 'Not configured';
+          websiteLines = [
+            `API server: ${health.apiServerRunning ? 'running' : 'not running'}`,
+            `Snapshot sync: ${syncState}${health.syncInFlight ? ' (in flight)' : ''}`,
+            `Command sync: ${commandState}${health.commandInFlight ? ' (in flight)' : ''}`,
+            `Last snapshot success: ${health.lastSnapshotSuccessAt || 'none yet'}`,
+            `Last command poll: ${health.lastCommandPollAt || 'none yet'} (${health.lastCommandCompletedCount || 0} ok / ${health.lastCommandFailedCount || 0} failed)`,
+            `Last bridge error: ${health.lastSnapshotError || health.lastCommandError || 'none'}`
+          ];
+        }
+      } catch (error) {
+        websiteLines = [`Website bridge telemetry failed to load: ${error.message}`];
+      }
+    }
+
     const embed = new EmbedBuilder()
       .setTitle('Bot Tracking Heartbeat')
       .setDescription(
@@ -8497,11 +8532,18 @@ async function handleCheckHeartbeat(interaction) {
         `> ${dbVerdict}\n` +
         `> ${liveVerdict}\n` +
         '> This checks the Discord bot database only. The website can be down while bot tracking still works.\n\n' +
+        '**Bot Runtime**\n' +
+        `> Discord ping: ${Number.isFinite(wsPing) ? `${Math.round(wsPing)}ms` : 'unknown'}\n` +
+        `> Process uptime: ${uptimeHours}h ${uptimeMinutes}m\n` +
+        `> SQLite quick check: ${dbIntegrity}\n\n` +
         '**Your Tracking State**\n' +
         ownLines.map(line => `> ${line}`).join('\n') +
         '\n\n' +
         '**Database Activity**\n' +
-        staffLines.map(line => `> ${line}`).join('\n')
+        staffLines.map(line => `> ${line}`).join('\n') +
+        '\n\n' +
+        '**Website Bridge**\n' +
+        websiteLines.map(line => `> ${line}`).join('\n')
       )
       .setColor(0x57F287)
       .setFooter({ text: 'Read-only diagnostic. No hours were changed.' })

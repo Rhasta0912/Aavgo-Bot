@@ -1556,3 +1556,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - HISTORY.md
   - Notes:
     - Website repo also added the matching admin UI controls.
+
+## Latest Changes
+- Health and payroll safeguards
+  - Summary: Expanded /check-heartbeat with bot runtime and website bridge telemetry so leadership can verify tracking, sync, and command polling during website incidents.
+  - Files touched:
+    - src/auth.js
+    - src/websiteApi.js
+    - HISTORY.md
+  - Notes:
+    - None
