@@ -621,6 +621,7 @@ const TEAM_5_HOTEL_STATUS_CHANNEL_ID = '1498685179726921788';
 const TEAM_5_LOG_CHANNEL_ID = '1498685207723638915';
 const LIVE_STATUS_CHANNEL_ID = '1502554754713256027';
 const RULES_CHANNEL_ID = '1502929302595964978';
+const APPLICANTS_NOTICE_CHANNEL_ID = '1501117214261248083';
 const PROSPERO_LOG_CHANNEL_ID = '1482383371320430592';
 const TEAM_2_PERMISSION_ROLE_ID = '1489855054134640740';
 const TEAM_2_GHOST_ROLE_ID = '1489855140767993997';
@@ -675,6 +676,7 @@ const overtimeConfirmedSessionIds = new Set();
 let combinedHotelStatusRefreshTimer = null;
 let liveStatusRefreshInFlight = false;
 let rulesRefreshInFlight = false;
+let applicantsNoticeRefreshInFlight = false;
 const missingHotelStatusChannelWarnings = new Set();
 const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   TEAM_LEADER_ROLE_ID,
@@ -3412,6 +3414,26 @@ async function handleSetupRules(interaction) {
   }
 }
 
+async function handleSetupApplicantsNotice(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
+    const message = await ensureApplicantsNoticeMessage(interaction.client);
+    if (!message) {
+      return interaction.reply({ content: `❌ Could not post the notice in <#${APPLICANTS_NOTICE_CHANNEL_ID}>.`, ephemeral: true });
+    }
+
+    return interaction.reply({ content: `✅ Applicant notice posted in <#${APPLICANTS_NOTICE_CHANNEL_ID}>.`, ephemeral: true });
+  } catch (error) {
+    console.error('Error in handleSetupApplicantsNotice:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      return interaction.reply({ content: '❌ Failed to set up the applicant notice.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 async function handleSetupLoginTeam(interaction) {
   try {
     if (!isDeveloper(interaction)) {
@@ -3963,6 +3985,39 @@ function buildRulesEmbed() {
     .setTimestamp();
 }
 
+function buildApplicantsNoticeEmbed() {
+  return new EmbedBuilder()
+    .setAuthor({ name: 'Aavgo Operations · Applicant Notice' })
+    .setTitle('📎 Pending Review Guidance')
+    .setDescription(
+      'Please wait patiently for the Operations Manager to review any pending promotions or role changes.\n' +
+      'We appreciate your cooperation while administrative reviews are completed.\n\n' +
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n' +
+      '🔎 **What to expect:** a clean review queue, careful approvals, and timely updates\n' +
+      '━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+    )
+    .setColor(0xF4C542)
+    .addFields(
+      {
+        name: '🕒 Please be patient',
+        value: 'Reviews are handled in order. If your request is still pending, it is being checked by management.',
+        inline: false
+      },
+      {
+        name: '📣 Keep notifications on',
+        value: 'If a decision is made or more information is needed, please check your DMs and the relevant server channels.',
+        inline: false
+      },
+      {
+        name: '🛡️ Approval flow',
+        value: `Operations Manager review is required for pending promotions and role adjustments.\nMention: <@&${OPERATIONS_MANAGER_DISCORD_ROLE_ID}>`,
+        inline: false
+      }
+    )
+    .setFooter({ text: 'Aavgo Operations · Applicant Review Notice' })
+    .setTimestamp();
+}
+
 async function ensureRulesMessage(client) {
   try {
     const channel = await client.channels.fetch(RULES_CHANNEL_ID).catch(() => null);
@@ -3991,6 +4046,34 @@ async function ensureRulesMessage(client) {
   }
 }
 
+async function ensureApplicantsNoticeMessage(client) {
+  try {
+    const channel = await client.channels.fetch(APPLICANTS_NOTICE_CHANNEL_ID).catch(() => null);
+    if (!channel) return null;
+
+    const key = `applicants_notice_msg_${APPLICANTS_NOTICE_CHANNEL_ID}`;
+    const stored = db.prepare("SELECT value FROM config WHERE key = ?").get(key);
+    const embed = buildApplicantsNoticeEmbed();
+
+    if (stored?.value) {
+      try {
+        const msg = await channel.messages.fetch(stored.value);
+        await msg.edit({ embeds: [embed] });
+        return msg;
+      } catch (error) {
+        db.prepare("DELETE FROM config WHERE key = ?").run(key);
+      }
+    }
+
+    const message = await channel.send({ embeds: [embed] });
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, message.id);
+    return message;
+  } catch (error) {
+    console.warn('[APPLICANTS] Failed to update applicants notice board:', error.message);
+    return null;
+  }
+}
+
 async function refreshRulesBoard(client) {
   if (!client) return null;
   if (rulesRefreshInFlight) return null;
@@ -3999,6 +4082,17 @@ async function refreshRulesBoard(client) {
     return await ensureRulesMessage(client);
   } finally {
     rulesRefreshInFlight = false;
+  }
+}
+
+async function refreshApplicantsNoticeBoard(client) {
+  if (!client) return null;
+  if (applicantsNoticeRefreshInFlight) return null;
+  applicantsNoticeRefreshInFlight = true;
+  try {
+    return await ensureApplicantsNoticeMessage(client);
+  } finally {
+    applicantsNoticeRefreshInFlight = false;
   }
 }
 async function refreshOperationalBoards(client) {
@@ -12375,9 +12469,11 @@ module.exports = {
   updateHotelStatusEmbed,
   updateAllHotelStatusEmbed,
   refreshRulesBoard,
+  refreshApplicantsNoticeBoard,
   refreshLiveStatusBoard,
   handleSetupLogin, 
   handleSetupRules,
+  handleSetupApplicantsNotice,
   handleSetupRegister,
   handleSetupSecurity,
   handleShiftRolePrompt,

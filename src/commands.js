@@ -221,6 +221,12 @@ const commandData = [
     .setName('refresh-rules')
     .setDescription('(Management/Developer) Refresh the server rules board'),
   new SlashCommandBuilder()
+    .setName('setup-applicants')
+    .setDescription('(Management/Developer) Post or refresh the applicant review notice'),
+  new SlashCommandBuilder()
+    .setName('refresh-applicants')
+    .setDescription('(Management/Developer) Refresh the applicant review notice'),
+  new SlashCommandBuilder()
     .setName('setup-training-status')
     .setDescription('(Developer Only) Setup the training status board'),
   new SlashCommandBuilder()
