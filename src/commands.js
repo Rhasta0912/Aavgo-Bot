@@ -215,6 +215,12 @@ const commandData = [
     .setName('setup-login-team')
     .setDescription('Refresh unified login portal (legacy alias, Admin only)'),
   new SlashCommandBuilder()
+    .setName('setup-rules')
+    .setDescription('(Management/Developer) Post or refresh the server rules board'),
+  new SlashCommandBuilder()
+    .setName('refresh-rules')
+    .setDescription('(Management/Developer) Refresh the server rules board'),
+  new SlashCommandBuilder()
     .setName('setup-training-status')
     .setDescription('(Developer Only) Setup the training status board'),
   new SlashCommandBuilder()

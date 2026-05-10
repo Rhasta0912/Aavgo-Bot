@@ -620,6 +620,7 @@ const TEAM_4_LOG_CHANNEL_ID = '1498683972895637525';
 const TEAM_5_HOTEL_STATUS_CHANNEL_ID = '1498685179726921788';
 const TEAM_5_LOG_CHANNEL_ID = '1498685207723638915';
 const LIVE_STATUS_CHANNEL_ID = '1502554754713256027';
+const RULES_CHANNEL_ID = '1502929302595964978';
 const PROSPERO_LOG_CHANNEL_ID = '1482383371320430592';
 const TEAM_2_PERMISSION_ROLE_ID = '1489855054134640740';
 const TEAM_2_GHOST_ROLE_ID = '1489855140767993997';
@@ -673,6 +674,7 @@ const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
 let combinedHotelStatusRefreshTimer = null;
 let liveStatusRefreshInFlight = false;
+let rulesRefreshInFlight = false;
 const missingHotelStatusChannelWarnings = new Set();
 const EXCLUSIVE_RANK_ROLE_PRIORITY = [
   TEAM_LEADER_ROLE_ID,
@@ -3390,6 +3392,26 @@ async function handleSetupLogin(interaction) {
 }
 
 // ─── /setup-login-team ───────────────────────────────
+async function handleSetupRules(interaction) {
+  try {
+    if (!interactionHasRoleAtLeast(interaction, 'sme')) {
+      return interaction.reply({ content: '❌ Management or Developer access required.', ephemeral: true });
+    }
+
+    const message = await ensureRulesMessage(interaction.client);
+    if (!message) {
+      return interaction.reply({ content: `❌ Could not post the rules board in <#${RULES_CHANNEL_ID}>.`, ephemeral: true });
+    }
+
+    return interaction.reply({ content: `✅ Rules board posted in <#${RULES_CHANNEL_ID}>.`, ephemeral: true });
+  } catch (error) {
+    console.error('Error in handleSetupRules:', error);
+    if (!interaction.replied && !interaction.deferred) {
+      return interaction.reply({ content: '❌ Failed to set up the rules board.', ephemeral: true }).catch(() => {});
+    }
+  }
+}
+
 async function handleSetupLoginTeam(interaction) {
   try {
     if (!isDeveloper(interaction)) {
@@ -3909,6 +3931,65 @@ async function refreshLiveStatusBoard(client) {
     console.warn('[LIVE-STATUS] Refresh failed:', error.message);
   } finally {
     liveStatusRefreshInFlight = false;
+  }
+}
+
+function buildRulesEmbed() {
+  return new EmbedBuilder()
+    .setTitle('Aavgo Operations - Agent Rules')
+    .setDescription('Please follow these rules while on shift, in training, or shadowing. These keep the server organized and the logs accurate.')
+    .setColor(0x5865F2)
+    .addFields(
+      { name: '1. Use your real name.', value: 'Your Discord nickname should match your first and last name.\nKeep it updated if anything changes.', inline: false },
+      { name: '2. Voice Channel Presence.', value: 'During your scheduled shift, you must be present in a voice channel to ensure accountability and real-time coordination.\n\nStandard Shift: Remain in your respective hotel\'s designated Discord voice channel.\nShadowing/Training: If you are shadowing another agent, you must join one of the Training VCs.', inline: false },
+      { name: '3. Follow attendance logging rules exactly.', value: 'Log in and log out in the attendance channel only.\nDo it 30 minutes before your scheduled shift or training.', inline: false },
+      { name: '4. Use the correct attendance format.', value: 'Log in/Log out - Hotel Name | Live/Training - MM/DD/YYYY - Time\nKeep the format consistent so records stay clean.', inline: false },
+      { name: '5. Log under the correct hotel.', value: 'Make sure the hotel you choose matches where you are actually assigned.\nIf you are unsure, ask before logging in.', inline: false },
+      { name: '6. Use FAQ before asking repeated questions.', value: 'If something is unclear, check the FAQ channel first.\nAsk management only if the answer is not already covered.', inline: false },
+      { name: '7. Follow management instructions.', value: 'If a Team Leader, SME, or Operations Manager gives a work instruction, follow it unless it conflicts with a higher rule.', inline: false },
+      { name: '8. Do not manipulate hours or roles.', value: 'Do not try to extend shifts, hide logouts, or force the wrong status.\nReport mistakes instead of trying to work around them.', inline: false },
+      { name: '9. Keep attendance accurate.', value: 'If you log in late or log out late, make sure the entry reflects the correct schedule.\nDo not intentionally submit incorrect times.', inline: false }
+    )
+    .setFooter({ text: 'Aavgo Operations - Server Rules' })
+    .setTimestamp();
+}
+
+async function ensureRulesMessage(client) {
+  try {
+    const channel = await client.channels.fetch(RULES_CHANNEL_ID).catch(() => null);
+    if (!channel) return null;
+
+    const key = `rules_msg_${RULES_CHANNEL_ID}`;
+    const stored = db.prepare("SELECT value FROM config WHERE key = ?").get(key);
+    const embed = buildRulesEmbed();
+
+    if (stored?.value) {
+      try {
+        const msg = await channel.messages.fetch(stored.value);
+        await msg.edit({ embeds: [embed] });
+        return msg;
+      } catch (error) {
+        db.prepare("DELETE FROM config WHERE key = ?").run(key);
+      }
+    }
+
+    const message = await channel.send({ embeds: [embed] });
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run(key, message.id);
+    return message;
+  } catch (error) {
+    console.warn('[RULES] Failed to update rules board:', error.message);
+    return null;
+  }
+}
+
+async function refreshRulesBoard(client) {
+  if (!client) return null;
+  if (rulesRefreshInFlight) return null;
+  rulesRefreshInFlight = true;
+  try {
+    return await ensureRulesMessage(client);
+  } finally {
+    rulesRefreshInFlight = false;
   }
 }
 async function refreshOperationalBoards(client) {
@@ -12284,8 +12365,10 @@ module.exports = {
   ensureAgentKioskMessage,
   updateHotelStatusEmbed,
   updateAllHotelStatusEmbed,
+  refreshRulesBoard,
   refreshLiveStatusBoard,
   handleSetupLogin, 
+  handleSetupRules,
   handleSetupRegister,
   handleSetupSecurity,
   handleShiftRolePrompt,

@@ -1024,7 +1024,7 @@ async function handleAttendanceActionButton(interaction) {
 }
 function isLoginSystemInteraction(interaction) {
   const commandName = String(interaction?.commandName || '').toLowerCase();
-  if (['login', 'logout', 'status', 'setup-login', 'setup-login-team', 'setup-training-status', 'refresh-training-status', 'end-shift'].includes(commandName)) {
+  if (['login', 'logout', 'status', 'setup-login', 'setup-login-team', 'setup-rules', 'refresh-rules', 'setup-training-status', 'refresh-training-status', 'end-shift'].includes(commandName)) {
     return true;
   }
 
@@ -1377,6 +1377,9 @@ client.once('ready', async () => {
     auth.broadcastUpdateLog(client).catch(error => {
       console.warn('[UPDATE-LOG] Startup broadcast failed:', error.message);
     });
+    auth.refreshRulesBoard(client).catch(error => {
+      console.warn('[RULES] Boot refresh failed:', error.message);
+    });
     auth.refreshOperationalBoards(client).catch(error => {
       console.warn('[STATUS] Boot refresh failed:', error.message);
     });
@@ -1722,6 +1725,8 @@ client.on('interactionCreate', async interaction => {
       await auth.handleSetupLogin(interaction);
     } else if (commandName === 'setup-login-team') {
       await auth.handleSetupLoginTeam(interaction);
+    } else if (commandName === 'setup-rules' || commandName === 'refresh-rules') {
+      await auth.handleSetupRules(interaction);
     } else if (commandName === 'setup-training-status') {
       await auth.handleSetupTrainingStatus(interaction);
     } else if (commandName === 'refresh-training-status') {
