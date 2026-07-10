@@ -1558,6 +1558,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Refined attendance confirmation embeds.
+  - Summary: Attendance login/logout confirmations now use a cleaner recorded-state layout with dedicated effective-time, hour-impact, shift-type, and preview-mode fields.
+  - Why: The previous success message was correct but visually dense and did not make the time-impact warning easy to scan.
+  - Behavior impact: Attendance scheduling and hour calculations are unchanged; only the confirmation presentation changed.
+  - Files touched:
+    - src/index.js
+    - HISTORY.md
 - Added database, recovery, and verification safeguards.
   - Summary: SQLite now uses WAL mode, a busy timeout, and indexes for active operations. Live-status refreshes queue one follow-up update when events overlap. Guardian now creates verified database/source snapshots on a schedule and removes expired backups. Startup logs a database, guild, and login-channel check. Added `npm run check`, `npm test`, and `npm run audit` commands.
   - Why: The bot runs operational shifts continuously, so database contention, silent startup misconfiguration, and unrehearsed recovery paths needed stronger protection.

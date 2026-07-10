@@ -1004,23 +1004,54 @@ async function handleAttendanceActionButton(interaction) {
   const delayMs = getAttendanceActionDelayMs(pending);
 
   scheduleAttendanceActionExecution(interaction.client, pending, delayMs);
-  const successEmbed = new EmbedBuilder()
-    .setTitle(`${action === 'login' ? 'Login' : 'Logout'} Confirmed`)
-    .setDescription(
-      pending.impactLabel
-        ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied for **${pending.targetLabel}**.\n**Hour impact:** ${pending.impactLabel}${pending.previewOnly ? '\n\nTest mode: no hours were logged.' : ''}`
-        : delayMs > 0
-        ? `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} is scheduled in **${formatDurationFromMs(delayMs)}**.\n**Target:** ${pending.targetLabel}`
-        : `Confirmed. ${action === 'login' ? 'Login' : 'Logout'} was applied now.`
-    )
-    .setColor(0x57F287)
-    .setTimestamp();
+  const successEmbed = buildAttendanceConfirmationEmbed({
+    action,
+    delayMs,
+    targetLabel: pending.targetLabel,
+    impactLabel: pending.impactLabel,
+    previewOnly: pending.previewOnly,
+    modeLabel: pending.modeLabel
+  });
   await interaction.update({
     embeds: [successEmbed],
     components: []
   }).catch(() => {});
   scheduleDeleteConfirmationMessage(action === 'login' ? ATTENDANCE_CONFIRM_SUCCESS_DELETE_MS : undefined);
 }
+
+function buildAttendanceConfirmationEmbed({ action, delayMs = 0, targetLabel = '', impactLabel = '', previewOnly = false, modeLabel = '' }) {
+  const isLogin = action === 'login';
+  const actionLabel = isLogin ? 'Login' : 'Logout';
+  const fields = [];
+
+  if (targetLabel) {
+    fields.push({ name: 'Effective time', value: `**${targetLabel}**`, inline: true });
+  }
+  if (impactLabel) {
+    fields.push({ name: 'Hour impact', value: `**${impactLabel}**`, inline: true });
+  } else if (delayMs > 0) {
+    fields.push({ name: 'Starts in', value: `**${formatDurationFromMs(delayMs)}**`, inline: true });
+  }
+  if (modeLabel) {
+    fields.push({ name: 'Shift type', value: modeLabel, inline: true });
+  }
+  if (previewOnly) {
+    fields.push({ name: 'Preview mode', value: 'No hours were recorded.', inline: false });
+  }
+
+  const description = impactLabel || delayMs <= 0
+    ? `${actionLabel} attendance has been recorded.`
+    : `${actionLabel} attendance is scheduled and will be recorded automatically.`;
+
+  return new EmbedBuilder()
+    .setTitle(`\u{2705} ${actionLabel} recorded`)
+    .setDescription(description)
+    .setColor(0x57F287)
+    .setFields(fields)
+    .setFooter({ text: previewOnly ? 'Aavgo Attendance | Preview mode' : 'Aavgo Attendance | Confirmed entry' })
+    .setTimestamp();
+}
+
 function isLoginSystemInteraction(interaction) {
   const commandName = String(interaction?.commandName || '').toLowerCase();
   if (['login', 'logout', 'status', 'setup-login', 'setup-login-team', 'setup-rules', 'refresh-rules', 'setup-applicants', 'refresh-applicants', 'setup-training-status', 'refresh-training-status', 'end-shift'].includes(commandName)) {
@@ -1633,16 +1664,13 @@ client.on('guildMemberRemove', async member => {
       const delayMs = getAttendanceActionDelayMs(scheduledLoginEntry);
       scheduleAttendanceActionExecution(client, scheduledLoginEntry, delayMs);
 
-      const confirmedEmbed = new EmbedBuilder()
-        .setTitle('Login Confirmed')
-        .setDescription(
-          delayMs > 0
-            ? `Confirmed. Login is scheduled in **${formatDurationFromMs(delayMs)}**.\n**Target:** ${targetLabel}${previewOnly ? '\n\nTest mode: no hours will be logged.' : ''}`
-            : `Confirmed. Login was applied now.${previewOnly ? '\n\nTest mode: no hours will be logged.' : ''}`
-        )
-        .setColor(0x57F287)
-        .setFooter({ text: previewOnly ? 'Aavgo Operations - Attendance Login (Test mode)' : 'Aavgo Operations - Attendance Login' })
-        .setTimestamp();
+      const confirmedEmbed = buildAttendanceConfirmationEmbed({
+        action: 'login',
+        delayMs,
+        targetLabel,
+        previewOnly,
+        modeLabel: mode === 'training' ? 'Training' : 'Live Shift'
+      });
 
     const confirmedReply = await message.reply({
       content: `<@${message.author.id}>`,
