@@ -1558,6 +1558,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Removed the retired website bridge.
+  - Summary: Removed the website API server, hour snapshot push, website command polling, and website telemetry from the Discord bot.
+  - Why: The Aavgo website is no longer in use, and its old hostname certificate now causes repeated sync and command errors in the bot logs.
+  - Behavior impact: Discord shift tracking, attendance, hours, and role workflows continue to use SQLite as before. The bot no longer contacts the former website or accepts website-admin commands.
+  - Files touched:
+    - src/index.js
+    - src/auth.js
+    - src/websiteApi.js (removed)
+    - HISTORY.md
 - Health and payroll safeguards
   - Summary: Expanded /check-heartbeat with bot runtime and website bridge telemetry so leadership can verify tracking, sync, and command polling during website incidents.
   - Files touched:
