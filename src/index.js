@@ -1578,16 +1578,18 @@ client.on('guildMemberRemove', async member => {
           previewOnly: isPreviewAttendanceChannel
         });
 
-        const logoutEmbed = new EmbedBuilder()
-          .setTitle(result?.ok ? 'Attendance Logout Recorded' : 'Attendance Logout Failed')
-          .setDescription(
-            result?.ok
-              ? `You have successfully logged out at **${formatAttendanceTimeLabel(logoutMs)}**.${isPreviewAttendanceChannel ? '\n\nTest mode: no hours were logged.' : ''}`
-              : 'Could not complete your logout right now. Please try again or use `/logout`.'
-          )
-          .setColor(result?.ok ? 0x57F287 : 0xED4245)
-          .setFooter({ text: isPreviewAttendanceChannel ? 'Aavgo Operations - Attendance Logout (Test mode)' : 'Aavgo Operations - Attendance Logout' })
-          .setTimestamp();
+        const logoutEmbed = result?.ok
+          ? buildAttendanceConfirmationEmbed({
+              action: 'logout',
+              targetLabel: formatAttendanceTimeLabel(logoutMs),
+              previewOnly: isPreviewAttendanceChannel,
+              modeLabel: isPreviewAttendanceChannel ? 'Preview Attendance' : 'Live Shift'
+            })
+          : new EmbedBuilder()
+              .setTitle('Attendance Logout Failed')
+              .setDescription('Could not complete your logout right now. Please try again or use `/logout`.')
+              .setColor(0xED4245)
+              .setTimestamp();
 
       const logoutReply = await message.reply({
         content: `<@${message.author.id}>`,

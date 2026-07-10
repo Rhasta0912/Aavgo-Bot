@@ -1558,6 +1558,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Unified the direct attendance logout reply with the stronger confirmation layout.
+  - Summary: Text-based logout replies now use the same bold attendance confirmation card as other login/logout flows.
+  - Why: The logout reply used a separate legacy embed and still looked visually plain.
+  - Behavior impact: Logout handling and test-mode behavior are unchanged; only the success presentation changed.
+  - Files touched:
+    - src/index.js
+    - HISTORY.md
 - Strengthened the attendance confirmation visual hierarchy.
   - Summary: Attendance confirmations now use stronger headings, bold operational values, icon-led field labels, and a distinct preview-mode callout.
   - Why: The first refined version was cleaner but still too quiet for a meaningful shift and payroll confirmation.
