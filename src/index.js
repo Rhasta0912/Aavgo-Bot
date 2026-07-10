@@ -1106,6 +1106,27 @@ let roleSyncWatcherBusy = false;
 const roleSyncSnapshotCache = new Map();
 const ROLE_SYNC_INTERVAL_MS = 500;
 
+async function runStartupChecks(clientInstance) {
+  const checks = [];
+  try {
+    const quickCheck = db.prepare('PRAGMA quick_check').pluck().get();
+    checks.push(`database=${quickCheck === 'ok' ? 'ok' : quickCheck}`);
+  } catch (error) {
+    checks.push(`database=failed (${error.message})`);
+  }
+
+  const guild = clientInstance.guilds.cache.get(AAVGO_GUILD_ID);
+  checks.push(`guild=${guild ? 'available' : 'missing'}`);
+  try {
+    const loginChannel = await clientInstance.channels.fetch(LOGIN_CHANNEL_ID);
+    checks.push(`login-channel=${loginChannel ? 'available' : 'missing'}`);
+  } catch (error) {
+    checks.push(`login-channel=failed (${error.message})`);
+  }
+
+  console.log(`[STARTUP-CHECK] ${checks.join(' | ')}`);
+}
+
 function getRoleSyncSnapshot(member) {
   const roleIds = [...member.roles.cache.keys()].sort().join(',');
   const displayName = member.displayName || member.user?.username || '';
@@ -1332,6 +1353,7 @@ async function deployGuildCommands(clientUserId) {
 // Initialized inside ready event to avoid blocking startup
 client.once('ready', async () => {
     console.log(`[DISCORD] Ready! Logged in as ${client.user.tag}`);
+    await runStartupChecks(client);
     
     auth.ensureAgentKioskMessage(client, '1482228169485582446').catch(error => {
       console.warn('[KIOSK] Failed to restore agent kiosk on boot:', error.message);

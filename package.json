@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "log:update": "node scripts/log-update.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "check": "node --check src/index.js && node --check src/auth.js && node --check src/database.js && node --check guardian.js && node --check backup.js",
+    "test": "node --test test/database.test.js",
+    "audit": "npm audit --omit=dev"
   },
   "keywords": [],
   "author": "",

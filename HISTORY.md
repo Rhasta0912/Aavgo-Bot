@@ -1558,6 +1558,19 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Added database, recovery, and verification safeguards.
+  - Summary: SQLite now uses WAL mode, a busy timeout, and indexes for active operations. Live-status refreshes queue one follow-up update when events overlap. Guardian now creates verified database/source snapshots on a schedule and removes expired backups. Startup logs a database, guild, and login-channel check. Added `npm run check`, `npm test`, and `npm run audit` commands.
+  - Why: The bot runs operational shifts continuously, so database contention, silent startup misconfiguration, and unrehearsed recovery paths needed stronger protection.
+  - Behavior impact: Shift tracking and command behavior stay the same. Backups run two minutes after guardian startup and every 24 hours by default, retaining 14 days unless `AAVGO_BACKUP_INTERVAL_HOURS` or `AAVGO_BACKUP_RETENTION_DAYS` is configured.
+  - Files touched:
+    - src/database.js
+    - src/auth.js
+    - src/index.js
+    - guardian.js
+    - backup.js
+    - package.json
+    - test/database.test.js
+    - HISTORY.md
 - Refined the live coverage status board.
   - Summary: Reworked the live-status embed with a compact coverage summary, member-count section headers, and shorter member rows that no longer repeat the section context.
   - Why: The original board was correct but visually dense, making active coverage difficult to scan at a glance.

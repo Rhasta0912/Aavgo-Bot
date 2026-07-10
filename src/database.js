@@ -1,8 +1,11 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const dbPath = path.resolve(__dirname, '../aavgo.db');
+const dbPath = path.resolve(process.env.AAVGO_DB_PATH || path.join(__dirname, '../aavgo.db'));
 const db = new Database(dbPath);
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
+db.pragma('busy_timeout = 5000');
 // Foreign keys disabled during init to allow hotel rotation/seeding
 db.pragma('foreign_keys = OFF');
 
@@ -490,5 +493,17 @@ db.pragma('foreign_keys = ON');
     console.warn('[DB] Migration skip or error:', e.message);
   }
 })();
+
+// These indexes cover the status-board, attendance, and shift-management queries
+// that run continuously during active operations.
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_sessions_status_login ON sessions(status, login_time DESC);
+  CREATE INDEX IF NOT EXISTS idx_sessions_agent_status ON sessions(agent_id, status, login_time DESC);
+  CREATE INDEX IF NOT EXISTS idx_sessions_hotel_status ON sessions(hotel_id, status, login_time DESC);
+  CREATE INDEX IF NOT EXISTS idx_activities_session_timestamp ON activities(session_id, timestamp DESC);
+  CREATE INDEX IF NOT EXISTS idx_schedules_status_start ON schedules(status, start_time);
+  CREATE INDEX IF NOT EXISTS idx_attendance_queue_target ON attendance_action_queue(target_ms);
+  CREATE INDEX IF NOT EXISTS idx_hour_adjustments_agent_effective ON hour_adjustments(agent_id, effective_at DESC);
+`);
 
 module.exports = db;

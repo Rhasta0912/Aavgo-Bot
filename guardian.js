@@ -2,11 +2,27 @@ require('dotenv').config();
 const { spawn } = require('child_process');
 const path = require('path');
 const { upsertBotStatusCard } = require('./src/botStatus');
+const { performBackup } = require('./backup');
 
 const RESTART_DELAY_MS = 5000;
+const BACKUP_INITIAL_DELAY_MS = 2 * 60 * 1000;
+const BACKUP_INTERVAL_MS = Math.max(1, Number.parseInt(process.env.AAVGO_BACKUP_INTERVAL_HOURS || '24', 10) || 24) * 60 * 60 * 1000;
 
 let botProcess = null;
 let isShuttingDown = false;
+let backupTimer = null;
+
+function startBackupSchedule() {
+  const runBackup = () => performBackup().catch(error => {
+    console.error('[BACKUP] Scheduled backup failed:', error.message);
+  });
+
+  const initialTimer = setTimeout(runBackup, BACKUP_INITIAL_DELAY_MS);
+  initialTimer.unref?.();
+  backupTimer = setInterval(runBackup, BACKUP_INTERVAL_MS);
+  backupTimer.unref?.();
+  console.log(`[BACKUP] Scheduled every ${Math.round(BACKUP_INTERVAL_MS / 3600000)} hour(s); retaining ${process.env.AAVGO_BACKUP_RETENTION_DAYS || '14'} day(s).`);
+}
 
 async function setBotStatus({ title, description, color, stateLabel }) {
   await upsertBotStatusCard({ title, description, color, stateLabel });
@@ -24,6 +40,7 @@ async function setOfflineStatus(description, stateLabel = 'Offline') {
 async function handleGuardianShutdown(signal) {
   if (isShuttingDown) return;
   isShuttingDown = true;
+  if (backupTimer) clearInterval(backupTimer);
 
   console.log(`[GUARDIAN] Received ${signal}. Marking bot offline and shutting down...`);
 
@@ -95,4 +112,5 @@ process.on('SIGHUP', () => {
   handleGuardianShutdown('SIGHUP');
 });
 
+startBackupSchedule();
 startBot();

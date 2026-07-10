@@ -675,6 +675,7 @@ const overtimeAutoLogoutAgentIds = new Set();
 const overtimeConfirmedSessionIds = new Set();
 let combinedHotelStatusRefreshTimer = null;
 let liveStatusRefreshInFlight = false;
+let liveStatusRefreshQueued = false;
 let rulesRefreshInFlight = false;
 let applicantsNoticeRefreshInFlight = false;
 const missingHotelStatusChannelWarnings = new Set();
@@ -3942,7 +3943,10 @@ async function updateLiveStatusEmbed(client) {
 
 async function refreshLiveStatusBoard(client) {
   if (!client) return;
-  if (liveStatusRefreshInFlight) return;
+  if (liveStatusRefreshInFlight) {
+    liveStatusRefreshQueued = true;
+    return;
+  }
   liveStatusRefreshInFlight = true;
   try {
     await updateLiveStatusEmbed(client);
@@ -3950,6 +3954,10 @@ async function refreshLiveStatusBoard(client) {
     console.warn('[LIVE-STATUS] Refresh failed:', error.message);
   } finally {
     liveStatusRefreshInFlight = false;
+    if (liveStatusRefreshQueued) {
+      liveStatusRefreshQueued = false;
+      setTimeout(() => refreshLiveStatusBoard(client), 250).unref?.();
+    }
   }
 }
 

@@ -3,5 +3,6 @@ node_modules/
 *.db
 *.db-journal
 bot.log
+backups/
 tmp/
 auth_info_baileys_master/
