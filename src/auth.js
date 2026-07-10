@@ -3737,7 +3737,7 @@ async function updateTrainingStatusEmbed(client) {
 function buildStatusSectionRows(rows, emptyText = 'No active members') {
   const blocks = [];
   if (!rows || rows.length === 0) {
-    return [`• ${emptyText}`];
+    return [`\u2022 ${emptyText}`];
   }
 
   let current = '';
@@ -3765,15 +3765,11 @@ function createStatusBoardSummary(activeEntries) {
   const agentsShift = activeEntries.filter(entry => entry.group === 'agents_shift').length;
   const agentsTraining = activeEntries.filter(entry => entry.group === 'agents_training').length;
   const traineesTraining = activeEntries.filter(entry => entry.group === 'trainees_training').length;
+  const trainingTotal = agentsTraining + traineesTraining;
 
   return [
-    `> Board: Live status tracker`,
-    `> Active Members: ${total}`,
-    `> Team Leaders: ${teamLeaders}`,
-    `> SMEs: ${smes}`,
-    `> Agents on shift: ${agentsShift}`,
-    `> Agents in training: ${agentsTraining}`,
-    `> Trainees in training: ${traineesTraining}`
+    `**${total}** active members  \u2022  **${agentsShift}** live shifts  \u2022  **${trainingTotal}** training`,
+    `Team Leaders **${teamLeaders}**  \u2022  SMEs **${smes}**  \u2022  Agents in training **${agentsTraining}**  \u2022  Trainees **${traineesTraining}**`
   ].join('\n');
 }
 
@@ -3832,8 +3828,8 @@ async function updateLiveStatusEmbed(client) {
       if (normalizedRole === 'team_leader' || normalizedRole === 'operations_manager') {
         categories.team_leaders.push(
           sessionKind === 'training'
-            ? `• <@${session.discord_id}> - Training | ${hotelLabel} | ${roleLabel} | ${elapsedLabel}`
-            : `• <@${session.discord_id}> - Support | ${roleLabel} | ${elapsedLabel}`
+            ? `\u2022 <@${session.discord_id}>  \u2022  Training: ${hotelLabel}  \u2022  ${roleLabel}  \u2022  ${elapsedLabel}`
+            : `\u2022 <@${session.discord_id}>  \u2022  Support  \u2022  ${roleLabel}  \u2022  ${elapsedLabel}`
         );
         continue;
       }
@@ -3841,31 +3837,31 @@ async function updateLiveStatusEmbed(client) {
       if (normalizedRole === 'sme') {
         categories.smes.push(
           sessionKind === 'training'
-            ? `• <@${session.discord_id}> - Training | ${hotelLabel} | ${roleLabel} | ${elapsedLabel}`
-            : `• <@${session.discord_id}> - Support | ${roleLabel} | ${elapsedLabel}`
+            ? `\u2022 <@${session.discord_id}>  \u2022  Training: ${hotelLabel}  \u2022  ${elapsedLabel}`
+            : `\u2022 <@${session.discord_id}>  \u2022  Support  \u2022  ${elapsedLabel}`
         );
         continue;
       }
 
       if (normalizedRole === 'trainee' && sessionKind === 'training') {
-        categories.trainees_training.push(`• <@${session.discord_id}> - Training | ${hotelLabel} | ${elapsedLabel}`);
+        categories.trainees_training.push(`\u2022 <@${session.discord_id}>  \u2022  ${hotelLabel}  \u2022  ${elapsedLabel}`);
         continue;
       }
 
       if (sessionKind === 'training') {
-        categories.agents_training.push(`• <@${session.discord_id}> - Training | ${hotelLabel} | ${elapsedLabel}`);
+        categories.agents_training.push(`\u2022 <@${session.discord_id}>  \u2022  ${hotelLabel}  \u2022  ${elapsedLabel}`);
         continue;
       }
 
-      categories.agents_shift.push(`• <@${session.discord_id}> - Live | ${hotelLabel} | ${elapsedLabel}`);
+      categories.agents_shift.push(`\u2022 <@${session.discord_id}>  \u2022  ${hotelLabel}  \u2022  ${elapsedLabel}`);
     }
 
     const fieldGroups = [
-      ['Team Leaders', categories.team_leaders],
-      ['SMEs', categories.smes],
-      ['Agents on shift', categories.agents_shift],
-      ['Agents in training', categories.agents_training],
-      ['Trainees in training', categories.trainees_training]
+      [`\u{1F9ED} Team Leaders (${categories.team_leaders.length})`, categories.team_leaders],
+      [`\u{1F4AC} SME Support (${categories.smes.length})`, categories.smes],
+      [`\u{1F7E2} Live Shifts (${categories.agents_shift.length})`, categories.agents_shift],
+      [`\u{1F9EA} Agent Training (${categories.agents_training.length})`, categories.agents_training],
+      [`\u{1F393} Trainee Training (${categories.trainees_training.length})`, categories.trainees_training]
     ];
 
     const fields = [];
@@ -3897,6 +3893,7 @@ async function updateLiveStatusEmbed(client) {
       };
     });
     const summary = createStatusBoardSummary(summaryEntries);
+    const refreshedAt = Math.floor(Date.now() / 1000);
 
     const embeds = [];
     const fieldChunks = [];
@@ -3911,15 +3908,15 @@ async function updateLiveStatusEmbed(client) {
     fieldChunks.forEach((chunk, index) => {
       embeds.push(
         new EmbedBuilder()
-          .setTitle(index === 0 ? 'Aavgo Operations - Live Status' : 'Aavgo Operations - Live Status (cont.)')
+          .setTitle(index === 0 ? '\u{1F4E1} Aavgo Operations | Live Coverage' : '\u{1F4E1} Aavgo Operations | Live Coverage (cont.)')
           .setDescription(
-            `${index === 0 ? 'Live presence for currently active members.' : 'Continuation of the live status board.'}\n` +
-            '----------------------------------------\n' +
-            `${index === 0 ? summary : '> Continuation block'}`
+            index === 0
+              ? `**Current coverage**\n${summary}\n<t:${refreshedAt}:R>`
+              : 'Additional active members from the live coverage board.'
           )
           .setColor(visibleSessions.length > 0 ? 0x57F287 : 0x2B2D31)
           .setFields(chunk.length > 0 ? chunk : [{ name: 'Status', value: 'No active members', inline: false }])
-          .setFooter({ text: 'Aavgo Operations - Live Presence' })
+          .setFooter({ text: 'Aavgo Operations | Auto-refreshing live presence' })
           .setTimestamp()
       );
     });

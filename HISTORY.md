@@ -1558,6 +1558,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Refined the live coverage status board.
+  - Summary: Reworked the live-status embed with a compact coverage summary, member-count section headers, and shorter member rows that no longer repeat the section context.
+  - Why: The original board was correct but visually dense, making active coverage difficult to scan at a glance.
+  - Behavior impact: The same active sessions remain visible and the board refreshes exactly as before; only its presentation changed.
+  - Files touched:
+    - src/auth.js
+    - HISTORY.md
 - Removed the retired website bridge.
   - Summary: Removed the website API server, hour snapshot push, website command polling, and website telemetry from the Discord bot.
   - Why: The Aavgo website is no longer in use, and its old hostname certificate now causes repeated sync and command errors in the bot logs.
