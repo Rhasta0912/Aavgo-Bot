@@ -1558,6 +1558,14 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Added startup recovery for missed Attendance messages.
+  - Summary: When the bot reconnects, it now scans recent Attendance and Attendance Preview messages in chronological order, restores missed login/logout actions in the background, and records each scanned message to prevent duplicates.
+  - Why: Discord does not replay message events that arrive while the bot is offline, which could leave legitimate attendance messages untracked after a hosting outage.
+  - Behavior impact: The recovery window is the last 24 hours by default and scans up to 100 recent messages per Attendance channel. Preview-channel messages remain non-payroll. Existing matching session records are skipped instead of duplicated.
+  - Files touched:
+    - src/index.js
+    - src/database.js
+    - HISTORY.md
 - Unified the direct attendance logout reply with the stronger confirmation layout.
   - Summary: Text-based logout replies now use the same bold attendance confirmation card as other login/logout flows.
   - Why: The logout reply used a separate legacy embed and still looked visually plain.

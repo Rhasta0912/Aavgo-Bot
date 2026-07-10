@@ -23,6 +23,9 @@ test('database starts with integrity and operational indexes', () => {
   ]) {
     assert.ok(indexNames.has(indexName), `expected ${indexName} to exist`);
   }
+
+  const recoveryLog = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'attendance_recovery_log'").get();
+  assert.equal(recoveryLog?.name, 'attendance_recovery_log');
 });
 
 test.after(() => {

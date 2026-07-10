@@ -23,6 +23,8 @@ const ATTENDANCE_LOGIN_REMINDER_DELAY_MS = 30 * 60 * 1000;
 const ATTENDANCE_TEST_DELAY_MS = 10 * 1000;
 const ATTENDANCE_LOGOUT_REPLY_DELETE_MS = 10 * 1000;
 const ATTENDANCE_CONFIRM_SUCCESS_DELETE_MS = 10 * 1000;
+const ATTENDANCE_RECOVERY_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+const ATTENDANCE_RECOVERY_MAX_MESSAGES = 100;
 const ATTENDANCE_BACKDATED_CONFIRM_THRESHOLD_MS = 2 * 60 * 1000;
 const ATTENDANCE_TIME_ZONE = 'Asia/Manila';
 const ATTENDANCE_REMINDER_BUTTON_PREFIX = 'attendance_reminder';
@@ -1163,6 +1165,165 @@ async function runStartupChecks(clientInstance) {
   console.log(`[STARTUP-CHECK] ${checks.join(' | ')}`);
 }
 
+function getAttendanceRecoveryStartMs() {
+  const stored = db.prepare("SELECT value FROM config WHERE key = 'attendance_recovery_last_scan_ms'").get()?.value;
+  const savedMs = Number(stored);
+  const fallbackMs = Date.now() - ATTENDANCE_RECOVERY_LOOKBACK_MS;
+  return Number.isFinite(savedMs) && savedMs > 0 ? Math.max(savedMs, fallbackMs) : fallbackMs;
+}
+
+function hasAttendanceRecoveryRecord(messageId) {
+  return Boolean(db.prepare('SELECT 1 FROM attendance_recovery_log WHERE message_id = ?').get(String(messageId)));
+}
+
+function recordAttendanceRecovery(message, action, outcome) {
+  db.prepare(`
+    INSERT OR REPLACE INTO attendance_recovery_log (message_id, channel_id, user_id, action, outcome)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(String(message.id), String(message.channelId), String(message.author.id), action, outcome);
+}
+
+function parseStoredSessionTimestamp(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return NaN;
+  const normalized = raw.includes('T') || raw.endsWith('Z') ? raw : `${raw.replace(' ', 'T')}Z`;
+  return new Date(normalized).getTime();
+}
+
+function attendanceActionAlreadyApplied(action, userId, targetMs) {
+  const agent = db.prepare('SELECT id FROM agents WHERE discord_id = ?').get(String(userId));
+  if (!agent) return false;
+
+  const rows = db.prepare(`
+    SELECT login_time, logout_time
+    FROM sessions
+    WHERE agent_id = ?
+    ORDER BY id DESC
+    LIMIT 25
+  `).all(agent.id);
+  const timestampField = action === 'logout' ? 'logout_time' : 'login_time';
+  return rows.some(row => {
+    const recordedMs = parseStoredSessionTimestamp(row[timestampField]);
+    return Number.isFinite(recordedMs) && Math.abs(recordedMs - targetMs) <= 2 * 60 * 1000;
+  });
+}
+
+async function recoverMissedAttendanceMessages(clientInstance) {
+  const startedAfterMs = getAttendanceRecoveryStartMs();
+  const channelIds = [ATTENDANCE_CHANNEL_ID, ATTENDANCE_PROTOTYPE_CHANNEL_ID];
+  let recovered = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  for (const channelId of channelIds) {
+    const channel = await clientInstance.channels.fetch(channelId).catch(() => null);
+    if (!channel?.isTextBased?.() || !channel.messages?.fetch) continue;
+
+    const messages = await channel.messages.fetch({ limit: ATTENDANCE_RECOVERY_MAX_MESSAGES }).catch(error => {
+      console.warn(`[ATTENDANCE-RECOVERY] Could not read channel ${channelId}:`, error.message);
+      return null;
+    });
+    if (!messages) {
+      failed += 1;
+      continue;
+    }
+
+    const pendingMessages = [...messages.values()]
+      .filter(message => !message.author?.bot && message.createdTimestamp >= startedAfterMs)
+      .sort((left, right) => left.createdTimestamp - right.createdTimestamp);
+
+    for (const message of pendingMessages) {
+      const action = parseAttendanceAction(message.content);
+      if (!action || hasAttendanceRecoveryRecord(message.id)) continue;
+
+      const previewOnly = String(message.channelId) === ATTENDANCE_PROTOTYPE_CHANNEL_ID;
+      const member = message.member || await message.guild.members.fetch(message.author.id).catch(() => null);
+      if (!member) {
+        failed += 1;
+        console.warn(`[ATTENDANCE-RECOVERY] Could not find member ${message.author.id}; will retry next startup.`);
+        continue;
+      }
+
+      const referenceMs = message.createdTimestamp;
+      const targetMs = action === 'logout'
+        ? resolveAttendanceLogoutTimeMs(message.content, referenceMs)
+        : parseAttendanceTargetTime(message.content, referenceMs).targetMs;
+
+      try {
+        await auth.processAttendanceMessage(message, { previewOnly, nowMs: Date.now(), targetMs });
+
+        if (previewOnly) {
+          recordAttendanceRecovery(message, action, 'preview');
+          skipped += 1;
+          continue;
+        }
+
+        if (attendanceActionAlreadyApplied(action, member.id, targetMs)) {
+          recordAttendanceRecovery(message, action, 'already_applied');
+          skipped += 1;
+          continue;
+        }
+
+        if (action === 'logout') {
+          const result = await auth.handleAttendanceTextLogout({
+            client: clientInstance,
+            guild: message.guild,
+            member,
+            logoutTimeIso: new Date(targetMs).toISOString()
+          });
+          if (!result?.ok) throw new Error(result?.reason || 'logout was not applied');
+          await auth.setAttendanceQueueRole(member, false).catch(() => {});
+          recordAttendanceRecovery(message, action, 'recovered');
+          recovered += 1;
+          continue;
+        }
+
+        const mode = parseAttendanceMode(message.content, member);
+        const hotelId = detectAttendanceHotelId(message.content);
+        if (!hotelId) throw new Error('no hotel was found in the login message');
+
+        if (targetMs > Date.now()) {
+          scheduleAttendanceActionExecution(clientInstance, {
+            action: 'login',
+            userId: member.id,
+            guildId: message.guild.id,
+            hotelId,
+            mode,
+            targetMs,
+            timeExplicit: true,
+            teamName: resolveAttendanceTeamName(member),
+            previewOnly: false
+          }, getAttendanceActionDelayMs({ action: 'login', targetMs }));
+          await auth.setAttendanceQueueRole(member, true).catch(() => {});
+          recordAttendanceRecovery(message, action, 'scheduled');
+          recovered += 1;
+          continue;
+        }
+
+        const result = await auth.handleAttendanceTextLogin({
+          client: clientInstance,
+          guild: message.guild,
+          member,
+          hotelId,
+          sessionMode: mode === 'training' ? 'training' : 'shift',
+          loginTimeIso: new Date(targetMs).toISOString()
+        });
+        if (!result?.ok) throw new Error(result?.reason || 'login was not applied');
+        recordAttendanceRecovery(message, action, 'recovered');
+        recovered += 1;
+      } catch (error) {
+        failed += 1;
+        console.warn(`[ATTENDANCE-RECOVERY] Could not recover ${action} from message ${message.id}:`, error.message);
+      }
+    }
+  }
+
+  if (failed === 0) {
+    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('attendance_recovery_last_scan_ms', ?)").run(String(Date.now()));
+  }
+  console.log(`[ATTENDANCE-RECOVERY] Completed: ${recovered} recovered, ${skipped} skipped, ${failed} pending retry.`);
+}
+
 function getRoleSyncSnapshot(member) {
   const roleIds = [...member.roles.cache.keys()].sort().join(',');
   const displayName = member.displayName || member.user?.username || '';
@@ -1427,6 +1588,9 @@ client.once('ready', async () => {
     // Initial check on boot
     auth.checkSchedules(client);
     recoverScheduledAttendanceActions(client);
+    recoverMissedAttendanceMessages(client).catch(error => {
+      console.warn('[ATTENDANCE-RECOVERY] Startup scan crashed:', error.message);
+    });
     auth.monitorOvertimeSessions(client).catch(error => {
       console.warn('[OVERTIME] Initial monitor pass failed:', error.message);
     });
