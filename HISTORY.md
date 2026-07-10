@@ -1558,6 +1558,13 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Strengthened the attendance confirmation visual hierarchy.
+  - Summary: Attendance confirmations now use stronger headings, bold operational values, icon-led field labels, and a distinct preview-mode callout.
+  - Why: The first refined version was cleaner but still too quiet for a meaningful shift and payroll confirmation.
+  - Behavior impact: Attendance scheduling and hour calculations are unchanged; only the confirmation presentation changed.
+  - Files touched:
+    - src/index.js
+    - HISTORY.md
 - Refined attendance confirmation embeds.
   - Summary: Attendance login/logout confirmations now use a cleaner recorded-state layout with dedicated effective-time, hour-impact, shift-type, and preview-mode fields.
   - Why: The previous success message was correct but visually dense and did not make the time-impact warning easy to scan.

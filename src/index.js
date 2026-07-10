@@ -1022,33 +1022,38 @@ async function handleAttendanceActionButton(interaction) {
 function buildAttendanceConfirmationEmbed({ action, delayMs = 0, targetLabel = '', impactLabel = '', previewOnly = false, modeLabel = '' }) {
   const isLogin = action === 'login';
   const actionLabel = isLogin ? 'Login' : 'Logout';
+  const isRecorded = Boolean(impactLabel) || delayMs <= 0;
   const fields = [];
 
   if (targetLabel) {
-    fields.push({ name: 'Effective time', value: `**${targetLabel}**`, inline: true });
+    fields.push({ name: '\u{23F0} EFFECTIVE TIME', value: `> **${targetLabel}**`, inline: true });
   }
   if (impactLabel) {
-    fields.push({ name: 'Hour impact', value: `**${impactLabel}**`, inline: true });
+    fields.push({ name: '\u{26A0}\u{FE0F} HOUR IMPACT', value: `> **${impactLabel}**`, inline: true });
   } else if (delayMs > 0) {
-    fields.push({ name: 'Starts in', value: `**${formatDurationFromMs(delayMs)}**`, inline: true });
+    fields.push({ name: '\u{23F3} STARTS IN', value: `> **${formatDurationFromMs(delayMs)}**`, inline: true });
   }
   if (modeLabel) {
-    fields.push({ name: 'Shift type', value: modeLabel, inline: true });
+    fields.push({ name: '\u{1F4CD} SHIFT TYPE', value: `> **${modeLabel}**`, inline: true });
   }
   if (previewOnly) {
-    fields.push({ name: 'Preview mode', value: 'No hours were recorded.', inline: false });
+    fields.push({
+      name: '\u{1F9EA} PREVIEW MODE',
+      value: '> This is a test entry. **No hours were recorded.**',
+      inline: false
+    });
   }
 
-  const description = impactLabel || delayMs <= 0
-    ? `${actionLabel} attendance has been recorded.`
-    : `${actionLabel} attendance is scheduled and will be recorded automatically.`;
+  const description = isRecorded
+    ? `## **${actionLabel.toUpperCase()} CONFIRMED**\nYour attendance entry is now part of the shift timeline.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`
+    : `## **${actionLabel.toUpperCase()} SCHEDULED**\nYour attendance entry will be recorded automatically at the selected time.\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`;
 
   return new EmbedBuilder()
-    .setTitle(`\u{2705} ${actionLabel} recorded`)
+    .setTitle(`${isRecorded ? '\u{2705}' : '\u{1F552}'} Attendance ${isRecorded ? 'Updated' : 'Scheduled'}`)
     .setDescription(description)
     .setColor(0x57F287)
     .setFields(fields)
-    .setFooter({ text: previewOnly ? 'Aavgo Attendance | Preview mode' : 'Aavgo Attendance | Confirmed entry' })
+    .setFooter({ text: previewOnly ? 'Aavgo Attendance | Preview entry' : 'Aavgo Attendance | Shift timeline updated' })
     .setTimestamp();
 }
 
