@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "log:update": "node scripts/log-update.js",
-    "check": "node --check src/index.js && node --check src/auth.js && node --check src/database.js && node --check guardian.js && node --check backup.js",
-    "test": "node --test test/database.test.js",
+    "check": "node --check src/index.js && node --check src/auth.js && node --check src/database.js && node --check src/hoursApi.js && node --check guardian.js && node --check backup.js",
+    "test": "node --test test/database.test.js test/hours-api.test.js",
     "audit": "npm audit --omit=dev"
   },
   "keywords": [],

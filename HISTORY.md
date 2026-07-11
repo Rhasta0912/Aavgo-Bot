@@ -1558,6 +1558,16 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Added a fortified outbound Hours API v1 foundation.
+  - Summary: The bot can now publish versioned agent-hour snapshots to a partner HTTPS endpoint using HMAC-SHA256 request signatures, unique snapshot IDs, strict timeouts, retry backoff, and an opt-in configuration.
+  - Why: Partner systems need agent-hour data, while SparkedHost should not expose a public bot port for inbound requests.
+  - Behavior impact: Disabled by default. No data leaves the bot until `AAVGO_HOURS_API_V1_ENABLED=true`, a valid HTTPS endpoint, and a 32+ character shared secret are configured.
+  - Files touched:
+    - src/hoursApi.js
+    - src/index.js
+    - .env.example
+    - docs/hours-api-v1.md
+    - HISTORY.md
 - Added startup recovery for missed Attendance messages.
   - Summary: When the bot reconnects, it now scans recent Attendance and Attendance Preview messages in chronological order, restores missed login/logout actions in the background, and records each scanned message to prevent duplicates.
   - Why: Discord does not replay message events that arrive while the bot is offline, which could leave legitimate attendance messages untracked after a hosting outage.
