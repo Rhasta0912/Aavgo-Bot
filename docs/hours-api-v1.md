@@ -37,6 +37,15 @@ Closed sessions are counted as completed full hours. Active sessions are reporte
 
 For the current AI cross-reference use case, enable only the read route. Keep `AAVGO_HOURS_API_V1_WRITE_ENABLED=false`; requests to the correction route will be rejected.
 
+## Session-detail route
+
+`GET /api/v1/sessions?access_token=<read-token>&start=YYYY-MM-DD&end=YYYY-MM-DD` returns individual login/logout records for the inclusive Philippine-date range.
+
+- Date ranges are limited to 31 days.
+- The response is capped at 5,000 session records and sets `truncated: true` if that cap is reached.
+- Each session includes agent Discord ID, display name, role/team/hotel context, session kind, status, login timestamp, logout timestamp, and closed-session duration in milliseconds.
+- Active sessions return `logout_at: null` and `duration_ms: null`; do not treat them as finalized hours.
+
 ## Inbound correction route
 
 `POST /api/v1/hours/adjustments` accepts only append-only manual adjustments. It requires the same timestamp/signature format described above, but uses the separate write secret.

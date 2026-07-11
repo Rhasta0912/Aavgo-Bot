@@ -1558,6 +1558,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Added raw session-detail access to Hours API v1.
+  - Summary: Added a protected `GET /api/v1/sessions` endpoint for timestamped login/logout records in a requested Philippine-date range.
+  - Why: External AI cross-checking needs daily source events, not only aggregate weekly/monthly/all-time totals.
+  - Behavior impact: Uses the existing read token, accepts inclusive `start`/`end` dates, limits queries to 31 days and 5,000 rows, and exposes no PINs or contact data.
+  - Files touched:
+    - src/hoursApi.js
+    - test/hours-api.test.js
+    - docs/hours-api-v1.md
+    - HISTORY.md
 - Separated read-only Hours API activation from external corrections.
   - Summary: The Hours API can now run with only a read token; hour-correction requests remain rejected unless a separate write flag and write secret are explicitly enabled.
   - Why: The immediate need is AI hour cross-referencing, not external database changes.

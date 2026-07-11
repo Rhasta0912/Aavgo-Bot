@@ -7,7 +7,7 @@ const test = require('node:test');
 const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'aavgo-hours-api-test-'));
 process.env.AAVGO_DB_PATH = path.join(tempDirectory, 'aavgo.db');
 const db = require('../src/database');
-const { applyManualAdjustment, buildHoursApiSnapshot, signPayload } = require('../src/hoursApi');
+const { applyManualAdjustment, buildHoursApiSnapshot, buildSessionRange, signPayload } = require('../src/hoursApi');
 
 test('Hours API v1 snapshot contains operational hours without sensitive fields', () => {
   const now = new Date('2026-07-11T08:00:00.000Z');
@@ -39,6 +39,18 @@ test('Hours API v1 writes append-only audited manual adjustments', () => {
   assert.equal(db.prepare('SELECT hours, created_by FROM hour_adjustments WHERE id = ?').get(result.adjustment_id).hours, 2);
   assert.equal(db.prepare('SELECT action FROM hours_api_v1_requests WHERE request_id = ?').get('request-12345').action, 'manual_hours_add');
   assert.equal(applyManualAdjustment(JSON.parse(body), body).duplicate, true);
+});
+
+test('Hours API v1 returns raw sessions for a Philippine date range', () => {
+  const result = buildSessionRange('2026-07-11', '2026-07-11');
+  assert.equal(result.error, undefined);
+  assert.equal(result.timezone, 'Asia/Manila');
+  assert.equal(result.session_count, 1);
+  assert.equal(result.sessions[0].discord_id, '123456789012345678');
+  assert.equal(result.sessions[0].login_at, '2026-07-11T03:00:00.000Z');
+  assert.equal(result.sessions[0].logout_at, '2026-07-11T06:00:00.000Z');
+  assert.equal(result.sessions[0].duration_ms, 3 * 60 * 60 * 1000);
+  assert.match(buildSessionRange('2026-07-01', '2026-08-01').error, /31 days/);
 });
 
 test.after(() => {

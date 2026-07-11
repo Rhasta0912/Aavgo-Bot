@@ -1,12 +1,15 @@
 const crypto = require('crypto');
 const http = require('http');
 const db = require('./database');
-const { calculateAgentHourTotals } = require('./hours');
+const { calculateAgentHourTotals, parseDbTimestamp } = require('./hours');
 
 const MIN_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 10 * 1000;
 const MAX_BACKOFF_MS = 60 * 60 * 1000;
+const PH_OFFSET_MS = 8 * 60 * 60 * 1000;
+const MAX_SESSION_RANGE_DAYS = 31;
+const MAX_SESSION_ROWS = 5000;
 
 let syncTimer = null;
 let syncInFlight = false;
@@ -122,6 +125,82 @@ function buildHoursApiSnapshot(now = new Date()) {
       manual_adjustments: 'included in totals'
     },
     agents
+  };
+}
+
+function parsePhilippineDate(value) {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  const timestampMs = Date.UTC(year, month - 1, day, 0, 0, 0) - PH_OFFSET_MS;
+  const check = new Date(timestampMs + PH_OFFSET_MS);
+  if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
+  return { year, month, day, timestampMs };
+}
+
+function buildSessionRange(startValue, endValue) {
+  const start = parsePhilippineDate(startValue);
+  const end = parsePhilippineDate(endValue);
+  if (!start || !end) return { error: 'start and end must use YYYY-MM-DD' };
+  if (end.timestampMs < start.timestampMs) return { error: 'end must not be before start' };
+  const days = Math.round((end.timestampMs - start.timestampMs) / 86400000) + 1;
+  if (days > MAX_SESSION_RANGE_DAYS) return { error: `date range must be ${MAX_SESSION_RANGE_DAYS} days or fewer` };
+
+  const endExclusiveMs = end.timestampMs + 86400000;
+  const rows = db.prepare(`
+    SELECT
+      sessions.id,
+      sessions.hotel_id,
+      sessions.session_kind,
+      sessions.login_time,
+      sessions.logout_time,
+      sessions.status,
+      sessions.time_travel_offset_ms,
+      agents.discord_id,
+      agents.username,
+      agents.role,
+      agents.team
+    FROM sessions
+    JOIN agents ON agents.id = sessions.agent_id
+    WHERE julianday(sessions.login_time) < julianday(?)
+      AND (sessions.logout_time IS NULL OR julianday(sessions.logout_time) > julianday(?))
+    ORDER BY julianday(sessions.login_time) ASC, sessions.id ASC
+    LIMIT ?
+  `).all(new Date(endExclusiveMs).toISOString(), new Date(start.timestampMs).toISOString(), MAX_SESSION_ROWS + 1);
+
+  const truncated = rows.length > MAX_SESSION_ROWS;
+  const sessions = rows.slice(0, MAX_SESSION_ROWS).map(session => {
+    const loginMs = parseDbTimestamp(session.login_time, NaN);
+    const logoutMs = session.logout_time ? parseDbTimestamp(session.logout_time, NaN) : NaN;
+    return {
+      session_id: session.id,
+      discord_id: String(session.discord_id),
+      display_name: String(session.username),
+      role: String(session.role || 'agent'),
+      team: session.team || null,
+      hotel_id: session.hotel_id || null,
+      kind: String(session.session_kind || 'shift'),
+      status: String(session.status || 'active'),
+      login_at: Number.isFinite(loginMs) ? new Date(loginMs).toISOString() : session.login_time,
+      logout_at: Number.isFinite(logoutMs) ? new Date(logoutMs).toISOString() : null,
+      duration_ms: Number.isFinite(loginMs) && Number.isFinite(logoutMs) ? Math.max(0, logoutMs - loginMs) : null
+    };
+  });
+
+  return {
+    api_version: 'v1',
+    timezone: 'Asia/Manila',
+    range: {
+      start: `${startValue}`,
+      end: `${endValue}`,
+      start_at: new Date(start.timestampMs).toISOString(),
+      end_exclusive_at: new Date(endExclusiveMs).toISOString()
+    },
+    session_count: sessions.length,
+    truncated,
+    sessions
   };
 }
 
@@ -245,6 +324,13 @@ function buildInboundRouter() {
       const token = url.searchParams.get('access_token') || request.headers['x-aavgo-read-token'];
       if (!secureEqual(token, config.readToken)) return sendJson(response, 401, { ok: false, error: 'unauthorized' });
       return sendJson(response, 200, buildHoursApiSnapshot());
+    }
+    if (request.method === 'GET' && url.pathname === '/api/v1/sessions') {
+      const token = url.searchParams.get('access_token') || request.headers['x-aavgo-read-token'];
+      if (!secureEqual(token, config.readToken)) return sendJson(response, 401, { ok: false, error: 'unauthorized' });
+      const result = buildSessionRange(url.searchParams.get('start'), url.searchParams.get('end'));
+      if (result.error) return sendJson(response, 400, { ok: false, error: result.error });
+      return sendJson(response, 200, result);
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/hours/adjustments') {
       if (!config.writeEnabled) return sendJson(response, 403, { ok: false, error: 'hour corrections are disabled' });
@@ -373,4 +459,4 @@ function stopHoursApiV1() {
   syncTimer = null;
 }
 
-module.exports = { applyManualAdjustment, buildHoursApiSnapshot, getHoursApiConfig, getInboundHoursApiConfig, publishHoursSnapshot, signPayload, startHoursApiV1, startInboundHoursApiV1, stopHoursApiV1, stopInboundHoursApiV1 };
+module.exports = { applyManualAdjustment, buildHoursApiSnapshot, buildSessionRange, getHoursApiConfig, getInboundHoursApiConfig, publishHoursSnapshot, signPayload, startHoursApiV1, startInboundHoursApiV1, stopHoursApiV1, stopInboundHoursApiV1 };
