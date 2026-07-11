@@ -1558,6 +1558,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Separated read-only Hours API activation from external corrections.
+  - Summary: The Hours API can now run with only a read token; hour-correction requests remain rejected unless a separate write flag and write secret are explicitly enabled.
+  - Why: The immediate need is AI hour cross-referencing, not external database changes.
+  - Behavior impact: Read-only API usage no longer requires any write credential. External edits remain disabled by default.
+  - Files touched:
+    - src/hoursApi.js
+    - .env.example
+    - docs/hours-api-v1.md
+    - HISTORY.md
 - Required explicit HTTPS-proxy acknowledgement before enabling inbound Hours API v1.
   - Summary: The inbound API now stays disabled unless its configuration explicitly confirms that HTTPS is terminated by a trusted proxy before traffic reaches the allocated bot port.
   - Why: A raw IP-and-port allocation is plain HTTP, which is not appropriate for URL tokens or signed payroll corrections.

@@ -48,10 +48,13 @@ function getInboundHoursApiConfig() {
   const readToken = String(process.env.AAVGO_HOURS_API_V1_READ_TOKEN || '').trim();
   const writeSecret = String(process.env.AAVGO_HOURS_API_V1_WRITE_SECRET || '').trim();
   const port = boundedInteger(process.env.AAVGO_HOURS_API_V1_PORT || process.env.SERVER_PORT || process.env.PORT, 0, 1, 65535);
+  const writeEnabled = enabled(process.env.AAVGO_HOURS_API_V1_WRITE_ENABLED);
   return {
     enabled: enabled(process.env.AAVGO_HOURS_API_V1_INBOUND_ENABLED),
     allowHttp: enabled(process.env.AAVGO_HOURS_API_V1_INBOUND_ALLOW_HTTP),
-    configured: readToken.length >= 32 && writeSecret.length >= 32 && port > 0,
+    configured: readToken.length >= 32 && port > 0,
+    writeEnabled,
+    writeConfigured: !writeEnabled || writeSecret.length >= 32,
     readToken,
     writeSecret,
     host: String(process.env.AAVGO_HOURS_API_V1_HOST || '0.0.0.0').trim() || '0.0.0.0',
@@ -244,6 +247,7 @@ function buildInboundRouter() {
       return sendJson(response, 200, buildHoursApiSnapshot());
     }
     if (request.method === 'POST' && url.pathname === '/api/v1/hours/adjustments') {
+      if (!config.writeEnabled) return sendJson(response, 403, { ok: false, error: 'hour corrections are disabled' });
       let rawBody;
       try {
         rawBody = await readRawBody(request);
@@ -268,7 +272,11 @@ function startInboundHoursApiV1() {
   const config = getInboundHoursApiConfig();
   if (!config.enabled) return;
   if (!config.configured) {
-    console.warn('[HOURS-API-V1] Inbound API disabled: port, read token, and write secret are required.');
+    console.warn('[HOURS-API-V1] Inbound API disabled: port and a 32+ character read token are required.');
+    return;
+  }
+  if (!config.writeConfigured) {
+    console.warn('[HOURS-API-V1] Inbound API disabled: the enabled write route requires a 32+ character write secret.');
     return;
   }
   if (!config.allowHttp) {
@@ -280,7 +288,7 @@ function startInboundHoursApiV1() {
   inboundServer.requestTimeout = 15000;
   inboundServer.headersTimeout = 16000;
   inboundServer.listen(config.port, config.host, () => {
-    console.log(`[HOURS-API-V1] Inbound API listening on ${config.host}:${config.port}.`);
+    console.log(`[HOURS-API-V1] Inbound API listening on ${config.host}:${config.port}; hour corrections ${config.writeEnabled ? 'enabled' : 'disabled'}.`);
   });
   inboundServer.on('error', error => console.error('[HOURS-API-V1] Inbound API error:', error.message));
 }

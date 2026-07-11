@@ -35,6 +35,8 @@ Closed sessions are counted as completed full hours. Active sessions are reporte
 
 `GET /api/v1/hours?access_token=<read-token>` returns the current snapshot. The read token is view-only and must be at least 32 characters.
 
+For the current AI cross-reference use case, enable only the read route. Keep `AAVGO_HOURS_API_V1_WRITE_ENABLED=false`; requests to the correction route will be rejected.
+
 ## Inbound correction route
 
 `POST /api/v1/hours/adjustments` accepts only append-only manual adjustments. It requires the same timestamp/signature format described above, but uses the separate write secret.
