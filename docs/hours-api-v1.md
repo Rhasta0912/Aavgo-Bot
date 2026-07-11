@@ -4,6 +4,8 @@ The bot publishes snapshots to a partner HTTPS endpoint. It is disabled by defau
 
 It can also serve a protected read link and accept tightly limited manual-hour corrections on its assigned SparkedHost port.
 
+The raw SparkedHost IP-and-port allocation is HTTP only. Do not expose a tokenized read link on it directly. Put a trusted HTTPS reverse proxy or custom-domain TLS service in front of the allocation first, then explicitly enable the inbound service.
+
 ## Request
 
 `POST` the configured `AAVGO_HOURS_API_V1_URL` with a JSON body and these headers:

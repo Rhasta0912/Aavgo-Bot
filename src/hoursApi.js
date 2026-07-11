@@ -50,6 +50,7 @@ function getInboundHoursApiConfig() {
   const port = boundedInteger(process.env.AAVGO_HOURS_API_V1_PORT || process.env.SERVER_PORT || process.env.PORT, 0, 1, 65535);
   return {
     enabled: enabled(process.env.AAVGO_HOURS_API_V1_INBOUND_ENABLED),
+    allowHttp: enabled(process.env.AAVGO_HOURS_API_V1_INBOUND_ALLOW_HTTP),
     configured: readToken.length >= 32 && writeSecret.length >= 32 && port > 0,
     readToken,
     writeSecret,
@@ -268,6 +269,10 @@ function startInboundHoursApiV1() {
   if (!config.enabled) return;
   if (!config.configured) {
     console.warn('[HOURS-API-V1] Inbound API disabled: port, read token, and write secret are required.');
+    return;
+  }
+  if (!config.allowHttp) {
+    console.warn('[HOURS-API-V1] Inbound API disabled: configure HTTPS termination, then explicitly set AAVGO_HOURS_API_V1_INBOUND_ALLOW_HTTP=true.');
     return;
   }
   if (inboundServer) return;

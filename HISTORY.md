@@ -1558,6 +1558,15 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Required explicit HTTPS-proxy acknowledgement before enabling inbound Hours API v1.
+  - Summary: The inbound API now stays disabled unless its configuration explicitly confirms that HTTPS is terminated by a trusted proxy before traffic reaches the allocated bot port.
+  - Why: A raw IP-and-port allocation is plain HTTP, which is not appropriate for URL tokens or signed payroll corrections.
+  - Behavior impact: The API remains disabled until secure public HTTPS routing is in place and `AAVGO_HOURS_API_V1_INBOUND_ALLOW_HTTP=true` is set as the explicit trusted-proxy acknowledgement.
+  - Files touched:
+    - src/hoursApi.js
+    - .env.example
+    - docs/hours-api-v1.md
+    - HISTORY.md
 - Added protected read and audited write routes to Hours API v1.
   - Summary: The assigned SparkedHost allocation can now serve a tokenized read-only hours snapshot and accept signed, replay-protected manual hour additions/removals.
   - Why: A partner needs simple hours access and approved corrections without receiving direct database or bot-control access.
