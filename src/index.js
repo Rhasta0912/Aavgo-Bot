@@ -8,7 +8,7 @@ const tools = require('./tools');
 const profilePanel = require('./profilePanel');
 const devTodo = require('./devTodo');
 const { upsertBotStatusCard } = require('./botStatus');
-const { startHoursApiV1, stopHoursApiV1 } = require('./hoursApi');
+const { startHoursApiV1, startInboundHoursApiV1, stopHoursApiV1, stopInboundHoursApiV1 } = require('./hoursApi');
 const REAL_NAME_TUTORIAL_DIR = path.join(__dirname, 'assets', 'real-name-tutorial');
 const NEWCOMER_CHANNEL_ID = '1482259779991764992';
 const OPERATIONS_MANAGER_ROLE_ID = '1482226842047090809';
@@ -1514,6 +1514,7 @@ async function handleBotShutdown(signal) {
     roleSyncWatcher = null;
   }
   stopHoursApiV1();
+  stopInboundHoursApiV1();
 
   console.log(`[DISCORD] Received ${signal}. Marking bot offline before exit...`);
   await upsertBotStatusCard({
@@ -1627,6 +1628,7 @@ client.once('ready', async () => {
     });
     startBotStatusHeartbeat();
     startHoursApiV1();
+    startInboundHoursApiV1();
   // Register Slash Commands
   try {
     if (String(process.env.AAVGO_WIPE_GLOBAL_COMMANDS || '').toLowerCase() === 'true') {

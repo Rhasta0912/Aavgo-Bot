@@ -1558,6 +1558,17 @@ eturn member; block left behind in pplyAgentPromotion. The extra lines made src
     - Website repo also added the matching admin UI controls.
 
 ## Latest Changes
+- Added protected read and audited write routes to Hours API v1.
+  - Summary: The assigned SparkedHost allocation can now serve a tokenized read-only hours snapshot and accept signed, replay-protected manual hour additions/removals.
+  - Why: A partner needs simple hours access and approved corrections without receiving direct database or bot-control access.
+  - Behavior impact: Disabled by default. Writes are restricted to append-only manual adjustments with a reason, actor, request ID, and audit record; raw shift sessions and sensitive data remain inaccessible.
+  - Files touched:
+    - src/hoursApi.js
+    - src/database.js
+    - src/index.js
+    - .env.example
+    - docs/hours-api-v1.md
+    - HISTORY.md
 - Added a fortified outbound Hours API v1 foundation.
   - Summary: The bot can now publish versioned agent-hour snapshots to a partner HTTPS endpoint using HMAC-SHA256 request signatures, unique snapshot IDs, strict timeouts, retry backoff, and an opt-in configuration.
   - Why: Partner systems need agent-hour data, while SparkedHost should not expose a public bot port for inbound requests.

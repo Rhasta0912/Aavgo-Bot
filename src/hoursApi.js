@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const http = require('http');
 const db = require('./database');
 const { calculateAgentHourTotals } = require('./hours');
 
@@ -11,6 +12,8 @@ let syncTimer = null;
 let syncInFlight = false;
 let nextRetryAt = 0;
 let failureCount = 0;
+let inboundServer = null;
+const inboundRateWindows = new Map();
 const health = { lastSuccessAt: '', lastError: '', lastAttemptAt: '' };
 
 function enabled(value) {
@@ -38,6 +41,20 @@ function getHoursApiConfig() {
     secret,
     intervalMs: boundedInteger(process.env.AAVGO_HOURS_API_V1_INTERVAL_MS, DEFAULT_INTERVAL_MS, MIN_INTERVAL_MS, 24 * 60 * 60 * 1000),
     timeoutMs: boundedInteger(process.env.AAVGO_HOURS_API_V1_TIMEOUT_MS, DEFAULT_TIMEOUT_MS, 1000, 30000)
+  };
+}
+
+function getInboundHoursApiConfig() {
+  const readToken = String(process.env.AAVGO_HOURS_API_V1_READ_TOKEN || '').trim();
+  const writeSecret = String(process.env.AAVGO_HOURS_API_V1_WRITE_SECRET || '').trim();
+  const port = boundedInteger(process.env.AAVGO_HOURS_API_V1_PORT || process.env.SERVER_PORT || process.env.PORT, 0, 1, 65535);
+  return {
+    enabled: enabled(process.env.AAVGO_HOURS_API_V1_INBOUND_ENABLED),
+    configured: readToken.length >= 32 && writeSecret.length >= 32 && port > 0,
+    readToken,
+    writeSecret,
+    host: String(process.env.AAVGO_HOURS_API_V1_HOST || '0.0.0.0').trim() || '0.0.0.0',
+    port
   };
 }
 
@@ -106,6 +123,167 @@ function buildHoursApiSnapshot(now = new Date()) {
 
 function signPayload(secret, timestamp, body) {
   return crypto.createHmac('sha256', secret).update(`${timestamp}.${body}`).digest('hex');
+}
+
+function secureEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''));
+  const rightBuffer = Buffer.from(String(right || ''));
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function sendJson(response, status, body) {
+  response.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'X-Content-Type-Options': 'nosniff'
+  });
+  response.end(JSON.stringify(body));
+}
+
+function allowInboundRequest(request) {
+  const key = String(request.socket?.remoteAddress || 'unknown');
+  const now = Date.now();
+  const window = inboundRateWindows.get(key) || { startedAt: now, count: 0 };
+  if (now - window.startedAt >= 60 * 1000) {
+    window.startedAt = now;
+    window.count = 0;
+  }
+  window.count += 1;
+  inboundRateWindows.set(key, window);
+  return window.count <= 60;
+}
+
+function readRawBody(request, maximumBytes = 16 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    request.on('data', chunk => {
+      size += chunk.length;
+      if (size > maximumBytes) {
+        reject(new Error('request body is too large'));
+        request.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    request.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    request.on('error', reject);
+  });
+}
+
+function validManualAdjustment(payload) {
+  const requestId = String(payload?.request_id || '').trim();
+  const discordId = String(payload?.agent_discord_id || '').trim();
+  const operation = String(payload?.operation || '').trim().toLowerCase();
+  const hours = Number(payload?.hours);
+  const mode = String(payload?.mode || 'shift').trim().toLowerCase();
+  const shiftDate = String(payload?.shift_date || '').trim();
+  const reason = String(payload?.reason || '').trim();
+  const requestedBy = String(payload?.requested_by || 'partner-api').trim().slice(0, 100);
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(requestId)) return { error: 'invalid request_id' };
+  if (!/^\d{10,25}$/.test(discordId)) return { error: 'invalid agent_discord_id' };
+  if (!['add', 'remove'].includes(operation)) return { error: 'operation must be add or remove' };
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) return { error: 'hours must be greater than 0 and no more than 24' };
+  if (!['shift', 'training'].includes(mode)) return { error: 'mode must be shift or training' };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(shiftDate)) return { error: 'shift_date must use YYYY-MM-DD' };
+  if (reason.length < 5 || reason.length > 500) return { error: 'reason must be 5 to 500 characters' };
+  return { requestId, discordId, operation, hours, mode, shiftDate, reason, requestedBy };
+}
+
+function applyManualAdjustment(payload, rawBody) {
+  const input = validManualAdjustment(payload);
+  if (input.error) return { ok: false, status: 400, error: input.error };
+  const prior = db.prepare('SELECT adjustment_id FROM hours_api_v1_requests WHERE request_id = ?').get(input.requestId);
+  if (prior) return { ok: true, status: 200, duplicate: true, adjustment_id: prior.adjustment_id };
+
+  const agent = db.prepare('SELECT id, hotel_id FROM agents WHERE discord_id = ?').get(input.discordId);
+  if (!agent) return { ok: false, status: 404, error: 'agent not found' };
+  const signedHours = input.operation === 'remove' ? -input.hours : input.hours;
+  const payloadHash = crypto.createHash('sha256').update(rawBody).digest('hex');
+  const transaction = db.transaction(() => {
+    const adjustment = db.prepare(`
+      INSERT INTO hour_adjustments (agent_id, hotel_id, shift_date, hours, mode, reason, note, effective_at, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      agent.id,
+      agent.hotel_id || null,
+      input.shiftDate,
+      signedHours,
+      input.mode,
+      input.reason,
+      `Hours API v1 ${input.operation}; request ${input.requestId}`,
+      `${input.shiftDate} 12:00:00`,
+      `hours-api-v1:${input.requestedBy}`
+    );
+    db.prepare(`
+      INSERT INTO hours_api_v1_requests (request_id, action, actor, payload_hash, adjustment_id)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(input.requestId, `manual_hours_${input.operation}`, input.requestedBy, payloadHash, adjustment.lastInsertRowid);
+    return adjustment.lastInsertRowid;
+  });
+  return { ok: true, status: 201, adjustment_id: transaction() };
+}
+
+function isValidWriteSignature(request, rawBody, secret) {
+  const timestamp = String(request.headers['x-aavgo-timestamp'] || '').trim();
+  const signature = String(request.headers['x-aavgo-signature'] || '').trim();
+  const timestampMs = Number(timestamp) * 1000;
+  if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > 5 * 60 * 1000) return false;
+  return secureEqual(signature, `sha256=${signPayload(secret, timestamp, rawBody)}`);
+}
+
+function buildInboundRouter() {
+  const config = getInboundHoursApiConfig();
+  return async (request, response) => {
+    if (!allowInboundRequest(request)) return sendJson(response, 429, { ok: false, error: 'rate limit exceeded' });
+    const url = new URL(request.url, 'http://127.0.0.1');
+    if (request.method === 'GET' && url.pathname === '/api/v1/hours') {
+      const token = url.searchParams.get('access_token') || request.headers['x-aavgo-read-token'];
+      if (!secureEqual(token, config.readToken)) return sendJson(response, 401, { ok: false, error: 'unauthorized' });
+      return sendJson(response, 200, buildHoursApiSnapshot());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/v1/hours/adjustments') {
+      let rawBody;
+      try {
+        rawBody = await readRawBody(request);
+      } catch (error) {
+        return sendJson(response, 413, { ok: false, error: error.message });
+      }
+      if (!isValidWriteSignature(request, rawBody, config.writeSecret)) return sendJson(response, 401, { ok: false, error: 'unauthorized' });
+      let payload;
+      try {
+        payload = JSON.parse(rawBody);
+      } catch (_) {
+        return sendJson(response, 400, { ok: false, error: 'invalid JSON' });
+      }
+      const result = applyManualAdjustment(payload, rawBody);
+      return sendJson(response, result.status, result);
+    }
+    return sendJson(response, 404, { ok: false, error: 'not found' });
+  };
+}
+
+function startInboundHoursApiV1() {
+  const config = getInboundHoursApiConfig();
+  if (!config.enabled) return;
+  if (!config.configured) {
+    console.warn('[HOURS-API-V1] Inbound API disabled: port, read token, and write secret are required.');
+    return;
+  }
+  if (inboundServer) return;
+  inboundServer = http.createServer(buildInboundRouter());
+  inboundServer.requestTimeout = 15000;
+  inboundServer.headersTimeout = 16000;
+  inboundServer.listen(config.port, config.host, () => {
+    console.log(`[HOURS-API-V1] Inbound API listening on ${config.host}:${config.port}.`);
+  });
+  inboundServer.on('error', error => console.error('[HOURS-API-V1] Inbound API error:', error.message));
+}
+
+function stopInboundHoursApiV1() {
+  if (!inboundServer) return;
+  inboundServer.close();
+  inboundServer = null;
 }
 
 async function publishHoursSnapshot() {
@@ -182,4 +360,4 @@ function stopHoursApiV1() {
   syncTimer = null;
 }
 
-module.exports = { buildHoursApiSnapshot, getHoursApiConfig, publishHoursSnapshot, signPayload, startHoursApiV1, stopHoursApiV1 };
+module.exports = { applyManualAdjustment, buildHoursApiSnapshot, getHoursApiConfig, getInboundHoursApiConfig, publishHoursSnapshot, signPayload, startHoursApiV1, startInboundHoursApiV1, stopHoursApiV1, stopInboundHoursApiV1 };

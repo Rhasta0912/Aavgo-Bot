@@ -192,6 +192,15 @@ db.exec(`
     processed_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  CREATE TABLE IF NOT EXISTS hours_api_v1_requests (
+    request_id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    adjustment_id INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS hotel_shift_assignments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agent_id INTEGER NOT NULL UNIQUE,
@@ -513,6 +522,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_schedules_status_start ON schedules(status, start_time);
   CREATE INDEX IF NOT EXISTS idx_attendance_queue_target ON attendance_action_queue(target_ms);
   CREATE INDEX IF NOT EXISTS idx_attendance_recovery_processed ON attendance_recovery_log(processed_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_hours_api_requests_created ON hours_api_v1_requests(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_hour_adjustments_agent_effective ON hour_adjustments(agent_id, effective_at DESC);
 `);
 
